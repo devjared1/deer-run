@@ -51,6 +51,6 @@ export const useBookingStore = defineStore('booking', () => {
 
   return {
     selectedDate, selectedSlot, players, guestName, guestEmail,
-    totalPrice, fetchAvailableSlots, createBooking, reset,
+    PRICE_PER_PLAYER, totalPrice, fetchAvailableSlots, createBooking, reset,
   }
 })
