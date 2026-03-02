@@ -33,3 +33,6 @@ Thumbs.db
 
 # Prisma
 apps/api/prisma/migrations/
+
+# Cloudflare / Wrangler
+.wrangler/
