@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         String    @id @default(cuid())
+  email      String    @unique
+  name       String?
+  role       Role      @default(MEMBER)
+  supabaseId String?   @unique
+  bookings   Booking[]
+  createdAt  DateTime  @default(now())
+}
+
+enum Role { GUEST MEMBER ADMIN }
+
+model TeeTimeSlot {
+  id         String    @id @default(cuid())
+  date       DateTime  @db.Date
+  startTime  String
+  maxPlayers Int       @default(4)
+  memberOnly Boolean   @default(false)
+  bookings   Booking[]
+  createdAt  DateTime  @default(now())
+
+  @@unique([date, startTime])
+}
+
+model Booking {
+  id              String        @id @default(cuid())
+  teeTimeSlot     TeeTimeSlot   @relation(fields: [teeTimeSlotId], references: [id])
+  teeTimeSlotId   String
+  user            User?         @relation(fields: [userId], references: [id])
+  userId          String?
+  guestName       String?
+  guestEmail      String?
+  players         Int
+  totalCents      Int
+  status          BookingStatus @default(PENDING)
+  stripeSessionId String?       @unique
+  stripePaymentId String?
+  createdAt       DateTime      @default(now())
+}
+
+enum BookingStatus { PENDING CONFIRMED CANCELLED REFUNDED }
+
+model CourseSettings {
+  id                  String @id @default("singleton")
+  publicBookingDays   Int    @default(7)
+  memberBookingDays   Int    @default(14)
+  pricePerPlayerCents Int    @default(4500)
+  firstTeeTime        String @default("07:30")
+  lastTeeTime         String @default("17:00")
+  intervalMinutes     Int    @default(10)
+}
+
+model TournamentEvent {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  eventDate   DateTime
+  startTime   String
+  format      String
+  entry       Int?
+  spotsTotal  Int?
+  memberOnly  Boolean  @default(false)
+  featured    Boolean  @default(false)
+  past        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Inquiry {
+  id        String   @id @default(cuid())
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+  tier      String
+  message   String?
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  phone     String?
+  subject   String
+  message   String
+  createdAt DateTime @default(now())
+}
