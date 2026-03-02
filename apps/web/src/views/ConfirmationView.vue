@@ -88,7 +88,7 @@ onMounted(async () => {
   const sessionId = route.query.session_id
   if (!sessionId) { loading.value = false; return }
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/by-session/${sessionId}`)
+    const res = await fetch(`/api/bookings/by-session/${sessionId}`)
     if (res.ok) {
       booking.value = await res.json()
       bookingStore.reset()

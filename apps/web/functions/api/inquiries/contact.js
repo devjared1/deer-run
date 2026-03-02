@@ -13,41 +13,39 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'Invalid JSON body' }, 400)
   }
 
-  const { firstName, lastName, email, phone, tier, message } = body
+  const { name, email, phone, subject, message } = body
 
-  if (!firstName || !lastName || !email || !tier) {
-    return json({ error: 'firstName, lastName, email, and tier are required' }, 400)
+  if (!name || !email || !subject || !message) {
+    return json({ error: 'name, email, subject, and message are required' }, 400)
   }
 
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   })
 
-  const { error: dbError } = await supabase.from('Inquiry').insert({
+  const { error: dbError } = await supabase.from('ContactMessage').insert({
     id: crypto.randomUUID(),
-    firstName,
-    lastName,
+    name,
     email,
     phone: phone ?? null,
-    tier,
-    message: message ?? null,
+    subject,
+    message,
   })
 
   if (dbError) return json({ error: dbError.message }, 500)
 
-  // Send notification email to pro shop
   if (env.RESEND_API_KEY && env.CONTACT_EMAIL_TO) {
     const resend = new Resend(env.RESEND_API_KEY)
     await resend.emails.send({
       from: 'noreply@deerrun.golf',
       to: env.CONTACT_EMAIL_TO,
-      subject: `Membership Inquiry — ${tier} (${firstName} ${lastName})`,
+      subject: `Contact Message — ${subject} (${name})`,
       text: [
-        `Name: ${firstName} ${lastName}`,
+        `Name: ${name}`,
         `Email: ${email}`,
         `Phone: ${phone || 'N/A'}`,
-        `Tier: ${tier}`,
-        `Message: ${message || 'N/A'}`,
+        `Subject: ${subject}`,
+        `Message: ${message}`,
       ].join('\n'),
     })
   }

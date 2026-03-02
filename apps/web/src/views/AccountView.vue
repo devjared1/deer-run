@@ -150,7 +150,7 @@ function formatTime(t) {
 async function cancelBooking(id) {
   cancelling.value = id
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/${id}`, {
+    const res = await fetch(`/api/bookings/${id}`, {
       method:  'DELETE',
       headers: { Authorization: `Bearer ${authStore.getToken()}` },
     })
@@ -170,7 +170,7 @@ async function logout() {
 
 onMounted(async () => {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings/my`, {
+    const res = await fetch('/api/bookings/my', {
       headers: { Authorization: `Bearer ${authStore.getToken()}` },
     })
     if (res.ok) bookings.value = await res.json()
