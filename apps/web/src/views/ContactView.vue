@@ -147,7 +147,7 @@ async function submit() {
   error.value   = ''
   loading.value = true
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/inquiries/contact`, {
+    const res = await fetch('/api/inquiries/contact', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(form),

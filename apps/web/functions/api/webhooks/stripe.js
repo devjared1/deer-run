@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
+import { Resend } from 'resend'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -32,6 +33,42 @@ export async function onRequestPost({ request, env }) {
         .from('Booking')
         .update({ status: 'CONFIRMED', stripePaymentId: session.payment_intent })
         .eq('id', bookingId)
+
+      if (env.RESEND_API_KEY && session.customer_email) {
+        const { data: booking } = await supabase
+          .from('Booking')
+          .select('*, teeTimeSlot:TeeTimeSlot(date, startTime)')
+          .eq('id', bookingId)
+          .maybeSingle()
+
+        if (booking) {
+          const slotDate = new Date(booking.teeTimeSlot.date).toLocaleDateString('en-US', {
+            weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+          })
+          const [h, m] = booking.teeTimeSlot.startTime.split(':').map(Number)
+          const slotTime = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+          const total = `$${(booking.totalCents / 100).toFixed(0)}`
+
+          const resend = new Resend(env.RESEND_API_KEY)
+          await resend.emails.send({
+            from: 'noreply@deerrun.golf',
+            to: session.customer_email,
+            subject: 'Tee Time Confirmed — Deer Run Golf Course',
+            text: [
+              'Your tee time at Deer Run Golf Course is confirmed!',
+              '',
+              `Date: ${slotDate}`,
+              `Tee Time: ${slotTime}`,
+              `Players: ${booking.players}`,
+              `Total Paid: ${total}`,
+              '',
+              'We look forward to seeing you on the course.',
+              'Pro Shop: (256) 974-7384',
+              '1175 County Road 100, Moulton, AL 35650',
+            ].join('\n'),
+          })
+        }
+      }
     }
   }
 
