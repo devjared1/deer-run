@@ -15,7 +15,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   async function fetchAvailableSlots(date) {
     const token = authStore.getToken()
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/teetimes?date=${date}`, {
+    const res = await fetch(`/api/teetimes?date=${date}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     })
     if (!res.ok) throw new Error('Failed to fetch slots')
@@ -24,7 +24,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   async function createBooking() {
     const token = authStore.getToken()
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/bookings`, {
+    const res = await fetch(`/api/bookings`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

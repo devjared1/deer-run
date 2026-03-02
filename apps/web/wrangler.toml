@@ -1,0 +1,8 @@
+name = "deer-run"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+# Non-secret runtime variables (secrets are set via `wrangler secret put` or the Cloudflare dashboard)
+# [vars]
+# CONTACT_EMAIL_TO = "proshop@deerrun.golf"

@@ -23,7 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
     session.value = data.session
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/auth/me`, {
+    const res = await fetch(`/api/auth/me`, {
       headers: { Authorization: `Bearer ${data.session.access_token}` },
     })
     profile.value = await res.json()

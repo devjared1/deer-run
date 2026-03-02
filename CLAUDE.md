@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Production Vue 3 + Fastify monorepo for [deerrun.golf](https://deerrun.golf) — an 18-hole public/semi-private golf course in Lawrence County, Alabama. The site handles tee time booking, membership inquiries, tournament listings, scorecards, rates, and course contact.
+Production Vue 3 + Cloudflare Pages monorepo for [deerrun.golf](https://deerrun.golf) — an 18-hole public/semi-private golf course in Lawrence County, Alabama. The site handles tee time booking, membership inquiries, tournament listings, scorecards, rates, and course contact.
 
 ---
 
@@ -11,56 +11,66 @@ Production Vue 3 + Fastify monorepo for [deerrun.golf](https://deerrun.golf) —
 ```
 deer-run/
 ├── apps/
-│   ├── web/               # Vue 3 frontend (Vite + Pinia + Tailwind)
+│   ├── web/                   # Vue 3 frontend + Cloudflare Pages Functions
+│   │   ├── functions/         # Pages Functions — all served under /api/*
+│   │   │   └── api/
+│   │   │       ├── auth/
+│   │   │       │   └── me.js          # GET /api/auth/me
+│   │   │       ├── teetimes.js        # GET /api/teetimes?date=YYYY-MM-DD
+│   │   │       ├── bookings.js        # POST /api/bookings
+│   │   │       ├── events.js          # GET /api/events[?past=true|false]
+│   │   │       ├── inquiries.js       # POST /api/inquiries
+│   │   │       └── webhooks/
+│   │   │           └── stripe.js      # POST /api/webhooks/stripe
+│   │   ├── public/
+│   │   │   └── _redirects     # SPA fallback: /* → /index.html 200
 │   │   ├── src/
-│   │   │   ├── assets/    # Global CSS (main.css)
+│   │   │   ├── assets/        # Global CSS (main.css)
 │   │   │   ├── components/
-│   │   │   │   ├── booking/    # BookingWizard + 4 step components
-│   │   │   │   ├── layout/     # AppNav, AppFooter, PageHero
-│   │   │   │   ├── membership/ # MembershipInquiryForm, MembershipTierCard
-│   │   │   │   ├── scorecard/  # CourseStatBar, ScorecardTable, TeeSetSelector
-│   │   │   │   ├── tournament/ # EventCard, EventFilterBar
-│   │   │   │   └── ui/         # CourseDiagram, DeerLogo, SectionLabel, TreelineDivider
-│   │   │   ├── data/      # Static JS data (holes, rates, membershipTiers, teeSets)
-│   │   │   ├── lib/       # supabase.js client singleton
-│   │   │   ├── router/    # Vue Router (index.js)
-│   │   │   ├── stores/    # Pinia stores (auth.js, booking.js)
-│   │   │   ├── views/     # Page-level components (one per route)
-│   │   │   ├── App.vue    # Root component — calls auth.init() on mount
-│   │   │   └── main.js    # App entry point
+│   │   │   │   ├── booking/   # BookingWizard + 4 step components
+│   │   │   │   ├── layout/    # AppNav, AppFooter, PageHero
+│   │   │   │   ├── membership/# MembershipInquiryForm, MembershipTierCard
+│   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
+│   │   │   │   ├── tournament/# EventCard, EventFilterBar
+│   │   │   │   └── ui/        # CourseDiagram, DeerLogo, SectionLabel, TreelineDivider
+│   │   │   ├── data/          # Static JS data (holes, rates, membershipTiers, teeSets)
+│   │   │   ├── lib/           # supabase.js — anon client singleton
+│   │   │   ├── router/        # Vue Router (index.js)
+│   │   │   ├── stores/        # Pinia stores (auth.js, booking.js)
+│   │   │   ├── views/         # Page-level components (one per route)
+│   │   │   ├── App.vue        # Root component — calls auth.init() on mount
+│   │   │   └── main.js        # App entry point
 │   │   ├── index.html
-│   │   ├── vite.config.js
+│   │   ├── vite.config.js     # Vite config (no API proxy — wrangler handles it)
+│   │   ├── wrangler.toml      # Cloudflare Pages config
 │   │   ├── tailwind.config.js
 │   │   ├── postcss.config.js
 │   │   ├── .eslintrc.cjs
-│   │   └── .env.example
-│   └── api/               # Fastify backend (Node ESM)
+│   │   └── .env.example       # Both VITE_* (build-time) and server-side vars
+│   └── api/                   # DB management only — no running server
 │       ├── prisma/
-│       │   ├── schema.prisma  # DB schema
+│       │   ├── schema.prisma  # DB schema (used for Prisma migrations)
 │       │   └── seed.js        # Seeds course settings, tee time slots, events
-│       ├── src/
-│       │   ├── plugins/   # Fastify plugins (prisma, auth, stripe, email)
-│       │   ├── routes/    # Route handlers (auth, teetimes, bookings, events, inquiries, webhooks)
-│       │   └── server.js  # App entry point
-│       ├── package.json
-│       └── .env.example
-└── package.json           # Workspace root (npm workspaces)
+│       ├── package.json       # Prisma devDep only
+│       └── .env.example       # DATABASE_URL only
+└── package.json               # Workspace root (npm workspaces)
 ```
 
 ---
 
 ## Tech Stack
 
-| Layer      | Technology                                          |
-|------------|-----------------------------------------------------|
-| Frontend   | Vue 3, Vite 5, Pinia 2, Vue Router 4, Tailwind CSS 3 |
-| Backend    | Fastify 4, Node.js (ESM, `"type": "module"`)        |
-| ORM        | Prisma 5 + PostgreSQL                               |
-| Auth       | Supabase Auth (JWT via JWKS verification in API)    |
-| Payments   | Stripe Checkout (v14, API version 2023-10-16)       |
-| Email      | Resend v3                                           |
-| Dev tools  | nodemon, concurrently, ESLint (vue3-recommended)    |
-| Deploy     | Vercel (web), Railway (api + PostgreSQL)            |
+| Layer      | Technology                                                |
+|------------|-----------------------------------------------------------|
+| Frontend   | Vue 3, Vite 5, Pinia 2, Vue Router 4, Tailwind CSS 3      |
+| API        | Cloudflare Pages Functions (edge, ES modules)             |
+| Database   | Supabase (PostgreSQL) — accessed via `@supabase/supabase-js` |
+| Auth       | Supabase Auth (JWT via `supabase.auth.getUser(token)`)    |
+| Payments   | Stripe Checkout v14 (API version 2023-10-16)              |
+| Email      | Resend v3                                                 |
+| DB Mgmt    | Prisma 5 (migrations + seed only, not used at runtime)    |
+| Dev tools  | Wrangler 3, ESLint (vue3-recommended)                     |
+| Deploy     | Cloudflare Pages (static + Functions, single deployment)  |
 
 ---
 
@@ -68,133 +78,200 @@ deer-run/
 
 ### Prerequisites
 - Node.js (LTS)
-- PostgreSQL database
-- Supabase project
+- Supabase project (provides PostgreSQL + Auth)
 - Stripe account
 - Resend account
+- Cloudflare account + `wrangler login` (for local Pages dev and deployment)
 
 ### First-time setup
 ```bash
-# 1. Install all workspace dependencies from repo root
+# 1. Install all workspace dependencies
 npm install
 
 # 2. Configure environment variables
 cp apps/web/.env.example apps/web/.env
 cp apps/api/.env.example apps/api/.env
-# Fill in keys (see Environment Variables section below)
+# Fill in values — see Environment Variables section
 
 # 3. Run database migrations and seed
-cd apps/api
-npx prisma migrate dev --name init
-npx prisma db seed
+npm run db:migrate
+npm run db:seed
 ```
 
 ### Running the dev servers
+
 ```bash
-# From repo root — starts both web (:5173) and api (:3001) concurrently
+# Frontend only (Vite on :5173). API calls will 404 without wrangler.
 npm run dev
 
-# Or individually:
-npm run dev:web   # Vite dev server on :5173
-npm run dev:api   # nodemon on :3001
+# Full local dev: Vite + Cloudflare Pages Functions via wrangler
+npm run dev:pages
+# ↳ Runs: wrangler pages dev --proxy 5173 -- vite
+# ↳ Functions serve /api/* and Vite serves everything else
+# ↳ Server-side secrets are read from apps/web/.dev.vars (gitignored)
+```
+
+### `.dev.vars` for local Functions
+Create `apps/web/.dev.vars` (gitignored, same format as `.env`) with the server-side secrets:
+```
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+RESEND_API_KEY=re_...
+CONTACT_EMAIL_TO=proshop@deerrun.golf
 ```
 
 ### Other scripts
 ```bash
-npm run build     # Build both apps (web: vite build, api: no-op currently)
-npm run lint      # ESLint both apps
+npm run build               # Vite production build → apps/web/dist/
+npm run deploy              # Build + wrangler pages deploy
+npm run lint                # ESLint all workspaces
+npm run db:migrate          # Prisma migrate dev (schema changes)
+npm run db:migrate:deploy   # Prisma migrate deploy (CI/CD)
+npm run db:seed             # Seed the database
+npm run db:studio           # Open Prisma Studio GUI
 ```
-
-### Vite dev proxy
-The web dev server proxies `/api/*` to `http://localhost:3001`, so frontend code can use relative `/api/...` paths during development or the `VITE_API_URL` env var for explicit calls.
 
 ---
 
 ## Environment Variables
 
-### `apps/api/.env`
-| Variable              | Description                                    |
-|-----------------------|------------------------------------------------|
-| `DATABASE_URL`        | PostgreSQL connection string                   |
-| `PORT`                | API server port (default: 3001)                |
-| `FRONTEND_URL`        | CORS allowed origin (default: http://localhost:5173) |
-| `SUPABASE_URL`        | Supabase project URL                           |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server-side) |
-| `STRIPE_SECRET_KEY`   | Stripe secret key (sk_test_... or sk_live_...) |
-| `STRIPE_WEBHOOK_SECRET` | Stripe webhook signing secret               |
-| `RESEND_API_KEY`      | Resend API key                                 |
-| `CONTACT_EMAIL_TO`    | Destination for contact form emails            |
+### `apps/web/.env` — client-side (Vite build-time)
 
-### `apps/web/.env`
+Prefixed with `VITE_`, inlined at build time, bundled into the JS. Set in the Cloudflare Pages
+dashboard under **Settings → Environment Variables → Build** tab. Never use for secrets.
+
 | Variable                  | Description                          |
 |---------------------------|--------------------------------------|
-| `VITE_API_URL`            | API base URL (e.g., http://localhost:3001) |
 | `VITE_SUPABASE_URL`       | Supabase project URL                 |
 | `VITE_SUPABASE_ANON_KEY`  | Supabase anon/public key             |
 | `VITE_GOOGLE_MAPS_API_KEY`| Google Maps embed key                |
 
-All `VITE_*` variables are bundled into the frontend at build time by Vite.
+### `apps/web/.dev.vars` / Cloudflare dashboard — server-side (Functions runtime)
+
+**Never** bundled into the frontend. Set via `wrangler secret put <NAME>` or in the
+Cloudflare Pages dashboard under **Settings → Environment Variables → Production** tab.
+Accessed in Functions via `context.env.<NAME>`.
+
+| Variable                  | Description                                       |
+|---------------------------|---------------------------------------------------|
+| `SUPABASE_URL`            | Supabase project URL (same value as VITE_ one)    |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key — bypasses RLS        |
+| `STRIPE_SECRET_KEY`       | Stripe secret key (`sk_test_...` or `sk_live_...`)|
+| `STRIPE_WEBHOOK_SECRET`   | Stripe webhook signing secret (`whsec_...`)       |
+| `RESEND_API_KEY`          | Resend API key                                    |
+| `CONTACT_EMAIL_TO`        | Recipient for inquiry notification emails         |
+
+### `apps/api/.env` — DB management only
+
+| Variable       | Description                                          |
+|----------------|------------------------------------------------------|
+| `DATABASE_URL` | PostgreSQL connection string for Prisma CLI commands |
 
 ---
 
-## API Routes
+## API — Cloudflare Pages Functions
 
-All routes are registered with the `/api` prefix in `apps/api/src/server.js`.
+Functions live in `apps/web/functions/` and are co-deployed with the static site.
+Each file path maps to a URL under `/api/`. The `_redirects` SPA fallback does **not**
+intercept `/api/*` — Functions always take priority over redirect rules.
 
-| Prefix              | File                        | Status         |
-|---------------------|-----------------------------|----------------|
-| `/api/auth`         | `routes/auth.js`            | Implemented    |
-| `/api/teetimes`     | `routes/teetimes.js`        | Stub (Phase 4) |
-| `/api/bookings`     | `routes/bookings.js`        | Stub (Phase 4) |
-| `/api/events`       | `routes/events.js`          | Stub (Phase 4) |
-| `/api/inquiries`    | `routes/inquiries.js`       | Stub (Phase 4) |
-| `/api/webhooks`     | `routes/webhooks.js`        | Stub (Phase 4) |
-| `/health`           | `server.js` inline          | Implemented    |
+### Function anatomy
+```javascript
+// Export named HTTP method handlers:
+export async function onRequestGet({ request, env }) { ... }
+export async function onRequestPost({ request, env }) { ... }
+// Or handle all methods:
+export async function onRequest({ request, env }) { ... }
 
-### Implemented endpoints
-- `GET /api/auth/me` — Requires bearer token. Upserts a User record from the Supabase JWT (`sub` claim = `supabaseId`). Returns the user profile.
-- `GET /health` — Returns `{ status: 'ok', ts: <ISO timestamp> }`.
+// context properties:
+// request — standard Web API Request object
+// env     — Cloudflare bindings (secrets, vars set in dashboard)
+// params  — URL path params for [slug] routes
+```
 
-### Phase 4 stubs
-Routes for `teetimes`, `bookings`, `events`, `inquiries`, and `webhooks` return placeholder messages. These are the next implementation targets.
+### Endpoints
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/api/auth/me` | Required | Upsert + return DB user from Supabase JWT |
+| GET | `/api/teetimes?date=YYYY-MM-DD` | Optional | Available slots for a date (member-only slots hidden from guests) |
+| POST | `/api/bookings` | Optional | Create booking + Stripe Checkout session |
+| GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
+| POST | `/api/inquiries` | Public | Submit membership inquiry + send email |
+| POST | `/api/webhooks/stripe` | Stripe signature | Handle `checkout.session.completed` |
 
-## Fastify Plugins
+### Auth pattern in Functions
+```javascript
+// Strict auth (rejects unauthenticated requests):
+const authHeader = request.headers.get('Authorization')
+if (!authHeader?.startsWith('Bearer ')) return Response.json({ error: '...' }, { status: 401 })
+const { data: { user }, error } = await supabase.auth.getUser(authHeader.slice(7))
 
-Plugins are registered on the Fastify instance and decorated as:
+// Optional auth helper (returns null if no/invalid token):
+async function getOptionalUser(request, supabase) {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) return null
+  const { data: { user }, error } = await supabase.auth.getUser(authHeader.slice(7))
+  if (error || !user) return null
+  const { data: dbUser } = await supabase.from('User').select('*').eq('supabaseId', user.id).maybeSingle()
+  return dbUser
+}
+```
 
-| Decorator          | Source               | Usage                                   |
-|--------------------|----------------------|-----------------------------------------|
-| `fastify.prisma`   | `plugins/prisma.js`  | `fastify.prisma.<model>.<method>()`     |
-| `fastify.authenticate` | `plugins/auth.js` | `preHandler: [fastify.authenticate]` — requires valid Supabase JWT |
-| `fastify.optionalAuth` | `plugins/auth.js` | Attaches `request.user` if token present, silent if not |
-| `fastify.stripe`   | `plugins/stripe.js`  | `fastify.stripe.<method>()`             |
-| `fastify.email`    | `plugins/email.js`   | `fastify.email.emails.send(...)` (Resend) |
+### Supabase client in Functions
+Always use the **service role key** (bypasses RLS, full admin access). Create a fresh client
+per request — Functions are stateless:
+```javascript
+import { createClient } from '@supabase/supabase-js'
 
-Auth plugin validates JWTs against Supabase's JWKS endpoint. After verification, `request.user` contains the decoded JWT payload (including `sub` = Supabase user UUID, `email`).
+const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: { persistSession: false },  // required in edge environments
+})
+```
+
+### ID generation in Functions
+The Prisma schema uses `@id @default(cuid())` — a Prisma-level default, **not** a PostgreSQL
+default. When inserting records via the Supabase JS client, always provide an `id` explicitly:
+```javascript
+// crypto.randomUUID() is available natively in all Cloudflare Workers
+await supabase.from('User').insert({ id: crypto.randomUUID(), ... })
+```
 
 ---
 
 ## Database Schema (Prisma)
 
-Models in `apps/api/prisma/schema.prisma`:
+Schema in `apps/api/prisma/schema.prisma`. Managed with the Prisma CLI (`npm run db:migrate`).
+The running application uses the Supabase JS client to access the same PostgreSQL database —
+**Prisma is not used at runtime**.
 
-| Model            | Key fields                                               |
-|------------------|----------------------------------------------------------|
-| `User`           | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId` |
-| `TeeTimeSlot`    | `id`, `date` (Date), `startTime` (string "HH:MM"), `maxPlayers`, `memberOnly` |
-| `Booking`        | `id`, `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `stripeSessionId?` |
-| `CourseSettings` | Singleton (`id = "singleton"`): booking window days, price, tee time range |
+### Models
+
+| Model            | Key fields                                                           |
+|------------------|----------------------------------------------------------------------|
+| `User`           | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`    |
+| `TeeTimeSlot`    | `id`, `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
+| `Booking`        | `id`, `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `stripeSessionId?`, `stripePaymentId?` |
+| `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range |
 | `TournamentEvent`| `id`, `name`, `eventDate`, `format`, `entry`, `spotsTotal`, `memberOnly`, `featured`, `past` |
-| `Inquiry`        | Membership inquiry form submissions                      |
-| `ContactMessage` | General contact form submissions                         |
+| `Inquiry`        | Membership inquiry form submissions                                  |
+| `ContactMessage` | General contact form submissions                                     |
+
+### Table names in Supabase queries
+Prisma creates tables with PascalCase names matching the model (e.g., `"User"`, `"TeeTimeSlot"`,
+`"Booking"` — quoted in PostgreSQL to preserve case). Use the same casing in Supabase JS calls:
+```javascript
+supabase.from('TeeTimeSlot').select(...)
+supabase.from('CourseSettings').select(...)
+```
 
 ### Seed data
-`npx prisma db seed` (or `node prisma/seed.js`) creates:
+`npm run db:seed` creates:
 - A singleton `CourseSettings` record (7-day public / 14-day member booking window, $45/player, 07:30–17:00 tee times at 10-min intervals)
 - `TeeTimeSlot` records for the next 30 days
-- 8 `TournamentEvent` records (6 upcoming, 2 past) — only if no events exist yet
+- 8 `TournamentEvent` records (6 upcoming, 2 past) — only if none exist yet
 
 ---
 
@@ -214,6 +291,7 @@ Models in `apps/api/prisma/schema.prisma`:
 | `/account`      | `AccountView.vue`     | Yes (`requiresAuth: true`) |
 
 Unauthenticated access to `/account` redirects to `/login?redirect=<path>`.
+All routes are lazy-loaded via `() => import('@/views/...')`.
 
 ---
 
@@ -221,86 +299,99 @@ Unauthenticated access to `/account` redirects to `/login?redirect=<path>`.
 
 ### `useAuthStore` (`stores/auth.js`)
 - `session` — raw Supabase session object
-- `profile` — User record from `/api/auth/me`
+- `profile` — User record from `GET /api/auth/me`
 - `isLoggedIn` — computed boolean
 - `isMember` — computed, true if `profile.role === 'MEMBER'`
 - `maxBookDays` — 14 for members, 7 for public
 - `init()` — called on app mount; hydrates session from Supabase
-- `login(email, password)` — Supabase sign-in + fetches profile
+- `login(email, password)` — Supabase sign-in + fetches profile from `/api/auth/me`
 - `logout()` — Supabase sign-out + clears state
 - `getToken()` — returns current `access_token` or null
 
 ### `useBookingStore` (`stores/booking.js`)
 - `selectedDate`, `selectedSlot`, `players`, `guestName`, `guestEmail` — booking state
-- `totalPrice` — computed: `players * 45` (hardcoded $45/player in frontend; authoritative price is `CourseSettings.pricePerPlayerCents` on the API)
+- `totalPrice` — computed: `players * 45` (frontend display only; authoritative price is `CourseSettings.pricePerPlayerCents` on the server)
 - `fetchAvailableSlots(date)` — GET `/api/teetimes?date=<date>`
 - `createBooking()` — POST `/api/bookings` → returns `{ bookingId, checkoutUrl }`
 - `reset()` — clears all booking state
+
+API calls use **relative paths** (`/api/...`) — same origin as the static site on Cloudflare
+Pages. No `VITE_API_URL` env var is used.
 
 ---
 
 ## Booking Flow
 
-The booking UI is a 4-step wizard (`components/booking/BookingWizard.vue`):
+4-step wizard in `components/booking/BookingWizard.vue`:
 
 1. **StepDate** — calendar date picker
-2. **StepTime** — available tee time slots for chosen date
+2. **StepTime** — fetches `/api/teetimes?date=...`, shows available slots with `available` count
 3. **StepDetails** — player count; guest name/email if not logged in
-4. **StepPayment** — summary + redirect to Stripe Checkout
+4. **StepPayment** — summary + calls `/api/bookings` → redirects to Stripe Checkout
 
-Steps communicate with the parent wizard via `@next` / `@back` events. Animated with CSS transitions (`step-fade`).
+On payment completion, Stripe sends a `checkout.session.completed` event to
+`/api/webhooks/stripe`, which updates the booking `status` to `CONFIRMED` and stores
+`stripePaymentId`.
+
+Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS transition.
 
 ---
 
 ## Design System (Tailwind)
 
-Custom color palette in `tailwind.config.js`:
+Custom palette in `tailwind.config.js`:
 
-| Token   | Hex (default) | Usage                          |
-|---------|---------------|--------------------------------|
-| `pine`  | `#1E3D2F`     | Primary dark green (header, CTAs) |
-| `clay`  | `#8C4A2F`     | Accent rust/brown               |
-| `lake`  | `#4A6670`     | Secondary blue-grey             |
-| `bark`  | `#3D2B1A`     | Dark brown text                 |
-| `parch` | `#F2EBD9`     | Warm off-white background       |
-| `amber` | `#C4873A`     | Gold accent, active states      |
+| Token   | Default hex | Usage                              |
+|---------|-------------|-------------------------------------|
+| `pine`  | `#1E3D2F`   | Primary dark green (header, CTAs)   |
+| `clay`  | `#8C4A2F`   | Accent rust/brown                   |
+| `lake`  | `#4A6670`   | Secondary blue-grey                 |
+| `bark`  | `#3D2B1A`   | Dark brown text                     |
+| `parch` | `#F2EBD9`   | Warm off-white background           |
+| `amber` | `#C4873A`   | Gold accent, active states          |
 
-Custom font families:
-- `font-display` → Playfair Display (serif, headings)
+Custom font families (Google Fonts):
+- `font-display` → Playfair Display (headings)
 - `font-serif` → Libre Baskerville (body serif)
-- `font-body` → Lato (sans-serif, UI)
+- `font-body` → Lato (UI sans-serif)
 
 ---
 
 ## Static Course Data
 
-Static JS modules in `apps/web/src/data/` — no API calls needed:
+Pure JS modules in `apps/web/src/data/` — no API calls needed:
 
-| File                | Contents                                       |
-|---------------------|------------------------------------------------|
-| `holes.js`          | 18 holes: name, par, hdcp, yards by tee set, hazard flags |
-| `teeSets.js`        | Tee set definitions (Black/Blue/Red/Gold)      |
-| `rates.js`          | Rate cards, additional fees, course policies   |
-| `membershipTiers.js`| 3 membership tiers with pricing and benefits   |
+| File                | Contents                                               |
+|---------------------|--------------------------------------------------------|
+| `holes.js`          | 18 holes: name, par, hdcp, yards by tee, hazard flags  |
+| `teeSets.js`        | Tee set definitions (Black/Blue/Red/Gold)              |
+| `rates.js`          | Rate cards, additional fees, course policies           |
+| `membershipTiers.js`| 3 membership tiers with pricing and benefits           |
 
 ---
 
 ## Code Conventions
 
 ### JavaScript / Vue
-- **ES Modules throughout** — both apps use `"type": "module"`. No `require()`.
-- **Vue 3 Composition API** — all components use `<script setup>` with `defineStore` composition style.
-- **Pinia stores** — use the setup function style (not options API style).
-- **No TypeScript** — plain JS in both apps. Do not add TypeScript without discussion.
-- **Path alias** — `@` maps to `apps/web/src/` (configured in Vite and assumed in ESLint).
+- **ES Modules throughout** — both workspaces use `"type": "module"`. No `require()`.
+- **Vue 3 Composition API** — all components use `<script setup>`.
+- **Pinia stores** — setup function style (not options API style).
+- **No TypeScript** — plain JS. Do not add TypeScript without discussion.
+- **Path alias** — `@` maps to `apps/web/src/` (Vite alias).
 - **ESLint** — `plugin:vue/vue3-recommended`, `vue/multi-word-component-names` disabled.
 
-### API / Fastify
-- All route files export a default `async function <name>Routes(fastify)`.
-- Plugins use `fastify-plugin` (`fp`) to share decorations across the app scope.
-- Auth is enforced via `preHandler: [fastify.authenticate]`. For optional auth, use `preHandler: [fastify.optionalAuth]`.
-- Prices are stored and processed in **cents** (`Int` in Prisma, e.g., `4500` = $45.00).
-- IDs use Prisma's `cuid()` by default.
+### Cloudflare Pages Functions
+- Each file exports `onRequestGet`, `onRequestPost`, etc. (or `onRequest` for any method).
+- All Functions are stateless — create a fresh Supabase client per request.
+- Access secrets via `context.env.<VAR>` — never hardcode or import secrets.
+- Use `crypto.randomUUID()` for ID generation when inserting records (see ID generation note).
+- Prices are stored and processed in **cents** in the database (`totalCents: Int`, e.g., `4500` = $45.00).
+- Return responses with `Response.json(data, { status })`.
+
+### Supabase conventions
+- Use the **service role key** in Functions (bypasses RLS, full admin access).
+- Use the **anon key** only in the frontend client (`apps/web/src/lib/supabase.js`).
+- Table names in queries match Prisma model names exactly (PascalCase): `'User'`, `'TeeTimeSlot'`, `'Booking'`, `'CourseSettings'`, `'TournamentEvent'`, `'Inquiry'`.
 
 ### Git
 - Feature branches follow the pattern `claude/<description>-<id>`.
@@ -310,44 +401,22 @@ Static JS modules in `apps/web/src/data/` — no API calls needed:
 
 ## Deployment
 
-### Frontend (Vercel)
-- Root: `apps/web`
-- Build command: `vite build`
-- Output: `dist/`
-- Set all `VITE_*` environment variables in the Vercel dashboard.
+### Cloudflare Pages (web + functions)
+- **Root directory**: `apps/web`
+- **Build command**: `vite build`
+- **Output directory**: `dist`
+- Functions in `apps/web/functions/` are auto-detected and deployed alongside the static site.
+- `apps/web/public/_redirects` handles SPA routing (Vue Router history mode).
 
-### API + Database (Railway)
-- Root: `apps/api`
-- Start command: `node src/server.js`
-- Add a PostgreSQL plugin; Railway auto-sets `DATABASE_URL`.
-- Set remaining env vars in Railway service settings.
+**Environment variable setup in Cloudflare dashboard:**
+1. Build-time vars (Build tab): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GOOGLE_MAPS_API_KEY`
+2. Runtime secrets (Production tab): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `CONTACT_EMAIL_TO`
 
 ### Stripe Webhook
-- Register endpoint: `https://api.yourdomain.com/api/webhooks/stripe`
-- Handle in `apps/api/src/routes/webhooks.js` (Phase 4).
-- Verify signature using `STRIPE_WEBHOOK_SECRET`.
+- Register endpoint: `https://deerrun.golf/api/webhooks/stripe`
+- Event to enable: `checkout.session.completed`
+- Paste the signing secret into `STRIPE_WEBHOOK_SECRET`.
 
----
-
-## Known Incomplete Areas (Phase 4)
-
-The following route files are stubs returning placeholder messages:
-
-- `routes/teetimes.js` — list available slots by date, enforce member-only slots
-- `routes/bookings.js` — create booking, initiate Stripe Checkout session, handle confirmation
-- `routes/events.js` — list tournament events with filtering
-- `routes/inquiries.js` — accept and store membership inquiry + send confirmation email
-- `routes/webhooks.js` — handle `checkout.session.completed` Stripe event to confirm bookings
-
-The frontend booking store (`createBooking()`, `fetchAvailableSlots()`) is wired and ready; it just needs the API endpoints to go live.
-
----
-
-## Health Check
-
-```
-GET /health
-→ { "status": "ok", "ts": "2025-01-01T00:00:00.000Z" }
-```
-
-Useful for Railway/Vercel uptime checks and deployment verification.
+### Database Migrations (CI/CD)
+Run `npm run db:migrate:deploy` (wraps `prisma migrate deploy`) as part of the release
+pipeline whenever `apps/api/prisma/schema.prisma` changes.
