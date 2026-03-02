@@ -43,7 +43,8 @@ export async function onRequestGet({ request, env }) {
         .filter(b => b.status === 'PENDING' || b.status === 'CONFIRMED')
         .reduce((sum, b) => sum + b.players, 0)
       const { Booking: _, ...slotData } = slot
-      return { ...slotData, bookedPlayers: booked, available: slot.maxPlayers - booked }
+      const available = Math.max(0, slot.maxPlayers - booked)
+    return { ...slotData, bookedPlayers: booked, available, full: available === 0 }
     })
 
   return json(result)
