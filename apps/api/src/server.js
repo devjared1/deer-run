@@ -9,6 +9,17 @@ await app.register(cors, {
 })
 await app.register(sensible)
 
+// Raw body support — stores raw Buffer in request.rawBody before JSON parsing.
+// Required by the Stripe webhook for signature verification.
+app.addContentTypeParser('application/json', { parseAs: 'buffer' }, function (req, body, done) {
+  try {
+    req.rawBody = body
+    done(null, JSON.parse(body.toString()))
+  } catch (err) {
+    done(err)
+  }
+})
+
 // Plugins
 await app.register(import('./plugins/prisma.js'))
 await app.register(import('./plugins/auth.js'))
