@@ -24,7 +24,11 @@
 
       <!-- CTA + mobile toggle -->
       <div class="flex items-center gap-3">
-        <RouterLink v-if="authStore.isLoggedIn" to="/account"
+        <RouterLink v-if="authStore.isAdmin" to="/admin"
+          class="btn-outline hidden sm:inline-flex" style="padding:9px 16px;font-size:12px;">
+          Admin
+        </RouterLink>
+        <RouterLink v-else-if="authStore.isLoggedIn" to="/account"
           class="btn-outline hidden sm:inline-flex" style="padding:9px 16px;font-size:12px;">
           My Account
         </RouterLink>
@@ -60,7 +64,10 @@
             <RouterLink to="/book" class="btn-amber w-full justify-center" @click="mobileOpen = false">
               Book Tee Time
             </RouterLink>
-            <RouterLink v-if="authStore.isLoggedIn" to="/account" class="btn-outline w-full justify-center" @click="mobileOpen = false">
+            <RouterLink v-if="authStore.isAdmin" to="/admin" class="btn-outline w-full justify-center" @click="mobileOpen = false">
+              Admin
+            </RouterLink>
+            <RouterLink v-else-if="authStore.isLoggedIn" to="/account" class="btn-outline w-full justify-center" @click="mobileOpen = false">
               My Account
             </RouterLink>
           </div>

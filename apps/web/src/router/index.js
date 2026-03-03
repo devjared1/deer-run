@@ -12,6 +12,21 @@ const routes = [
   { path: '/confirmation', component: () => import('@/views/ConfirmationView.vue') },
   { path: '/login',        component: () => import('@/views/LoginView.vue') },
   { path: '/account',      component: () => import('@/views/AccountView.vue'), meta: { requiresAuth: true } },
+
+  // Admin section
+  {
+    path: '/admin',
+    component: () => import('@/views/admin/AdminLayout.vue'),
+    meta: { requiresAdmin: true },
+    children: [
+      { path: '',           component: () => import('@/views/admin/DashboardView.vue') },
+      { path: 'teetimes',   component: () => import('@/views/admin/TeeTimesView.vue') },
+      { path: 'bookings',   component: () => import('@/views/admin/BookingsView.vue') },
+      { path: 'tournaments',component: () => import('@/views/admin/TournamentsView.vue') },
+      { path: 'settings',   component: () => import('@/views/admin/SettingsView.vue') },
+      { path: 'users',      component: () => import('@/views/admin/UsersView.vue') },
+    ],
+  },
 ]
 
 const router = createRouter({
@@ -22,6 +37,10 @@ const router = createRouter({
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
+  if (to.meta.requiresAdmin) {
+    if (!auth.isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } }
+    if (!auth.isAdmin) return { path: '/' }
+  }
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
