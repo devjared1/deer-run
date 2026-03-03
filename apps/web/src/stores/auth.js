@@ -8,7 +8,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn  = computed(() => !!session.value)
   const isMember    = computed(() => profile.value?.role === 'MEMBER')
-  const maxBookDays = computed(() => isMember.value ? 14 : 7)
+  const isAdmin     = computed(() => profile.value?.role === 'ADMIN')
+  const maxBookDays = computed(() => (isMember.value || isAdmin.value) ? 14 : 7)
 
   async function init() {
     const { data } = await supabase.auth.getSession()
@@ -39,5 +40,5 @@ export const useAuthStore = defineStore('auth', () => {
     return session.value?.access_token ?? null
   }
 
-  return { session, profile, isLoggedIn, isMember, maxBookDays, init, login, logout, getToken }
+  return { session, profile, isLoggedIn, isMember, isAdmin, maxBookDays, init, login, logout, getToken }
 })
