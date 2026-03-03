@@ -15,7 +15,7 @@ export async function onRequestPost({ request, env }) {
   let event
   try {
     const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
-    event = stripe.webhooks.constructEventAsync(rawBody, signature, env.STRIPE_WEBHOOK_SECRET)
+    event = await stripe.webhooks.constructEventAsync(rawBody, signature, env.STRIPE_WEBHOOK_SECRET)
   } catch (err) {
     return json({ error: `Webhook signature verification failed: ${err.message}` }, 400)
   }
