@@ -12,17 +12,15 @@
     <div class="flex gap-2 mb-6">
       <button
         @click="mode = 'guest'"
-        :class="['px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-all']"
+        :class="['px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-all', mode !== 'guest' ? 'btn-outline-pine' : '']"
         :style="mode === 'guest' ? 'background:#1E3D2F;color:#F2EBD9;font-family:Lato,sans-serif;border:none;cursor:pointer;' : ''"
-        :class="mode !== 'guest' ? 'btn-outline-pine' : ''"
       >
         Continue as Guest
       </button>
       <button
         @click="mode = 'member'"
-        :class="['px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-all']"
+        :class="['px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-all', mode !== 'member' ? 'btn-outline-pine' : '']"
         :style="mode === 'member' ? 'background:#C4873A;color:#0D1F16;font-family:Lato,sans-serif;border:none;cursor:pointer;' : ''"
-        :class="mode !== 'member' ? 'btn-outline-pine' : ''"
       >
         Member / Sign In
       </button>
