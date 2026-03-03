@@ -32,6 +32,10 @@
           class="btn-outline hidden sm:inline-flex" style="padding:9px 16px;font-size:12px;">
           My Account
         </RouterLink>
+        <RouterLink v-else to="/login"
+          class="btn-outline hidden sm:inline-flex" style="padding:9px 16px;font-size:12px;">
+          Sign In
+        </RouterLink>
         <RouterLink to="/book" class="btn-amber hidden sm:inline-flex" style="padding:9px 20px;font-size:12px;">
           Book Tee Time
         </RouterLink>
@@ -69,6 +73,9 @@
             </RouterLink>
             <RouterLink v-else-if="authStore.isLoggedIn" to="/account" class="btn-outline w-full justify-center" @click="mobileOpen = false">
               My Account
+            </RouterLink>
+            <RouterLink v-else to="/login" class="btn-outline w-full justify-center" @click="mobileOpen = false">
+              Sign In
             </RouterLink>
           </div>
         </div>
