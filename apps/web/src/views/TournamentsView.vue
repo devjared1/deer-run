@@ -4,6 +4,7 @@
       label="Tournament Calendar"
       title-html="Events &amp; <em>Tournaments</em>"
       subtitle="From weekly member events to signature charity tournaments. Something for every level of golfer."
+      bg-image="/images/course-1.jpg"
     />
 
     <section class="topo py-12">
