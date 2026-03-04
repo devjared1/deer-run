@@ -52,8 +52,8 @@
         <!-- Large featured photo — spans 2 rows -->
         <div class="row-span-2 overflow-hidden relative group">
           <img
-            src="/images/course-1.jpg"
-            alt="Deer Run Golf Course fairway"
+            :src="gallery[0].src"
+            :alt="gallery[0].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -61,16 +61,16 @@
         <!-- Top-right photos -->
         <div class="overflow-hidden relative group">
           <img
-            src="/images/course-2.jpg"
-            alt="Deer Run Golf Course hole"
+            :src="gallery[1].src"
+            :alt="gallery[1].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </div>
         <div class="overflow-hidden relative group">
           <img
-            src="/images/course-3.jpg"
-            alt="Deer Run Golf Course green"
+            :src="gallery[2].src"
+            :alt="gallery[2].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -78,16 +78,16 @@
         <!-- Bottom-right photos -->
         <div class="overflow-hidden relative group">
           <img
-            src="/images/course-4.jpg"
-            alt="Deer Run Golf Course landscape"
+            :src="gallery[3].src"
+            :alt="gallery[3].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </div>
         <div class="overflow-hidden relative group">
           <img
-            src="/images/course-5.jpg"
-            alt="Deer Run Golf Course scenery"
+            :src="gallery[4].src"
+            :alt="gallery[4].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -166,6 +166,14 @@ const stats = [
   { val: '72',    label: 'Par' },
   { val: '6,745', label: 'Total Yards' },
   { val: '1980',  label: 'Est.' },
+]
+
+const gallery = [
+  { src: '/images/course-1.jpg', alt: 'Deer Run Golf Course fairway' },
+  { src: '/images/course-2.jpg', alt: 'Deer Run Golf Course hole' },
+  { src: '/images/course-3.jpg', alt: 'Deer Run Golf Course green' },
+  { src: '/images/course-4.jpg', alt: 'Deer Run Golf Course landscape' },
+  { src: '/images/course-5.jpg', alt: 'Deer Run Golf Course scenery' },
 ]
 
 const quickInfo = [
