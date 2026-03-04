@@ -53,7 +53,7 @@
         <div class="row-span-2 overflow-hidden relative group">
           <img
             :src="gallery[0].src"
-            :alt="gallery[0].alt
+            :alt="gallery[0].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -62,7 +62,7 @@
         <div class="overflow-hidden relative group">
           <img
             :src="gallery[1].src"
-            :alt="gallery[1].alt
+            :alt="gallery[1].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -70,7 +70,7 @@
         <div class="overflow-hidden relative group">
           <img
             :src="gallery[2].src"
-            :alt="gallery[2].alt
+            :alt="gallery[2].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -79,7 +79,7 @@
         <div class="overflow-hidden relative group">
           <img
             :src="gallery[3].src"
-            :alt="gallery[3].alt
+            :alt="gallery[3].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -87,7 +87,7 @@
         <div class="overflow-hidden relative group">
           <img
             :src="gallery[4].src"
-            :alt="gallery[4].alt
+            :alt="gallery[4].alt"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
