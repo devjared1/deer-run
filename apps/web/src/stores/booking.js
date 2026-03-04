@@ -38,7 +38,7 @@ export const useBookingStore = defineStore('booking', () => {
       }),
     })
     if (!res.ok) throw new Error('Booking failed')
-    return res.json() // { bookingId, checkoutUrl }
+    return res.json() // { bookingId, clientSecret }
   }
 
   function reset() {
