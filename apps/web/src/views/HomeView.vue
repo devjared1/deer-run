@@ -6,6 +6,7 @@
       title-html="Where the Bankhead<br><em>Meets the Fairway</em>"
       subtitle="18 championship holes at the entrance to the Bankhead National Forest. Open to the public daily since 1980."
       bg-image="/images/course-hero.jpg"
+      bg-image="/images/course-hero.jpg"
     >
       <div class="mt-8 flex flex-col sm:flex-row gap-3 items-start">
         <RouterLink to="/book" class="btn-amber">Book a Tee Time →</RouterLink>
@@ -52,8 +53,8 @@
         <!-- Large featured photo — spans 2 rows -->
         <div class="row-span-2 overflow-hidden relative group">
           <img
-            :src="gallery[0].src"
-            :alt="gallery[0].alt"
+            src="/images/course-1.jpg"
+            alt="Deer Run Golf Course fairway"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -61,16 +62,16 @@
         <!-- Top-right photos -->
         <div class="overflow-hidden relative group">
           <img
-            :src="gallery[1].src"
-            :alt="gallery[1].alt"
+            src="/images/course-2.jpg"
+            alt="Deer Run Golf Course hole"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </div>
         <div class="overflow-hidden relative group">
           <img
-            :src="gallery[2].src"
-            :alt="gallery[2].alt"
+            src="/images/course-3.jpg"
+            alt="Deer Run Golf Course green"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -78,16 +79,16 @@
         <!-- Bottom-right photos -->
         <div class="overflow-hidden relative group">
           <img
-            :src="gallery[3].src"
-            :alt="gallery[3].alt"
+            src="/images/course-4.jpg"
+            alt="Deer Run Golf Course landscape"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </div>
         <div class="overflow-hidden relative group">
           <img
-            :src="gallery[4].src"
-            :alt="gallery[4].alt"
+            src="/images/course-5.jpg"
+            alt="Deer Run Golf Course scenery"
             class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
