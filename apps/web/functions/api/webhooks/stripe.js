@@ -20,9 +20,9 @@ export async function onRequestPost({ request, env }) {
     return json({ error: `Webhook signature verification failed: ${err.message}` }, 400)
   }
 
-  if (event.type === 'payment_intent.succeeded') {
-    const paymentIntent = event.data.object
-    const bookingId = paymentIntent.metadata?.bookingId
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object
+    const bookingId = session.metadata?.bookingId
 
     if (bookingId) {
       const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -31,10 +31,10 @@ export async function onRequestPost({ request, env }) {
 
       await supabase
         .from('Booking')
-        .update({ status: 'CONFIRMED', stripePaymentId: paymentIntent.id })
+        .update({ status: 'CONFIRMED', stripePaymentId: session.payment_intent })
         .eq('id', bookingId)
 
-      const customerEmail = paymentIntent.receipt_email
+      const customerEmail = session.customer_details?.email || session.customer_email
 
       if (env.RESEND_API_KEY && customerEmail) {
         const { data: booking } = await supabase
