@@ -31,7 +31,7 @@
     </div>
 
     <!-- Stripe Payment Element mount point -->
-    <div v-show="!loadingForm && clientSecret">
+    <div v-show="!loadingForm && !initError">
       <div ref="paymentElementRef" id="payment-element" class="mb-5" style="min-height:48px;"></div>
 
       <div v-if="error" class="mb-4 p-3 rounded text-sm" style="background:rgba(140,74,47,.1);color:#6B3820;font-family:'Lato',sans-serif;">
