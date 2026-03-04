@@ -6,7 +6,6 @@
       title-html="Where the Bankhead<br><em>Meets the Fairway</em>"
       subtitle="18 championship holes at the entrance to the Bankhead National Forest. Open to the public daily since 1980."
       bg-image="/images/course-hero.jpg"
-      bg-image="/images/course-hero.jpg"
     >
       <div class="mt-8 flex flex-col sm:flex-row gap-3 items-start">
         <RouterLink to="/book" class="btn-amber">Book a Tee Time →</RouterLink>
