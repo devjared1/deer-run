@@ -85,10 +85,10 @@ const formattedTime = computed(() => {
 })
 
 onMounted(async () => {
-  const sessionId = route.query.session_id
-  if (!sessionId) { loading.value = false; return }
+  const bookingId = route.query.booking_id
+  if (!bookingId) { loading.value = false; return }
   try {
-    const res = await fetch(`/api/bookings/by-session/${sessionId}`)
+    const res = await fetch(`/api/bookings/${bookingId}`)
     if (res.ok) {
       booking.value = await res.json()
       bookingStore.reset()

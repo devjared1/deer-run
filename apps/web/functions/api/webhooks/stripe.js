@@ -20,9 +20,9 @@ export async function onRequestPost({ request, env }) {
     return json({ error: `Webhook signature verification failed: ${err.message}` }, 400)
   }
 
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object
-    const bookingId = session.metadata?.bookingId
+  if (event.type === 'payment_intent.succeeded') {
+    const paymentIntent = event.data.object
+    const bookingId = paymentIntent.metadata?.bookingId
 
     if (bookingId) {
       const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -31,10 +31,12 @@ export async function onRequestPost({ request, env }) {
 
       await supabase
         .from('Booking')
-        .update({ status: 'CONFIRMED', stripePaymentId: session.payment_intent })
+        .update({ status: 'CONFIRMED', stripePaymentId: paymentIntent.id })
         .eq('id', bookingId)
 
-      if (env.RESEND_API_KEY && session.customer_email) {
+      const customerEmail = paymentIntent.receipt_email
+
+      if (env.RESEND_API_KEY && customerEmail) {
         const { data: booking } = await supabase
           .from('Booking')
           .select('*, teeTimeSlot:TeeTimeSlot(date, startTime)')
@@ -52,7 +54,7 @@ export async function onRequestPost({ request, env }) {
           const resend = new Resend(env.RESEND_API_KEY)
           await resend.emails.send({
             from: 'noreply@deerrun.golf',
-            to: session.customer_email,
+            to: customerEmail,
             subject: 'Tee Time Confirmed — Deer Run Golf Course',
             text: [
               'Your tee time at Deer Run Golf Course is confirmed!',
