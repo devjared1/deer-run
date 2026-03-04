@@ -91,7 +91,7 @@ const filteredEvents = computed(() => {
 
 onMounted(async () => {
   try {
-    const res = await fetch(`${import.meta.env.VITE_API_URL}/api/events`)
+    const res = await fetch('/api/events')
     if (!res.ok) throw new Error('Failed to load events')
     events.value = await res.json()
   } catch {
