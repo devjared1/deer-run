@@ -1,10 +1,11 @@
 <template>
   <div class="page-enter">
-    <!-- Hero -->
+    <!-- Hero with course photo background -->
     <PageHero
       label="Welcome to Deer Run"
       title-html="Where the Bankhead<br><em>Meets the Fairway</em>"
       subtitle="18 championship holes at the entrance to the Bankhead National Forest. Open to the public daily since 1980."
+      bg-image="/images/course-hero.jpg"
     >
       <div class="mt-8 flex flex-col sm:flex-row gap-3 items-start">
         <RouterLink to="/book" class="btn-amber">Book a Tee Time →</RouterLink>
@@ -38,6 +39,58 @@
             <div style="font-family:'Playfair Display',serif;font-size:52px;font-weight:900;color:#F2EBD9;line-height:1;">{{ s.val }}</div>
             <div style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(196,135,58,.7);margin-top:6px;">{{ s.label }}</div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Course photo gallery -->
+    <section class="overflow-hidden">
+      <div
+        class="grid"
+        style="grid-template-columns: 5fr 3fr 3fr; grid-template-rows: 300px 300px;"
+      >
+        <!-- Large featured photo — spans 2 rows -->
+        <div class="row-span-2 overflow-hidden relative group">
+          <img
+            src="/images/course-1.jpg"
+            alt="Deer Run Golf Course fairway"
+            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        </div>
+        <!-- Top-right photos -->
+        <div class="overflow-hidden relative group">
+          <img
+            src="/images/course-2.jpg"
+            alt="Deer Run Golf Course hole"
+            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        </div>
+        <div class="overflow-hidden relative group">
+          <img
+            src="/images/course-3.jpg"
+            alt="Deer Run Golf Course green"
+            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        </div>
+        <!-- Bottom-right photos -->
+        <div class="overflow-hidden relative group">
+          <img
+            src="/images/course-4.jpg"
+            alt="Deer Run Golf Course landscape"
+            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+        </div>
+        <div class="overflow-hidden relative group">
+          <img
+            src="/images/course-5.jpg"
+            alt="Deer Run Golf Course scenery"
+            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          />
+          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         </div>
       </div>
     </section>

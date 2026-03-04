@@ -4,6 +4,7 @@
       label="Reserve Your Round"
       title-html="Book a <em>Tee Time</em>"
       subtitle="Select your date, choose a time, and complete payment securely online."
+      bg-image="/images/course-2.jpg"
     />
 
     <section class="topo py-12">
