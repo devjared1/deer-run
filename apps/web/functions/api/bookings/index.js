@@ -64,31 +64,21 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'Not enough spots available' }, 409)
   }
 
-  // Create Stripe PaymentIntent
   const totalCents = settings.pricePerPlayerCents * players
   const customerEmail = dbUser?.email ?? guestEmail
   const playerLabel = `${players} player${players > 1 ? 's' : ''}`
 
   const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
 
-  // Create PENDING booking first to get its ID for Checkout Session metadata
+  // Create PENDING booking first to get its ID for PaymentIntent metadata
   const bookingId = crypto.randomUUID()
-  const origin = new URL(request.url).origin
-  const session = await stripe.checkout.sessions.create({
-    payment_method_types: ['card'],
-    line_items: [{
-      price_data: {
-        currency: 'usd',
-        product_data: { name: `Deer Run Golf — Tee Time (${playerLabel})` },
-        unit_amount: settings.pricePerPlayerCents,
-      },
-      quantity: players,
-    }],
-    mode: 'payment',
-    customer_email: customerEmail,
-    success_url: `${origin}/confirmation?booking_id=${bookingId}`,
-    cancel_url: `${origin}/book`,
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: totalCents,
+    currency: 'usd',
+    receipt_email: customerEmail,
+    description: `Deer Run Golf — Tee Time (${playerLabel})`,
     metadata: { bookingId },
+    automatic_payment_methods: { enabled: true },
   })
 
   const { error: bookingError } = await supabase
@@ -102,14 +92,13 @@ export async function onRequestPost({ request, env }) {
       players,
       totalCents,
       status: 'PENDING',
-      stripeSessionId: session.id,
+      stripePaymentId: paymentIntent.id,
     })
 
   if (bookingError) {
-    // Clean up the Checkout Session if booking insert fails
-    await stripe.checkout.sessions.expire(session.id).catch(() => {})
+    await stripe.paymentIntents.cancel(paymentIntent.id).catch(() => {})
     return json({ error: bookingError.message }, 500)
   }
 
-  return json({ bookingId, checkoutUrl: session.url })
+  return json({ bookingId, clientSecret: paymentIntent.client_secret })
 }
