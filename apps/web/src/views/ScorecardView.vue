@@ -3,7 +3,7 @@
     <PageHero
       label="Deer Run"
       title-html="<em>The Course</em>"
-      subtitle="18 holes · Par 72 · Earl Stone Design · Moulton, Alabama"
+      description="18 holes · Par 72 · Earl Stone Design · Moulton, Alabama"
       bg-image="/images/course-hero.jpg"
       height="350px"
     />

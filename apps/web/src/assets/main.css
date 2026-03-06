@@ -54,6 +54,7 @@
 }
 .card-pine { background: #1E3D2F; border: 1px solid rgba(255,255,255,.07); }
 .card-dark { background: #142A20; border: 1px solid rgba(255,255,255,.06); }
+.card-light { background: rgba(247, 243, 234, 0.96); border: 1px solid rgba(61,43,26,.09);}
 
 /* ── Section label ── */
 .section-label {

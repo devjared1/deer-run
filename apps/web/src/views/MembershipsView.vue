@@ -3,7 +3,7 @@
     <PageHero
       label="Join the Club"
       title-html="Membership <em>Plans</em>"
-      subtitle="Unlimited rounds, advance tee times, and exclusive member events. Choose the plan that fits your game."
+      description="Unlimited rounds, advance tee times, and exclusive member events. Choose the plan that fits your game."
       bg-image="/images/course-2.jpg"
     />
 
