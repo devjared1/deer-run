@@ -1,10 +1,11 @@
 <template>
   <div class="page-enter">
     <PageHero
-      label="The Course"
-      title-html="Deer Run <em>Scorecard</em>"
+      label="Deer Run"
+      title-html="<em>The Course</em>"
       subtitle="18 holes · Par 72 · Earl Stone Design · Moulton, Alabama"
-      bg-image="/images/course-3.jpg"
+      bg-image="/images/course-hero.jpg"
+      height="350px"
     />
 
     <section class="topo py-12">

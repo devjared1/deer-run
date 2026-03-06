@@ -1,9 +1,9 @@
 <template>
-  <div class="hero-bg sticky top-0 z-50" style="border-bottom:1px solid rgba(255,255,255,.07);">
+  <div class="sticky hero-bg top-0 z-50" style="border-bottom:1px solid rgba(255,255,255,.07);">
     <div class="max-w-7xl mx-auto px-5 h-16 flex items-center justify-between">
       <!-- Logo -->
       <RouterLink to="/" class="flex items-center gap-3 cursor-pointer flex-shrink-0">
-        <DeerLogo :size="36" />
+        <!-- <DeerLogo :size="36" /> -->
         <div class="hidden sm:block">
           <div class="logo-text">Deer Run</div>
           <div class="logo-sub">Golf Course</div>

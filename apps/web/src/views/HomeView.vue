@@ -2,10 +2,11 @@
   <div class="page-enter">
     <!-- Hero with course photo background -->
     <PageHero
-      label="Welcome to Deer Run"
-      title-html="Where the Bankhead<br><em>Meets the Fairway</em>"
+      label="An Earl Stone Design"
+      title-html="Welcome to <br><em>Deer Run</em>"
       subtitle="18 championship holes at the entrance to the Bankhead National Forest. Open to the public daily since 1980."
-      bg-image="/images/course-hero.jpg"
+      bg-image="/images/course-4.jpg"
+      height="450px"
     >
       <div class="mt-8 flex flex-col sm:flex-row gap-3 items-start">
         <RouterLink to="/book" class="btn-amber">Book a Tee Time →</RouterLink>
@@ -95,24 +96,6 @@
       </div>
     </section>
 
-    <!-- Quick info strip -->
-    <section class="topo py-14">
-      <div class="max-w-7xl mx-auto px-5">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div v-for="info in quickInfo" :key="info.label" class="card rounded-lg p-6 flex items-start gap-4">
-            <div class="w-10 h-10 rounded flex items-center justify-center flex-shrink-0" style="background:rgba(30,61,47,.1);">
-              <span class="text-xl">{{ info.icon }}</span>
-            </div>
-            <div>
-              <div style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(61,43,26,.4);margin-bottom:3px;">{{ info.label }}</div>
-              <div style="font-family:'Lato',sans-serif;font-size:14px;font-weight:700;color:#1E3D2F;">{{ info.value }}</div>
-              <div style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(61,43,26,.45);margin-top:2px;">{{ info.sub }}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
     <!-- Bottom CTA -->
     <section class="topo pb-20 pt-4">
       <div class="max-w-7xl mx-auto px-5 text-center">
@@ -121,7 +104,7 @@
           Book Your Next Round Today
         </h2>
         <p style="font-family:'Lato',sans-serif;font-size:15px;color:rgba(61,43,26,.5);margin-bottom:28px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.7;">
-          Tee times available online 24/7. Public and member rates starting at $45 with cart included.
+          Tee times available online. Rates starting at $45 with cart included.
         </p>
         <RouterLink to="/book" class="btn-amber mr-3">Book Online</RouterLink>
         <RouterLink to="/rates" class="btn-outline-pine">View Rates</RouterLink>
@@ -159,6 +142,30 @@ const features = [
     link:  '/tournaments',
     cta:   'See Schedule',
   },
+  {
+    icon: '📍',
+    label: 'Location',
+    title: '1175 County Road 100, Moulton AL',
+    body: 'At the entrance to Bankhead National Forest',
+    link: '/contact',
+    cta: 'Contact'
+  },
+  {
+    icon: '⏰',
+    label: 'Hours',
+    title: 'Open Daily · First tee 7:30 AM',
+    body: 'Closed Christmas Eve & Christmas Day',
+    link: '/contact',
+    cta: 'Contact'
+  },
+  {
+    icon: '📞',
+    label: 'Pro Shop',
+    title: '(256) 974-7384',
+    body: 'Call to book or inquire about memberships',
+    link: '/contact',
+    cta: 'Contact'
+  }
 ]
 
 const stats = [
@@ -169,7 +176,7 @@ const stats = [
 ]
 
 const gallery = [
-  { src: '/images/course-1.jpg', alt: 'Deer Run Golf Course fairway' },
+  { src: '/images/course-hero.jpg', alt: 'Deer Run Golf Course fairway' },
   { src: '/images/course-2.jpg', alt: 'Deer Run Golf Course hole' },
   { src: '/images/course-3.jpg', alt: 'Deer Run Golf Course green' },
   { src: '/images/course-4.jpg', alt: 'Deer Run Golf Course landscape' },

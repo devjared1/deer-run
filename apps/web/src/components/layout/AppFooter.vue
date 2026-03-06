@@ -1,5 +1,5 @@
 <template>
-  <footer style="background:#0D1F16;margin-top:24px;">
+  <footer style="background:#0D1F16;">
     <div class="max-w-7xl mx-auto px-5 py-14">
       <div class="grid grid-cols-1 md:grid-cols-4 gap-10 pb-10 mb-8" style="border-bottom:1px solid rgba(255,255,255,.07);">
         <!-- Brand -->

@@ -10,10 +10,12 @@
 }
 
 /* ── Hero dark gradient ── */
+.hero {
+  position: relative;
+}
 .hero,
 .hero-bg {
   background: linear-gradient(165deg, #0D1F16 0%, #142A20 28%, #1E3D2F 58%, #1a3528 82%, #0f2019 100%);
-  position: relative;
   overflow: hidden;
 }
 .hero::before,
