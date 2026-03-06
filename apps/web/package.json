@@ -18,6 +18,7 @@
     "resend": "^3.2.0",
     "stripe": "^14.21.0",
     "vue": "^3.4.21",
+    "vue-dompurify-html": "^5.3.0",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
