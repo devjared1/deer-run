@@ -13,7 +13,9 @@
     "db:migrate": "npm run migrate --workspace=apps/api",
     "db:migrate:deploy": "npm run migrate:deploy --workspace=apps/api",
     "db:seed": "npm run seed --workspace=apps/api",
-    "db:studio": "npm run studio --workspace=apps/api"
+    "db:studio": "npm run studio --workspace=apps/api",
+    "cy:open": "npm run cy:open --workspace=apps/web",
+    "cy:run": "npm run cy:run --workspace=apps/web"
   },
   "dependencies": {
     "vue-dompurify-html": "^5.3.0"

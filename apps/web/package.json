@@ -9,7 +9,9 @@
     "build": "vite build",
     "preview": "wrangler pages dev dist",
     "deploy": "vite build && wrangler pages deploy dist",
-    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore"
+    "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs --fix --ignore-path .gitignore",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run"
   },
   "dependencies": {
     "@stripe/stripe-js": "^8.9.0",
@@ -24,6 +26,7 @@
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.4",
     "autoprefixer": "^10.4.19",
+    "cypress": "^15.11.0",
     "eslint": "^8.57.0",
     "eslint-plugin-vue": "^9.23.0",
     "postcss": "^8.4.38",
