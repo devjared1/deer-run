@@ -1,6 +1,7 @@
 <template>
   <div
     class="hero-bg"
+    :class="classes"
     :style="[bgImage
       ? { backgroundImage: `linear-gradient(165deg, rgba(13,31,22,.84) 0%, rgba(20,42,32,.76) 28%, rgba(30,61,47,.62) 58%, rgba(15,32,25,.86) 100%), url('${bgImage}')`, backgroundSize: 'auto, cover', backgroundPosition: 'center, center' }
       : {}, `height: ${height}`]">
@@ -29,6 +30,7 @@ defineProps({
   subtitle:  { type: String, default: '' },
   description:  { type: String, default: '' },
   bgImage:   { type: String, default: '' },
-  height:    { type: String, default: '250px' }
+  height:    { type: String, default: '250px' },
+  classes: { type: Array, required: true}
 })
 </script>

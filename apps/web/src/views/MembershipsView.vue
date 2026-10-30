@@ -4,7 +4,8 @@
       label="Join the Club"
       title-html="Membership <em>Plans</em>"
       description="Unlimited rounds, advance tee times, and exclusive member events. Choose the plan that fits your game."
-      bg-image="/images/course-2.jpg"
+      bg-image="/images/course-4.jpg"
+      height="550px"
     />
 
     <section class="topo py-14">

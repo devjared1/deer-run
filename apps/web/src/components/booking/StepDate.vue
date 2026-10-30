@@ -5,6 +5,8 @@
       Tee times available up to {{ authStore.maxBookDays }} days in advance.
     </p>
 
+    <hr class="mb-2 p-0" styles="outline: 1px solid black;" />
+
     <!-- Calendar grid -->
     <div class="mb-6">
       <div class="flex items-center justify-between mb-4">
@@ -16,7 +18,7 @@
       </div>
 
       <!-- Day headers -->
-      <div class="grid grid-cols-7 mb-2">
+      <div class="grid grid-cols-7">
         <div v-for="d in ['Su','Mo','Tu','We','Th','Fr','Sa']" :key="d"
           class="text-center text-xs font-bold uppercase py-1"
           style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.4);letter-spacing:.08em;"
@@ -25,7 +27,11 @@
 
       <!-- Day cells -->
       <div class="grid grid-cols-7 gap-1">
-        <div v-for="cell in calendarCells" :key="cell.key" class="aspect-square">
+        <div
+          v-for="cell in calendarCells"
+          :key="cell.key"
+          class="aspect-square"
+        >
           <button
             v-if="cell.date"
             @click="selectDate(cell.date)"
@@ -37,13 +43,6 @@
           </button>
         </div>
       </div>
-    </div>
-
-    <!-- Selected summary -->
-    <div v-if="selectedDate" class="mb-6 p-3 rounded" style="background:rgba(30,61,47,.06);">
-      <span style="font-family:'Lato',sans-serif;font-size:13px;color:#1E3D2F;font-weight:700;">
-        Selected: {{ formattedDate }}
-      </span>
     </div>
 
     <button

@@ -5,7 +5,8 @@
       title-html="<em>The Course</em>"
       description="18 holes · Par 72 · Earl Stone Design · Moulton, Alabama"
       bg-image="/images/course-hero.jpg"
-      height="350px"
+      height="650px"
+      :classes="['flex', 'items-center']"
     />
 
     <section class="topo py-12">

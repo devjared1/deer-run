@@ -4,7 +4,9 @@
       label="Green Fees"
       title-html="Rates &amp; <em>Services</em>"
       description="Competitive rates with cart included. Twilight specials available every day after 2 PM."
-      bg-image="/images/course-4.jpg"
+      bg-image="/images/course-3.jpg"
+      height="650px"
+      :classes="['flex', 'items-center']"
     />
 
     <section class="topo py-14">
