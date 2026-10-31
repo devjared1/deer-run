@@ -1,8 +1,8 @@
 import { unitPriceCents, priceLine, saleTotals, variantDescription } from '../../../../src/lib/pricing.js'
 import { teeTimeLabel } from '../../../../src/lib/teesheet.js'
 
-// Tenders the register accepts today. HOUSE_ACCOUNT arrives with house accounts (POS Phase 4).
-export const ACCEPTED_METHODS = ['CASH', 'CARD_TERMINAL']
+// Tenders the register accepts
+export const ACCEPTED_METHODS = ['CASH', 'CARD_TERMINAL', 'HOUSE_ACCOUNT']
 
 const MAX_LINES = 100
 const MAX_QUANTITY = 999
@@ -28,6 +28,7 @@ const MAX_BOOKING_NAME = 80
  *   isMember:       member pricing applies
  *   taxBps:         course sales tax rate
  *   payments:       [{ method: 'CASH', tenderedCents } | { method: 'CARD_TERMINAL', amountCents }]
+ *                   or [{ method: 'HOUSE_ACCOUNT' }] alone (the whole sale goes on the member's account)
  *                   A card pays an exact amount (at most one card per sale); cash covers the rest and is the
  *                   only tender that can be over-tendered (the difference is change)
  *   expectedTotalCents: the total the register showed; must match so the customer pays what they saw
@@ -106,6 +107,13 @@ export function buildSale({
   for (const p of payments) {
     if (!ACCEPTED_METHODS.includes(p?.method)) return { error: `${p?.method} payments aren't available yet`, status: 400 }
   }
+  // House account: the whole sale goes on the account, on its own (the account and its limit are checked by the
+  // API and again inside create_sale)
+  if (payments.some(p => p.method === 'HOUSE_ACCOUNT')) {
+    if (payments.length > 1) return { error: 'Charge the whole sale to the account, or pay another way', status: 400 }
+    return { lines, totals, payments: [{ method: 'HOUSE_ACCOUNT', amountCents: totals.totalCents, tenderedCents: null }], changeCents: 0, newBooking }
+  }
+
   const cards = payments.filter(p => p.method === 'CARD_TERMINAL')
   const cash = payments.filter(p => p.method === 'CASH')
   if (cards.length > 1) return { error: 'Use one card per sale', status: 400 }

@@ -3,6 +3,7 @@ import { makeStripe, isTestMode, stripeMessage } from './_stripe.js'
 import { saveSale } from './sales/_save.js'
 import { loadSale } from './sales/_sale.js'
 import { toUtcIso } from '../../../src/lib/timeclock.js'
+import { recordPayment, accountBalance } from '../admin/_houseAccounts.js'
 
 // Card sales: the card is charged on the register's reader first and the sale is saved once Stripe says the
 // payment succeeded, by whichever comes first: the register polling GET /api/staff/card-checkouts/:id, or the
@@ -64,8 +65,8 @@ export async function startCardCheckout(supabase, env, prepared) {
       currency: 'usd',
       payment_method_types: ['card_present'],
       capture_method: 'automatic',
-      description: `Deer Run ${prepared.registerName} sale`,
-      metadata: { cardCheckoutId: id, registerId: prepared.registerId, kind: 'pos_sale' },
+      description: prepared.kind === 'account_payment' ? 'Deer Run house account payment' : `Deer Run ${prepared.registerName} sale`,
+      metadata: { cardCheckoutId: id, registerId: prepared.registerId, kind: prepared.kind ?? 'pos_sale' },
     }, { idempotencyKey: `card-checkout-${id}` })
   } catch (e) {
     return json({ error: stripeMessage(e) }, 502)
@@ -123,6 +124,24 @@ export async function completeCardCheckout(supabase, env, checkoutId, intent) {
   }
 
   const { payload } = claimed
+
+  // A card payment on a house account (not a sale): record it on the account ledger
+  if (payload.kind === 'account_payment') {
+    const paid = await recordPayment(supabase, {
+      accountId: payload.accountId, amountCents: claimed.amountCents, method: 'CARD',
+      registerId: claimed.registerId, stripePaymentIntentId: intent.id, createdById: payload.createdById,
+    })
+    if (paid.error) {
+      const checkout = await update(supabase, claimed.id, {
+        status: 'SUCCEEDED', lastError: `The card was charged but the payment didn't save: ${paid.error}. Press "Save" to try again.`,
+      })
+      return { checkout }
+    }
+    const result = { accountPayment: { ...paid.entry, balanceCents: await accountBalance(supabase, payload.accountId) } }
+    const checkout = await update(supabase, claimed.id, { status: 'COMPLETED', lastError: null, payload: { ...payload, result } })
+    return { checkout, ...result }
+  }
+
   // A walk-in booking was held as PENDING while the card was on the reader
   if (payload.createdBookingId) {
     await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', payload.createdBookingId)
@@ -152,15 +171,16 @@ export async function completeCardCheckout(supabase, env, checkoutId, intent) {
 export async function syncCardCheckout(supabase, env, checkout) {
   const testMode = isTestMode(env)
   if (checkout.status === 'COMPLETED') {
-    return { cardCheckout: { ...serialize(checkout), testMode }, sale: await loadSale(supabase, checkout.saleId), ...(checkout.payload?.result ?? {}) }
+    const sale = checkout.saleId ? await loadSale(supabase, checkout.saleId) : null
+    return { cardCheckout: { ...serialize(checkout), testMode }, sale, ...(checkout.payload?.result ?? {}) }
   }
   if (checkout.status === 'CANCELED') return { cardCheckout: { ...serialize(checkout), testMode } }
 
   const stripe = makeStripe(env)
   const intent = await stripe.paymentIntents.retrieve(checkout.stripePaymentIntentId)
   if (intent.status === 'succeeded') {
-    const done = await completeCardCheckout(supabase, env, checkout.id, intent)
-    return { cardCheckout: { ...serialize(done.checkout), testMode }, sale: done.sale, warnings: done.warnings, emailError: done.emailError }
+    const { checkout: done, ...rest } = await completeCardCheckout(supabase, env, checkout.id, intent)
+    return { cardCheckout: { ...serialize(done), testMode }, ...rest }
   }
   if (intent.status === 'canceled') {
     return { cardCheckout: { ...serialize(await markCanceled(supabase, checkout)), testMode } }

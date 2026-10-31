@@ -12,6 +12,7 @@ const routes = [
   { path: '/confirmation', component: () => import('@/views/ConfirmationView.vue') },
   { path: '/login',        component: () => import('@/views/LoginView.vue') },
   { path: '/account',      component: () => import('@/views/AccountView.vue'), meta: { requiresAuth: true } },
+  { path: '/account/statements/:id', component: () => import('@/views/StatementView.vue'), meta: { requiresAuth: true } },
 
   // Admin section
   {
@@ -31,6 +32,8 @@ const routes = [
       { path: 'time-off',   component: () => import('@/views/admin/TimeOffView.vue') },
       { path: 'products',   component: () => import('@/views/admin/ProductsView.vue') },
       { path: 'sales',      component: () => import('@/views/admin/SalesView.vue') },
+      { path: 'house-accounts',     component: () => import('@/views/admin/HouseAccountsView.vue') },
+      { path: 'house-accounts/:id', component: () => import('@/views/admin/HouseAccountDetailView.vue') },
       { path: 'registers',  component: () => import('@/views/admin/RegistersView.vue') },
     ],
   },

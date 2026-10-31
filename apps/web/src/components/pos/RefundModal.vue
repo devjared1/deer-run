@@ -43,15 +43,24 @@
       </div>
 
       <!-- Where the money goes: back to the card it was paid with, or cash -->
-      <div v-if="cardAvailable > 0" class="mt-4">
+      <div v-if="cardAvailable > 0 || accountAvailable > 0" class="mt-4">
         <div class="label-sm">Refund to</div>
         <div class="flex rounded-lg border border-gray-300 overflow-hidden w-fit">
           <button
+            v-if="cardAvailable > 0"
             type="button"
             :class="['px-3 py-2 text-sm font-body', method === 'CARD_TERMINAL' ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
             @click="method = 'CARD_TERMINAL'"
           >
             The card (up to {{ formatCents(cardAvailable) }})
+          </button>
+          <button
+            v-if="accountAvailable > 0"
+            type="button"
+            :class="['px-3 py-2 text-sm font-body', method === 'HOUSE_ACCOUNT' ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
+            @click="method = 'HOUSE_ACCOUNT'"
+          >
+            House account (up to {{ formatCents(accountAvailable) }})
           </button>
           <button
             v-if="cashAvailable > 0"
@@ -65,7 +74,7 @@
       </div>
 
       <div class="mt-4 flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 font-body">
-        <span class="text-gray-600 text-sm">{{ method === 'CARD_TERMINAL' ? 'Back to the card' : 'Cash to give back' }}</span>
+        <span class="text-gray-600 text-sm">{{ { CARD_TERMINAL: 'Back to the card', HOUSE_ACCOUNT: 'Credit to the house account' }[method] ?? 'Cash to give back' }}</span>
         <span class="font-display font-bold text-bark text-2xl tabular-nums">{{ formatCents(totalCents) }}</span>
       </div>
 
@@ -80,7 +89,7 @@
         </button>
       </div>
       <p v-if="overLimit" class="text-clay text-xs font-body mt-2 text-right">
-        Only {{ formatCents(limit) }} can go back {{ method === 'CARD_TERMINAL' ? 'to the card' : 'in cash' }}. Refund fewer items this way.
+        Only {{ formatCents(limit) }} can go back {{ { CARD_TERMINAL: 'to the card', HOUSE_ACCOUNT: 'to the account' }[method] ?? 'in cash' }}. Refund fewer items this way.
       </p>
       <p class="text-gray-400 text-xs font-body mt-2 text-right">A manager approves before anything is refunded.</p>
       <p v-if="error" class="text-red-500 text-sm mt-2 font-body">{{ error }}</p>
@@ -119,8 +128,9 @@ const totalCents = computed(() => previews.value.reduce((sum, p) => sum + p.amou
 const sumBy = (list, method) => list.filter(x => x.method === method).reduce((sum, x) => sum + x.amountCents, 0)
 const cardAvailable = computed(() => Math.max(0, sumBy(props.sale.payments, 'CARD_TERMINAL') - sumBy(props.sale.refunds ?? [], 'CARD_TERMINAL')))
 const cashAvailable = computed(() => Math.max(0, sumBy(props.sale.payments, 'CASH') - sumBy(props.sale.refunds ?? [], 'CASH')))
-const method = ref(cardAvailable.value > 0 ? 'CARD_TERMINAL' : 'CASH')
-const limit = computed(() => (method.value === 'CARD_TERMINAL' ? cardAvailable.value : cashAvailable.value))
+const accountAvailable = computed(() => Math.max(0, sumBy(props.sale.payments, 'HOUSE_ACCOUNT') - sumBy(props.sale.refunds ?? [], 'HOUSE_ACCOUNT')))
+const method = ref(cardAvailable.value > 0 ? 'CARD_TERMINAL' : accountAvailable.value > 0 ? 'HOUSE_ACCOUNT' : 'CASH')
+const limit = computed(() => ({ CARD_TERMINAL: cardAvailable.value, HOUSE_ACCOUNT: accountAvailable.value }[method.value] ?? cashAvailable.value))
 const overLimit = computed(() => totalCents.value > limit.value)
 
 const canSubmit = computed(() => reason.value.trim() && rows.value.some(r => r.quantity > 0) && !overLimit.value)

@@ -21,6 +21,8 @@
           <button @click="logout" class="btn-outline-pine" style="padding:8px 18px;font-size:12px;">Sign Out</button>
         </div>
 
+        <HouseAccountPanel />
+
         <!-- Upcoming bookings -->
         <div class="mb-12">
           <SectionLabel text="Upcoming Tee Times" class="mb-5" />
@@ -104,6 +106,7 @@ import { useAuthStore } from '@/stores/auth'
 import { formatLocalDate } from '@/lib/timeclock'
 import PageHero         from '@/components/layout/PageHero.vue'
 import SectionLabel     from '@/components/ui/SectionLabel.vue'
+import HouseAccountPanel from '@/components/accounts/HouseAccountPanel.vue'
 
 const router    = useRouter()
 const authStore = useAuthStore()

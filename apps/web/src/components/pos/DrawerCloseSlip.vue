@@ -12,7 +12,7 @@
     <div>Closed {{ when(session.closedAt) }} by {{ name(session.closedBy) }}</div>
     <div class="rule" />
     <div class="row"><span>Starting cash</span><span>{{ money(session.openingFloatCents) }}</span></div>
-    <div class="row"><span>Cash sales<template v-if="session.cashSalesCount !== undefined"> ({{ session.cashSalesCount }})</template></span><span>+{{ money(session.cashSalesCents) }}</span></div>
+    <div class="row"><span>Cash taken<template v-if="session.cashSalesCount !== undefined"> ({{ session.cashSalesCount }})</template></span><span>+{{ money(session.cashSalesCents) }}</span></div>
     <div class="row"><span>Cash refunds<template v-if="session.cashRefundsCount !== undefined"> ({{ session.cashRefundsCount }})</template></span><span>-{{ money(session.cashRefundsCents) }}</span></div>
     <div class="row strong"><span>Expected in drawer</span><span>{{ money(session.expectedCents) }}</span></div>
     <div class="row strong"><span>Counted</span><span>{{ money(session.countedCents) }}</span></div>

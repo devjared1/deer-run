@@ -7,6 +7,7 @@ import { consumeApproval } from '../_approvals.js'
 import { localDate, isValidYmd, startOfLocalDay, addDays, toUtcIso } from '../../../../src/lib/timeclock.js'
 import { isActiveMember } from '../../../../src/lib/membership.js'
 import { openSession, DRAWER_REQUIRED_MESSAGE } from '../_drawer.js'
+import { loadAccount, checkAccountPin, accountBalance, money } from '../../admin/_houseAccounts.js'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -49,6 +50,7 @@ export async function onRequestGet({ request, env }) {
 // Body: { registerId, customerId?, items: [...], payments: [{ method, tenderedCents }],
 //         expectedTotalCents, receiptEmail?, approvalId? }  (see buildSale for item shapes)
 // Cash needs the register's drawer open (409 code DRAWER_CLOSED). Membership products need a customer.
+// HOUSE_ACCOUNT charges need the customer's account and their PIN (accountPin; codes ACCOUNT_PIN / ACCOUNT_PIN_LOCKED).
 // Cash only: saves now → 201 { sale, emailError, warnings } (warnings: follow-ups that failed after it saved).
 // With a card payment: charges the card on the register's reader first → 202 { cardCheckout }; the register
 // then polls GET /api/staff/card-checkouts/:id, which returns the sale once Stripe confirms.
@@ -129,6 +131,21 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'Attach the customer before selling a membership, so it goes on their account.' }, 400)
   }
 
+  // House account: the member's account must be active with room under its limit, and the member types their PIN
+  let houseAccount = null
+  if (built.payments.some(p => p.method === 'HOUSE_ACCOUNT')) {
+    if (!customer) return json({ error: 'Attach the member to charge their house account.' }, 400)
+    houseAccount = await loadAccount(supabase, { userId: customer.id })
+    if (!houseAccount) return json({ error: 'This customer doesn\'t have a house account (Admin → House Accounts).' }, 409)
+    if (houseAccount.status !== 'ACTIVE') return json({ error: `This house account is ${houseAccount.status.toLowerCase()}.` }, 409)
+    const pin = await checkAccountPin(supabase, houseAccount, body.accountPin)
+    if (!pin.ok) return json({ error: pin.error, code: pin.code }, pin.status)
+    const available = houseAccount.creditLimitCents - await accountBalance(supabase, houseAccount.id)
+    if (built.totals.totalCents > available) {
+      return json({ error: `This would put the account over its limit (${money(Math.max(0, available))} available).` }, 409)
+    }
+  }
+
   // Cash goes in the drawer, so the register's drawer must be open (counted) to take it
   if (built.payments.some(p => p.method === 'CASH')) {
     const session = await openSession(supabase, register.id)
@@ -168,6 +185,7 @@ export async function onRequestPost({ request, env }) {
       ...built.totals,
       changeCents: built.changeCents,
       receiptEmail,
+      houseAccountId: houseAccount?.id ?? null,
     },
     items: built.lines.map(({ newBooking, ...line }) => (newBooking ? { ...line, bookingId: createdBookingId } : line)),
     payments: built.payments,
@@ -193,7 +211,8 @@ export async function onRequestPost({ request, env }) {
   const saved = await saveSale(supabase, env, prepared)
   if (saved.error) {
     if (createdBookingId) await supabase.from('Booking').delete().eq('id', createdBookingId)
-    return json({ error: saved.error }, 500)
+    // create_sale re-checks the account limit under a lock (RAISE EXCEPTION → P0001)
+    return json({ error: saved.error }, saved.code === 'P0001' ? 409 : 500)
   }
   return json(saved, 201)
 }

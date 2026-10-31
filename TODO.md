@@ -262,31 +262,38 @@ Decisions: members are **invoiced** by default and can **opt in to autopay** the
 account requires the **member's PIN**; statements are generated **automatically on the 1st**, and a
 manager can print a statement for any member **on demand**.
 
-- [ ] Schema: `HouseAccount` (user, status, `creditLimitCents`, `pinHash`, failed-PIN count/lockout,
-      `autopayEnabled`, `stripeCustomerId`, `stripePaymentMethodId`), `HouseAccountEntry` ledger (charge
-      from a sale, payment, adjustment; amount; the balance is the sum of entries), `Statement` (period,
-      opening/closing balance, charges, payments, due date, status: OPEN / PAID / AUTOPAY_FAILED)
-- [ ] Admin **House Accounts** page: open/suspend accounts, set limits, balances, entry history,
-      manual adjustments (with reason), reset a member's PIN
-- [ ] Member PIN: member sets/changes a 4–6 digit PIN in **My Account** (stored as a PBKDF2 hash);
-      account locks after 5 wrong tries until a manager resets it
-- [ ] Register tender "Charge to account": attached member with an active account, under its limit;
-      the member enters their PIN on the register; server verifies before the charge is recorded
-- [ ] Monthly statements on the 1st: a small **scheduled Worker** (cron trigger, since Pages has no cron)
-      calls a protected endpoint (`POST /api/internal/statements/run`, shared secret) that closes the
-      previous month for every account with activity, then emails each statement (Resend).
-      Safe to re-run: one statement per account per period
-- [ ] On-demand statements (manager): from the admin House Accounts page, print or email a statement for
-      a member for any date range (default: month to date). Printable letter-size statement page
-- [ ] Invoicing (default): the emailed statement shows the balance and due date with a "Pay online" link
-      to **My Account**; payments at the register (cash/card) are recorded on the account too
-- [ ] Autopay (opt-in by the member): in **My Account**, the member saves a card (Stripe Customer +
-      SetupIntent) and turns autopay on. On statement day the balance is charged off-session; a failed
-      charge emails the member, marks the statement AUTOPAY_FAILED and falls back to invoicing.
-      Member can turn autopay off or replace the card at any time
-- [ ] Webhooks: handle autopay PaymentIntent success/failure (metadata `statementId`)
-- [ ] Member **My Account**: current balance, recent charges, past statements (view/print), pay balance
-      online, PIN, autopay settings
+- [x] Schema (SQL `apps/api/prisma/sql/8_pos_house_accounts.sql`): `HouseAccount` (member, status, `creditLimitCents`,
+      `pinHash`, failed-PIN count, `pinLockedAt`, `autopayEnabled`, Stripe customer + saved card), `HouseAccountEntry`
+      ledger (CHARGE / REFUND / PAYMENT / ADJUSTMENT; the balance is the sum), `Statement` (period, opening, charges,
+      credits, closing, due date, OPEN / PAID / AUTOPAY_FAILED). `create_sale()` writes the CHARGE for HOUSE_ACCOUNT
+      payments after locking the account and checking it's active and under its limit; `refund_sale()` writes the
+      REFUND credit, both in the sale's transaction
+- [x] Admin **House Accounts** page (`/admin/house-accounts`): list with balances (owing first), open an account for a
+      member, account page with activity, edit limit and status (suspend: no new charges; close: needs $0 balance),
+      manual adjustments with a reason, reset PIN (`/api/admin/house-accounts[/:id]`)
+- [x] Member PIN: set/change in **My Account** (PBKDF2, changing needs the current PIN); 5 wrong tries (at the register
+      or when changing it) lock it until an admin resets it
+- [x] Register tender **Account**: attached member with an active account, a PIN and enough available credit; the
+      member types their PIN in the payment dialog; the whole sale goes on the account (no splits)
+- [x] Monthly statements: `POST /api/internal/statements` (Bearer `CRON_SECRET`) runs daily from `apps/cron`; it creates
+      last month's statement for every account with activity or a balance (one per account per period, so it's safe
+      to re-run and only acts on the 1st), charges autopay, and emails each statement (Resend)
+- [x] On-demand statements (admin): any date range on the account page; printable letter-size statement and
+      **Email to member** (nothing is saved)
+- [x] Invoicing (default): the emailed statement shows the balance, due date (15 days after the period) and a "Pay online"
+      link to **My Account**. Payments at the register: **Account payment** (cash into the drawer, with change and a
+      receipt slip, or card through the reader); cash account payments count toward the drawer's expected cash and
+      show on the end-of-day report under "Account payments received" (not in sales). Paying the balance off marks
+      open statements PAID
+- [x] Autopay (opt-in): **Turn on autopay** in My Account saves a card (Stripe Customer + SetupIntent); statements are
+      charged off-session for up to the current balance. A failure marks the statement AUTOPAY_FAILED and the email
+      says it's due as an invoice. Members can replace the card or turn autopay off (the card is removed from Stripe)
+- [x] Webhooks: `payment_intent.succeeded` records online and autopay payments (`metadata.houseAccountId`, idempotent per
+      PaymentIntent); `payment_intent.payment_failed` marks a late autopay failure. **Enable `payment_intent.payment_failed`
+      on the Stripe webhook**
+- [x] Member **My Account**: balance and available credit, billing (autopay card or invoice), recent activity, past
+      statements (printable page `/account/statements/:id`), pay balance online (Stripe Payment Element), PIN, autopay
+- [ ] Optional: late fees / reminders for overdue statements; statement PDFs attached to the email
 
 ### Phase 5: Tee sheet integration (online bookings flow into the POS)
 - [x] Schema: `Booking.source` (ONLINE / POS / PHONE), `Booking.checkedInAt`, `SaleItem.bookingId`
@@ -357,7 +364,9 @@ manager can print a statement for any member **on demand**.
       because no drawer can be opened. Deploy the code and run the SQL together
 - [ ] Run `apps/api/prisma/sql/7_pos_card_payments.sql` (card checkouts; `create_sale`/`refund_sale` store Stripe IDs).
       Card payments fail until it runs; cash sales keep working
-- [ ] Stripe webhook: no new events needed (`payment_intent.succeeded` covers register card sales too)
+- [ ] Run `apps/api/prisma/sql/8_pos_house_accounts.sql` (house accounts) after 7
+- [ ] Stripe webhook: also enable `payment_intent.payment_failed` (house account autopay); `payment_intent.succeeded`
+      covers bookings, register card sales and house account payments
 - [ ] Set `CRON_SECRET` in the Pages project (Production), then deploy the cron Worker:
       `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy` (same secret value)
 - [ ] Later, from a network that can reach the database:

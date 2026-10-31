@@ -106,7 +106,7 @@ export async function saveSale(supabase, env, prepared) {
     p_items: prepared.items,
     p_payments: prepared.payments,
   })
-  if (error) return { error: error.message }
+  if (error) return { error: error.message, code: error.code }
 
   const warnings = []
   if (prepared.approvalId) {

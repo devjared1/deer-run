@@ -26,8 +26,9 @@ export async function onRequestGet({ request, env, params }) {
 //   { action: 'email', email }
 //   { action: 'void', approvalId, reason, registerId }                       whole sale, same day only
 //   { action: 'refund', approvalId, reason, registerId, items: [{ saleItemId, quantity }], restock }
-//   Both take method: 'CARD_TERMINAL' | 'CASH' (default: card when the sale was paid by card and some is left).
-//   Card refunds go back through Stripe (up to what's left of the card payment); cash needs the drawer open.
+//   Both take method: 'CARD_TERMINAL' | 'HOUSE_ACCOUNT' | 'CASH' (default: the way the sale was paid).
+//   Card refunds go back through Stripe, account refunds credit the account (refund_sale writes the entry), each up
+//   to what was paid that way; cash needs the drawer open.
 // Voids and refunds need a manager approval (POST /api/staff/approvals) for that action.
 export async function onRequestPost({ request, env, params }) {
   const result = await requireRegister(request, env)
@@ -65,11 +66,19 @@ export function cardRefundable(sale) {
   return { payment, availableCents: payment ? Math.max(0, payment.amountCents - refunded) : 0 }
 }
 
+// Payment types the register can refund (each goes back the way it was paid)
+const REFUND_METHODS = ['CASH', 'CARD_TERMINAL', 'HOUSE_ACCOUNT']
+
+/** How much paid with `method` hasn't been refunded that way yet. */
+export function methodRefundable(sale, method) {
+  const paid = sale.payments.filter(p => p.method === method).reduce((sum, p) => sum + p.amountCents, 0)
+  const refunded = (sale.refunds || []).filter(r => r.method === method).reduce((sum, r) => sum + r.amountCents, 0)
+  return Math.max(0, paid - refunded)
+}
+
 /** How much of the sale's cash payment hasn't been refunded yet. */
 export function cashRefundable(sale) {
-  const paid = sale.payments.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.amountCents, 0)
-  const refunded = (sale.refunds || []).filter(r => r.method === 'CASH').reduce((sum, r) => sum + r.amountCents, 0)
-  return Math.max(0, paid - refunded)
+  return methodRefundable(sale, 'CASH')
 }
 
 /** What refund_sale() will return for these lines (refundForLine mirrors its per-line formula). */
@@ -90,12 +99,13 @@ async function refund({ supabase, dbUser, employee }, env, saleId, body) {
   if (!register?.active) return json({ error: 'Choose a register' }, 400)
 
   // Money goes back the way it came: to the card (through Stripe) or in cash (out of the drawer)
-  if (sale.payments.some(p => !['CASH', 'CARD_TERMINAL'].includes(p.method))) {
+  if (sale.payments.some(p => !REFUND_METHODS.includes(p.method))) {
     return json({ error: 'This sale has a payment type the register can\'t refund yet. Refund it from the admin panel.' }, 409)
   }
   const card = cardRefundable(sale)
-  const method = body.method ?? (card.availableCents > 0 ? 'CARD_TERMINAL' : 'CASH')
-  if (!['CASH', 'CARD_TERMINAL'].includes(method)) return json({ error: 'Refund method must be cash or card' }, 400)
+  const onAccount = methodRefundable(sale, 'HOUSE_ACCOUNT')
+  const method = body.method ?? (card.availableCents > 0 ? 'CARD_TERMINAL' : onAccount > 0 ? 'HOUSE_ACCOUNT' : 'CASH')
+  if (!REFUND_METHODS.includes(method)) return json({ error: 'Refund method must be cash, card or house account' }, 400)
   if (method === 'CARD_TERMINAL' && !card.payment) return json({ error: 'This sale wasn\'t paid by card' }, 400)
   if (method === 'CASH' && !(await openSession(supabase, register.id))) {
     return json({ error: 'Open the cash drawer first (count the starting cash), then give the refund.', code: 'DRAWER_CLOSED' }, 409)
@@ -137,6 +147,15 @@ async function refund({ supabase, dbUser, employee }, env, saleId, body) {
       error: card.availableCents
         ? `Only ${money(card.availableCents)} can go back to the card. Refund fewer items to the card and the rest in cash.`
         : 'The card payment has already been refunded in full. Refund in cash.',
+    }, 409)
+  }
+
+  // Account sales go back to the account, as a credit, up to what was charged to it
+  if (method === 'HOUSE_ACCOUNT' && amountCents > onAccount) {
+    return json({
+      error: onAccount
+        ? `Only ${money(onAccount)} can go back to the house account. Refund fewer items to the account.`
+        : 'This sale wasn\'t charged to a house account',
     }, 409)
   }
 

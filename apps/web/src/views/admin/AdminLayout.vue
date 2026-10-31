@@ -102,6 +102,7 @@ const navItems = [
   { to: '/admin/time-off',    label: 'Time Off',     icon: '🏖' },
   { to: '/admin/products',    label: 'Products',     icon: '🏷' },
   { to: '/admin/sales',       label: 'Sales',        icon: '💵' },
+  { to: '/admin/house-accounts', label: 'House Accounts', icon: '📒' },
   { to: '/admin/registers',   label: 'Registers',    icon: '🧾' },
 ]
 
@@ -118,10 +119,11 @@ const titles = {
   '/admin/time-off':    'Time Off Requests',
   '/admin/products':    'Products & Inventory',
   '/admin/sales':       'Sales & Reports',
+  '/admin/house-accounts': 'House Accounts',
   '/admin/registers':   'Registers',
 }
 
-const pageTitle = computed(() => titles[route.path] || 'Admin')
+const pageTitle = computed(() => titles[route.path] || (route.path.startsWith('/admin/house-accounts/') ? 'House Account' : 'Admin'))
 
 function isActive(to) {
   if (to === '/admin') return route.path === '/admin'

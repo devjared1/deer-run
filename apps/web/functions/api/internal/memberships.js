@@ -1,20 +1,11 @@
 import { json, makeSupabase } from '../admin/_auth.js'
+import { requireCronSecret } from './_secret.js'
 import { fetchAll } from '../admin/_db.js'
 import { downgradeIfLapsed, dueReminder, sendReminder, REMINDER_DAYS } from '../admin/_membership.js'
 import { localDate, addDays } from '../../../src/lib/timeclock.js'
 
 // Lapsed members get the "membership ended" email for this many days after their last day
 const EXPIRED_EMAIL_DAYS = 14
-
-/** Constant-time comparison so the secret can't be guessed one character at a time */
-function safeEqual(a, b) {
-  const x = new TextEncoder().encode(a)
-  const y = new TextEncoder().encode(b)
-  if (x.length !== y.length) return false
-  let diff = 0
-  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i]
-  return diff === 0
-}
 
 // POST /api/internal/memberships — the daily membership job (called by the apps/cron Worker).
 // Header: Authorization: Bearer <CRON_SECRET>.
@@ -23,9 +14,8 @@ function safeEqual(a, b) {
 //   2. Moves members whose membership has passed to GUEST (they also drop to GUEST when they next sign in).
 // Safe to run more than once a day. Returns counts and any per-member errors.
 export async function onRequestPost({ request, env }) {
-  if (!env.CRON_SECRET) return json({ error: 'CRON_SECRET is not set' }, 503)
-  const auth = request.headers.get('Authorization') ?? ''
-  if (!auth.startsWith('Bearer ') || !safeEqual(auth.slice(7), env.CRON_SECRET)) return json({ error: 'Unauthorized' }, 401)
+  const denied = requireCronSecret(request, env)
+  if (denied) return denied
 
   const supabase = makeSupabase(env)
   const today = localDate()

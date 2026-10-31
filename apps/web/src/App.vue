@@ -1,10 +1,10 @@
 <template>
   <div style="min-height:100vh;background:#F2EBD9;display:flex;flex-direction:column;">
-    <AppNav v-if="!isPortal" />
+    <AppNav v-if="!isPortal" class="print:hidden" />
     <main class="flex-1">
       <RouterView />
     </main>
-    <AppFooter v-if="!isPortal" />
+    <AppFooter v-if="!isPortal" class="print:hidden" />
   </div>
 </template>
 

@@ -8,15 +8,16 @@ datasource db {
 }
 
 model User {
-  id         String    @id @default(cuid())
-  email      String    @unique
-  name       String?
-  role       Role      @default(MEMBER)
-  supabaseId String?   @unique
-  bookings   Booking[]
-  employee   Employee?
-  purchases  Sale[]
-  createdAt  DateTime  @default(now())
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  role         Role          @default(MEMBER)
+  supabaseId   String?       @unique
+  bookings     Booking[]
+  employee     Employee?
+  purchases    Sale[]
+  houseAccount HouseAccount?
+  createdAt    DateTime      @default(now())
 
   // Memberships sold at the register (POS Phase 6). memberUntil null = no expiry (members added
   // by hand before memberships were sold through the POS). Lapsed members drop to GUEST.
@@ -348,6 +349,7 @@ model Register {
   approvals      ManagerApproval[]
   drawerSessions CashDrawerSession[]
   cardCheckouts  CardCheckout[]
+  accountEntries HouseAccountEntry[]
   createdAt      DateTime            @default(now())
 }
 
@@ -372,29 +374,30 @@ enum PaymentMethod {
 // payments and stock changes save together. Amounts are snapshots: later price or tax changes
 // never alter a past sale.
 model Sale {
-  id              String            @id @default(cuid())
-  number          Int               @unique @default(autoincrement()) // receipt number
-  status          SaleStatus        @default(COMPLETED)
-  register        Register          @relation(fields: [registerId], references: [id])
+  id              String              @id @default(cuid())
+  number          Int                 @unique @default(autoincrement()) // receipt number
+  status          SaleStatus          @default(COMPLETED)
+  register        Register            @relation(fields: [registerId], references: [id])
   registerId      String
-  cashier         Employee          @relation(fields: [cashierId], references: [id])
+  cashier         Employee            @relation(fields: [cashierId], references: [id])
   cashierId       String
-  customer        User?             @relation(fields: [customerId], references: [id])
+  customer        User?               @relation(fields: [customerId], references: [id])
   customerId      String?
-  isMemberPricing Boolean           @default(false)
+  isMemberPricing Boolean             @default(false)
   subtotalCents   Int // after line discounts, before tax
-  discountCents   Int               @default(0) // total of line discounts
+  discountCents   Int                 @default(0) // total of line discounts
   taxCents        Int
   totalCents      Int
-  changeCents     Int               @default(0) // cash handed back
-  refundedCents   Int               @default(0) // total of all refunds and voids
+  changeCents     Int                 @default(0) // cash handed back
+  refundedCents   Int                 @default(0) // total of all refunds and voids
   receiptEmail    String?
   items           SaleItem[]
   payments        Payment[]
   refunds         SaleRefund[]
   approvals       ManagerApproval[]
   cardCheckout    CardCheckout?
-  createdAt       DateTime          @default(now())
+  accountEntries  HouseAccountEntry[]
+  createdAt       DateTime            @default(now())
 
   @@index([createdAt])
   @@index([registerId, createdAt])
@@ -483,8 +486,8 @@ enum RefundKind {
 
 // Money returned on a sale. Written only by the refund_sale() Postgres function.
 model SaleRefund {
-  id             String           @id @default(cuid())
-  sale           Sale             @relation(fields: [saleId], references: [id])
+  id             String              @id @default(cuid())
+  sale           Sale                @relation(fields: [saleId], references: [id])
   saleId         String
   kind           RefundKind
   method         PaymentMethod // how the money went back
@@ -492,15 +495,16 @@ model SaleRefund {
   taxCents       Int
   restocked      Boolean
   reason         String
-  stripeRefundId String?          @unique // card refunds: the Stripe refund (re_…)
-  approval       ManagerApproval  @relation(fields: [approvalId], references: [id])
-  approvalId     String           @unique
-  cashier        Employee         @relation(fields: [cashierId], references: [id])
+  stripeRefundId String?             @unique // card refunds: the Stripe refund (re_…)
+  accountEntries HouseAccountEntry[]
+  approval       ManagerApproval     @relation(fields: [approvalId], references: [id])
+  approvalId     String              @unique
+  cashier        Employee            @relation(fields: [cashierId], references: [id])
   cashierId      String
-  register       Register         @relation(fields: [registerId], references: [id])
+  register       Register            @relation(fields: [registerId], references: [id])
   registerId     String
   items          SaleRefundItem[]
-  createdAt      DateTime         @default(now())
+  createdAt      DateTime            @default(now())
 
   @@index([saleId])
   @@index([createdAt])
@@ -578,4 +582,93 @@ model CardCheckout {
   updatedAt             DateTime           @default(now())
 
   @@index([registerId, createdAt])
+}
+
+// ─── Point of sale: member house accounts ────────────────────────────────────
+
+enum HouseAccountStatus {
+  ACTIVE
+  SUSPENDED // can't charge; payments still accepted
+  CLOSED
+}
+
+enum AccountEntryType {
+  CHARGE // a sale charged to the account
+  REFUND // a refund of an account sale back to the account
+  PAYMENT // money in: cash/card at the register, online, autopay
+  ADJUSTMENT // manual correction by an admin (either sign)
+}
+
+enum StatementStatus {
+  OPEN // balance due
+  PAID // paid in full (or nothing was due)
+  AUTOPAY_FAILED // the autopay charge failed; the member is invoiced instead
+}
+
+// A member's charge account. The balance is the sum of the entries (positive = the member owes the course).
+model HouseAccount {
+  id                    String              @id @default(cuid())
+  user                  User                @relation(fields: [userId], references: [id])
+  userId                String              @unique
+  status                HouseAccountStatus  @default(ACTIVE)
+  creditLimitCents      Int                 @default(50000)
+  // Member PIN for charging at the register (PBKDF2 hash). Locks after 5 wrong tries until an admin resets it.
+  pinHash               String?
+  pinFailedAttempts     Int                 @default(0)
+  pinLockedAt           DateTime?
+  // Autopay (opt-in by the member): statements are charged to the saved card
+  autopayEnabled        Boolean             @default(false)
+  stripeCustomerId      String?             @unique
+  stripePaymentMethodId String?
+  cardBrand             String?
+  cardLast4             String?
+  entries               HouseAccountEntry[]
+  statements            Statement[]
+  createdAt             DateTime            @default(now())
+}
+
+// The account ledger. Charges and refunds are written by create_sale() / refund_sale() in the same transaction as
+// the sale; payments and adjustments by the API.
+model HouseAccountEntry {
+  id                    String           @id @default(cuid())
+  account               HouseAccount     @relation(fields: [accountId], references: [id])
+  accountId             String
+  type                  AccountEntryType
+  amountCents           Int // + adds to what the member owes (charges), − reduces it (payments, refunds, credits)
+  description           String
+  method                String? // payments: CASH | CARD | ONLINE | AUTOPAY
+  sale                  Sale?            @relation(fields: [saleId], references: [id])
+  saleId                String?
+  refund                SaleRefund?      @relation(fields: [refundId], references: [id])
+  refundId              String?
+  register              Register?        @relation(fields: [registerId], references: [id])
+  registerId            String? // payments taken at a register (cash goes in that drawer)
+  stripePaymentIntentId String?          @unique
+  createdById           String? // User.id of who recorded it (null = the member online, or the system)
+  createdAt             DateTime         @default(now())
+
+  @@index([accountId, createdAt])
+  @@index([registerId, createdAt])
+}
+
+// A monthly statement. Amounts are snapshots taken when it was generated.
+model Statement {
+  id                     String          @id @default(cuid())
+  account                HouseAccount    @relation(fields: [accountId], references: [id])
+  accountId              String
+  periodStart            DateTime        @db.Date
+  periodEnd              DateTime        @db.Date
+  openingCents           Int
+  chargesCents           Int // charges in the period
+  creditsCents           Int // payments, refunds and credits in the period (≤ 0)
+  closingCents           Int
+  dueDate                DateTime        @db.Date
+  status                 StatementStatus @default(OPEN)
+  emailedAt              DateTime?
+  autopayPaymentIntentId String?         @unique
+  autopayError           String?
+  paidAt                 DateTime?
+  createdAt              DateTime        @default(now())
+
+  @@unique([accountId, periodStart])
 }

@@ -22,12 +22,13 @@ export function serializeSession(s) {
 }
 
 /**
- * Cash taken and cash refunded at a register in [fromIso, toIso) (toIso null = until now).
- * Payment.amountCents is what was applied to the sale, so change handed back is already netted out.
+ * Cash taken and cash refunded at a register in [fromIso, toIso) (toIso null = until now). Cash taken is sale
+ * payments plus cash payments on house accounts made at this register. Payment.amountCents is what was applied to
+ * the sale, so change handed back is already netted out.
  */
 export async function cashTotals(supabase, registerId, fromIso, toIso = null) {
   const window = q => (toIso ? q.gte('createdAt', fromIso).lt('createdAt', toIso) : q.gte('createdAt', fromIso))
-  const [payments, refunds] = await Promise.all([
+  const [payments, refunds, accountPayments] = await Promise.all([
     fetchAll(() => window(supabase
       .from('Payment')
       .select('id, amountCents, sale:Sale!inner(registerId)')
@@ -40,10 +41,24 @@ export async function cashTotals(supabase, registerId, fromIso, toIso = null) {
       .eq('method', 'CASH')
       .eq('registerId', registerId)
       .order('createdAt', { ascending: true }))),
+    fetchAll(() => window(supabase
+      .from('HouseAccountEntry')
+      .select('id, amountCents')
+      .eq('type', 'PAYMENT')
+      .eq('method', 'CASH')
+      .eq('registerId', registerId)
+      .order('createdAt', { ascending: true }))),
   ])
-  const cashSalesCents = payments.reduce((sum, p) => sum + p.amountCents, 0)
+  const cashAccountPaymentsCents = accountPayments.reduce((sum, e) => sum - e.amountCents, 0)
+  const cashSalesCents = payments.reduce((sum, p) => sum + p.amountCents, 0) + cashAccountPaymentsCents
   const cashRefundsCents = refunds.reduce((sum, r) => sum + r.amountCents, 0)
-  return { cashSalesCents, cashRefundsCents, cashSalesCount: payments.length, cashRefundsCount: refunds.length }
+  return {
+    cashSalesCents, // all cash taken: sales + account payments
+    cashRefundsCents,
+    cashAccountPaymentsCents,
+    cashSalesCount: payments.length + accountPayments.length,
+    cashRefundsCount: refunds.length,
+  }
 }
 
 /** An open session with its running totals: expected = float + cash taken − cash refunded. */
