@@ -87,7 +87,7 @@
           <button v-if="canVoid" class="btn-outline-sm text-red-600 border-red-200" @click="$emit('void', selected)">Void Sale…</button>
         </div>
         <p v-if="!canRefund && !['VOIDED', 'REFUNDED'].includes(selected.status)" class="text-gray-400 text-xs font-body mt-2 text-right">
-          Card and account refunds aren't available yet.
+          This sale has a payment the register can't refund. Refund it from the admin panel.
         </p>
       </template>
     </div>
@@ -122,9 +122,12 @@ const STATUS = {
 const statusLabel = (s) => STATUS[s]?.[0] ?? s
 const statusClass = (s) => STATUS[s]?.[1] ?? ''
 
-const cashOnly = computed(() => selected.value?.payments.every(p => p.method === 'CASH'))
-const canRefund = computed(() => cashOnly.value && !['VOIDED', 'REFUNDED'].includes(selected.value.status))
-const canVoid = computed(() => cashOnly.value && selected.value.status === 'COMPLETED' &&
+// The register refunds cash and card payments (house accounts etc. go through the admin panel)
+const refundable = computed(() => !!selected.value?.payments.every(p => p.method === 'CASH' || p.method === 'CARD_TERMINAL'))
+// A split (cash + card) sale is refunded in two passes instead of voided, so each part goes back its own way
+const isSplit = computed(() => new Set((selected.value?.payments ?? []).map(p => p.method)).size > 1)
+const canRefund = computed(() => refundable.value && !['VOIDED', 'REFUNDED'].includes(selected.value.status))
+const canVoid = computed(() => refundable.value && !isSplit.value && selected.value.status === 'COMPLETED' &&
   !selected.value.refunds.length && localDate(selected.value.createdAt) === localDate())
 
 function formatTime(iso) {

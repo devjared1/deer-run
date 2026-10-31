@@ -205,9 +205,16 @@
         <div class="text-gray-400 text-xs font-body uppercase tracking-wider">
           Sale #{{ refundResult.sale.number }} {{ refundResult.refund.kind === 'VOID' ? 'voided' : 'refunded' }}
         </div>
-        <div class="text-gray-500 text-sm font-body mt-4">Give the customer</div>
-        <div class="font-display font-bold text-clay text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
-        <div class="text-gray-400 text-xs font-body">cash</div>
+        <template v-if="refundResult.refund.method === 'CARD_TERMINAL'">
+          <div class="text-gray-500 text-sm font-body mt-4">Refunded to the card</div>
+          <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
+          <div class="text-gray-400 text-xs font-body">It shows on the customer's statement in 5–10 days</div>
+        </template>
+        <template v-else>
+          <div class="text-gray-500 text-sm font-body mt-4">Give the customer</div>
+          <div class="font-display font-bold text-clay text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
+          <div class="text-gray-400 text-xs font-body">cash</div>
+        </template>
         <div class="mt-5 space-y-2">
           <button class="btn-outline-sm w-full" @click="printDocument({ type: 'refund', sale: refundResult.sale, refund: refundResult.refund })">
             Print Refund Slip
@@ -336,8 +343,17 @@
       :default-email="customer?.email ?? ''"
       :busy="submitting"
       :error="submitError"
+      :card-blocked="cardBlocked"
       @complete="completeSale"
       @close="tendering = false; focusSearch()"
+    />
+
+    <CardPaymentModal
+      v-if="cardPayment"
+      :initial="cardPayment.checkout"
+      :cash-cents="cardPayment.cashCents"
+      @done="onCardDone"
+      @canceled="onCardCanceled"
     />
 
     <!-- Line discount -->
@@ -404,6 +420,7 @@ import NoSaleSlip from '@/components/pos/NoSaleSlip.vue'
 import VariantPickerModal from '@/components/pos/VariantPickerModal.vue'
 import CustomerPickerModal from '@/components/pos/CustomerPickerModal.vue'
 import TenderModal from '@/components/pos/TenderModal.vue'
+import CardPaymentModal from '@/components/pos/CardPaymentModal.vue'
 import ApprovalModal from '@/components/pos/ApprovalModal.vue'
 import RecentSalesModal from '@/components/pos/RecentSalesModal.vue'
 import RefundModal from '@/components/pos/RefundModal.vue'
@@ -702,8 +719,7 @@ async function completeSale(tender, { retried = false } = {}) {
   submitting.value  = true
   submitError.value = null
   try {
-    const hadMembership = cart.value.some(l => l.variantId && variantIndex.value[l.variantId]?.product.membershipMonths)
-    const { sale, emailError, warnings = [] } = await apiFetch('/api/staff/sales', {
+    const result = await apiFetch('/api/staff/sales', {
       method: 'POST',
       body: {
         registerId: registerId.value,
@@ -716,17 +732,13 @@ async function completeSale(tender, { retried = false } = {}) {
       },
     })
     tendering.value = false
-    cart.value      = []
-    customer.value  = null
-    discountApprovalId.value = null
-    completed.value = {
-      sale, emailError, warnings, emailedTo: emailError ? null : receiptEmail, emailInput: '', sending: false,
-      membershipUntil: hadMembership && !warnings.length ? await membershipEnd(sale.customerId) : null,
+    if (result.cardCheckout) {
+      // The card is on the reader; the sale saves when it's approved (CardPaymentModal polls)
+      const card = payments.find(p => p.method === 'CARD_TERMINAL')
+      cardPayment.value = { checkout: result.cardCheckout, tender, cashCents: totals.value.totalCents - (card?.amountCents ?? 0) }
+      return
     }
-    if (print) await printDocument({ type: 'sale', sale })
-    nextTick(() => newSaleButton.value?.focus())
-    loadCatalog() // refresh stock counts
-    if (sale.payments.some(p => p.method === 'CASH')) loadDrawer() // managers see the running expected amount
+    await finishSale(result, tender)
   } catch (e) {
     if (e.code === 'APPROVAL_REQUIRED' && !retried) {
       // The discount approval expired (30 minutes); ask again and retry once
@@ -754,6 +766,41 @@ async function completeSale(tender, { retried = false } = {}) {
   } finally {
     submitting.value = false
   }
+}
+
+// Card payment dialog: { checkout, tender, cashCents } while the card is on the reader
+const cardPayment = ref(null)
+
+// Why this register can't take cards right now (null = it can)
+const cardBlocked = computed(() => (register.value?.hasCardReader ? null : 'This register has no card reader (Admin → Registers)'))
+
+// Shared end of a sale (cash, or card once approved): clear the cart and show the sale-complete screen
+async function finishSale({ sale, emailError = null, warnings = [], notice = null }, { print, receiptEmail }) {
+  const hadMembership = cart.value.some(l => l.variantId && variantIndex.value[l.variantId]?.product.membershipMonths)
+  cart.value      = []
+  customer.value  = null
+  discountApprovalId.value = null
+  completed.value = {
+    sale, emailError, warnings: notice ? [notice, ...warnings] : warnings,
+    emailedTo: emailError ? null : receiptEmail, emailInput: '', sending: false,
+    membershipUntil: hadMembership && !warnings.length ? await membershipEnd(sale.customerId) : null,
+  }
+  if (print) await printDocument({ type: 'sale', sale })
+  nextTick(() => newSaleButton.value?.focus())
+  loadCatalog() // refresh stock counts
+  if (sale.payments.some(p => p.method === 'CASH')) loadDrawer() // managers see the running expected amount
+}
+
+async function onCardDone(result) {
+  const { tender } = cardPayment.value
+  cardPayment.value = null
+  await finishSale(result, tender)
+}
+
+// Cancelled before the card was charged: back to the payment screen with the cart as it was
+function onCardCanceled() {
+  cardPayment.value = null
+  openTender()
 }
 
 // What the API expects for each cart line (see buildSale)
@@ -796,12 +843,12 @@ function startRefund(sale, mode) {
   refunding.value   = { sale, mode }
 }
 
-async function submitRefund({ items, restock, reason, totalCents }) {
+async function submitRefund({ items, restock, reason, totalCents, method }) {
   const { sale, mode } = refunding.value
   const verb = mode === 'void' ? 'Void' : 'Refund'
   const approval = await requestApproval(
     mode === 'void' ? 'VOID' : 'REFUND',
-    `${verb} sale #${sale.number}: ${formatCents(totalCents)} cash back. Reason: ${reason}`,
+    `${verb} sale #${sale.number}: ${formatCents(totalCents)} back ${method === 'CARD_TERMINAL' ? 'to the card' : 'in cash'}. Reason: ${reason}`,
     reason,
   )
   if (!approval) return
@@ -811,14 +858,14 @@ async function submitRefund({ items, restock, reason, totalCents }) {
   try {
     const result = await apiFetch(`/api/staff/sales/${sale.id}`, {
       method: 'POST',
-      body: { action: mode, approvalId: approval.approvalId, reason, registerId: registerId.value, items, restock },
+      body: { action: mode, approvalId: approval.approvalId, reason, registerId: registerId.value, items, restock, method },
     })
     const refund = result.sale.refunds.find(r => r.id === result.refund.id)
     refunding.value       = null
     showRecentSales.value = false
     refundResult.value    = { sale: result.sale, refund }
-    // Printing the refund slip opens the drawer for the cash
-    await printDocument({ type: 'refund', sale: result.sale, refund })
+    // Printing the refund slip opens the drawer for the cash (card refunds print from the button instead)
+    if (refund.method === 'CASH') await printDocument({ type: 'refund', sale: result.sale, refund })
     loadCatalog() // stock may have changed
     loadDrawer()
   } catch (e) {

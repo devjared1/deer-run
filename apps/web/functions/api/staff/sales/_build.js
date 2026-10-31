@@ -1,9 +1,8 @@
 import { unitPriceCents, priceLine, saleTotals, variantDescription } from '../../../../src/lib/pricing.js'
 import { teeTimeLabel } from '../../../../src/lib/teesheet.js'
 
-// Tenders the register accepts today. CARD_TERMINAL arrives with Stripe Terminal (POS Phase 3),
-// HOUSE_ACCOUNT with house accounts (Phase 4).
-export const ACCEPTED_METHODS = ['CASH']
+// Tenders the register accepts today. HOUSE_ACCOUNT arrives with house accounts (POS Phase 4).
+export const ACCEPTED_METHODS = ['CASH', 'CARD_TERMINAL']
 
 const MAX_LINES = 100
 const MAX_QUANTITY = 999
@@ -28,7 +27,9 @@ const MAX_BOOKING_NAME = 80
  *   today:          course-local date (no bookings in the past)
  *   isMember:       member pricing applies
  *   taxBps:         course sales tax rate
- *   payments:       [{ method, tenderedCents }]
+ *   payments:       [{ method: 'CASH', tenderedCents } | { method: 'CARD_TERMINAL', amountCents }]
+ *                   A card pays an exact amount (at most one card per sale); cash covers the rest and is the
+ *                   only tender that can be over-tendered (the difference is change)
  *   expectedTotalCents: the total the register showed; must match so the customer pays what they saw
  * Returns { lines, totals, payments, changeCents, newBooking } or { error, status }. Lines for tee times carry
  * `bookingId` (existing booking) or `newBooking: true`; `newBooking` is the validated booking to create.
@@ -102,22 +103,39 @@ export function buildSale({
   if (totals.totalCents === 0) return { lines, totals, payments: [], changeCents: 0, newBooking }
   if (!Array.isArray(payments) || !payments.length) return { error: 'Add a payment', status: 400 }
 
-  let remaining = totals.totalCents
-  let tenderedTotal = 0
-  const applied = []
   for (const p of payments) {
-    if (!ACCEPTED_METHODS.includes(p.method)) return { error: `${p.method} payments aren't available yet`, status: 400 }
-    const tendered = Number(p.tenderedCents)
+    if (!ACCEPTED_METHODS.includes(p?.method)) return { error: `${p?.method} payments aren't available yet`, status: 400 }
+  }
+  const cards = payments.filter(p => p.method === 'CARD_TERMINAL')
+  const cash = payments.filter(p => p.method === 'CASH')
+  if (cards.length > 1) return { error: 'Use one card per sale', status: 400 }
+  if (cash.length > 1) return { error: 'Enter the cash received as one amount', status: 400 }
+
+  const applied = []
+  let remaining = totals.totalCents
+  if (cards.length) {
+    const amount = Number(cards[0].amountCents)
+    if (!isWholeNumber(amount, 50, totals.totalCents)) {
+      // Stripe's minimum card charge is $0.50
+      return { error: 'The card amount must be at least $0.50 and no more than the total', status: 400 }
+    }
+    applied.push({ method: 'CARD_TERMINAL', amountCents: amount, tenderedCents: null })
+    remaining -= amount
+  }
+
+  let changeCents = 0
+  if (cash.length) {
+    const tendered = Number(cash[0].tenderedCents)
     if (!isWholeNumber(tendered, 1, 10_000_000)) return { error: 'Payment amount is not valid', status: 400 }
     if (remaining === 0) return { error: 'More payments than needed', status: 400 }
-    const amount = Math.min(remaining, tendered)
-    applied.push({ method: p.method, amountCents: amount, tenderedCents: p.method === 'CASH' ? tendered : null })
-    remaining -= amount
-    tenderedTotal += tendered
+    if (tendered < remaining) return { error: 'The payment is less than the total', status: 400 }
+    applied.unshift({ method: 'CASH', amountCents: remaining, tenderedCents: tendered })
+    changeCents = tendered - remaining
+    remaining = 0
   }
   if (remaining > 0) return { error: 'The payment is less than the total', status: 400 }
 
-  return { lines, totals, payments: applied, changeCents: tenderedTotal - totals.totalCents, newBooking }
+  return { lines, totals, payments: applied, changeCents, newBooking }
 }
 
 function zeroLine(fields) {

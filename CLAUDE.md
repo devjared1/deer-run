@@ -77,7 +77,7 @@ deer-run/
 | API        | Cloudflare Pages Functions (edge, ES modules)             |
 | Database   | Supabase (PostgreSQL) — accessed via `@supabase/supabase-js` |
 | Auth       | Supabase Auth (JWT via `supabase.auth.getUser(token)`)    |
-| Payments   | Stripe v14 PaymentIntents + Payment Element (API version 2023-10-16); Stripe Terminal planned for the POS |
+| Payments   | Stripe v14 (API version 2023-10-16): PaymentIntents + Payment Element online; Stripe Terminal (server-driven, smart readers) at the register |
 | Email      | Resend v3                                                 |
 | DB Mgmt    | Prisma 5 (migrations + seed only, not used at runtime)    |
 | Dev tools  | Wrangler 3, ESLint (vue3-recommended)                     |
@@ -228,7 +228,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
 | POST | `/api/inquiries/membership`, `/api/inquiries/contact` | Public | Save inquiry/message + email `CONTACT_EMAIL_TO` |
-| POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email |
+| POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email (`metadata.bookingId`), or saves a register card sale (`metadata.cardCheckoutId`) |
 
 **Admin panel** (all `requireAdmin`, i.e. `User.role = ADMIN`)
 
@@ -254,6 +254,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/products[/:id]` | GET, POST / PUT, DELETE | Products with nested variants |
 | `/api/admin/inventory/:variantId` | GET, POST | Stock history / adjust (`adjust_inventory()`) |
 | `/api/admin/registers[/:id]` | GET, POST / PUT, DELETE | Registers (Stripe reader ID) |
+| `/api/admin/registers/readers` | GET, POST | Stripe Terminal readers + online status; pair a reader `{ registrationCode, label, registerId }` |
 | `/api/admin/sales?from=&to=&registerId=&status=&number=&page=` | GET | Sales list (paged); `&format=csv&detail=sales\|items` exports the range |
 | `/api/admin/sales/:id` | GET, POST | Sale detail; `{ action: 'email', email }` |
 | `/api/admin/sales/report?date=` (or `?from=&to=`, `&registerId=`) | GET | Sales / end-of-day (Z) report (`_report.js` → `buildReport`), incl. drawer sessions |
@@ -276,8 +277,9 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session (expected only for managers); `open` with a float / `close` with a count |
 | `/api/staff/teesheet?date=` | GET | Tee sheet: slots, bookings, check-in, receipts |
 | `/api/staff/teesheet/:bookingId` | POST | `{ action: 'check_in' \| 'undo_check_in' }` (paid bookings only) |
-| `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`). Items can be products, custom amounts, a checked-in `booking` ($0) or a `newBooking` (walk-in/phone, created with the sale). Cash needs an open drawer (409 `DRAWER_CLOSED`); membership products need a customer |
-| `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`; cash refunds need an open drawer) |
+| `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`). With a `CARD_TERMINAL` payment it charges the card first → 202 `{ cardCheckout }`. Items can be products, custom amounts, a checked-in `booking` ($0) or a `newBooking` (walk-in/phone, created with the sale). Cash needs an open drawer (409 `DRAWER_CLOSED`); membership products need a customer |
+| `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`; `method` CARD_TERMINAL refunds through Stripe, CASH needs an open drawer) |
+| `/api/staff/card-checkouts/:id` | GET, POST | Poll a card payment (saves the sale once Stripe confirms); `retry` / `cancel` / `simulate` (test mode) / `complete` |
 
 **Internal** (`Authorization: Bearer <CRON_SECRET>`)
 
@@ -349,6 +351,7 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 | | `Register` | Physical register; `stripeReaderId` |
 | | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line; `SaleItem.bookingId?` links tee time lines |
 | | `CashDrawerSession` | Drawer float, count, expected and over/short per register (one open at a time) |
+| | `CardCheckout` | A sale waiting on a card: PaymentIntent, reader, status (PENDING → COMPLETING → COMPLETED / SUCCEEDED / CANCELED), `payload` (create_sale args) |
 | | `ManagerApproval` | Single-use, short-lived manager sign-offs |
 | | `SaleRefund`, `SaleRefundItem` | Voids and refunds |
 
@@ -357,9 +360,10 @@ Postgres functions (in the migrations, callable only by the service role): `adju
 time entry per employee, and `CashDrawerSession_one_open_per_register` one open drawer per register; Prisma can't
 model partial indexes, so delete any `DROP INDEX` line for them from generated migrations.
 
-The source of `create_sale()` / `refund_sale()` lives only in the local migrations (4 and 5), not in the repo.
-New features avoid changing them: follow-up writes (e.g. linking `SaleItem.bookingId`, membership dates) run
-right after the RPC and report a warning instead of failing the sale.
+The source of `create_sale()` / `refund_sale()` is in `apps/api/prisma/sql/` (reference copies of 4 and 5; the latest
+versions are in `7_pos_card_payments.sql`). To change one, copy the latest and `CREATE OR REPLACE` it in a new
+migration. Follow-up writes after a sale (membership dates, links) run in `saveSale()` (`staff/sales/_save.js`) and
+report a warning instead of failing a sale that's already saved.
 
 ### Database migrations
 `apps/api/prisma/migrations/` is **gitignored** — migration folders are kept locally, and migrations written in
@@ -490,7 +494,8 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
   The **tee sheet** (`/staff/teesheet`) checks paid bookings in (register opens with a $0 prepaid line) and books
   walk-ins/phone bookings that are paid at the register. **Membership products** (`Product.membershipMonths`) need a
   customer and extend `User.memberUntil`. **Cash drawers** must be open (counted float) before cash moves; closing
-  records the count and over/short.
+  records the count and over/short. **Card payments** run through `staff/_cardCheckout.js`: charge on the reader
+  first, save the sale on success (register poll or webhook, whichever first). Refunds go back the way they were paid.
   Reporting lives on `/admin/sales` (sales list, receipts, CSV, end-of-day report, drawers) and the dashboard; managers print
   the end-of-day (Z) slip from the register. Sales count on the day they're rung up and voids/refunds on the day they
   happen. Supabase returns at most 1,000 rows per request, so reports and exports page through with `fetchAll()`.

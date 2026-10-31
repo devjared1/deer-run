@@ -1,10 +1,11 @@
 import { json } from '../../admin/_auth.js'
 import { requireRegister } from '../_auth.js'
 import { buildSale } from './_build.js'
-import { loadSale, emailReceipt } from './_sale.js'
+import { saveSale, loadSlots, createBooking, membershipPurchase } from './_save.js'
+import { startCardCheckout } from '../_cardCheckout.js'
 import { consumeApproval } from '../_approvals.js'
 import { localDate, isValidYmd, startOfLocalDay, addDays, toUtcIso } from '../../../../src/lib/timeclock.js'
-import { isActiveMember, extendMembership } from '../../../../src/lib/membership.js'
+import { isActiveMember } from '../../../../src/lib/membership.js'
 import { openSession, DRAWER_REQUIRED_MESSAGE } from '../_drawer.js'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -48,7 +49,9 @@ export async function onRequestGet({ request, env }) {
 // Body: { registerId, customerId?, items: [...], payments: [{ method, tenderedCents }],
 //         expectedTotalCents, receiptEmail?, approvalId? }  (see buildSale for item shapes)
 // Cash needs the register's drawer open (409 code DRAWER_CLOSED). Membership products need a customer.
-// Returns { sale, emailError, warnings } — warnings list follow-up steps that failed after the sale saved.
+// Cash only: saves now → 201 { sale, emailError, warnings } (warnings: follow-ups that failed after it saved).
+// With a card payment: charges the card on the register's reader first → 202 { cardCheckout }; the register
+// then polls GET /api/staff/card-checkouts/:id, which returns the sale once Stripe confirms.
 // Prices, tax and totals are recomputed here from the database; the client's numbers are
 // only used to confirm the customer is charged what the register showed.
 export async function onRequestPost({ request, env }) {
@@ -68,7 +71,7 @@ export async function onRequestPost({ request, env }) {
 
   const { data: register } = await supabase
     .from('Register')
-    .select('id, active')
+    .select('id, name, active, stripeReaderId')
     .eq('id', body.registerId ?? '')
     .maybeSingle()
   if (!register?.active) return json({ error: 'This register is not set up or is inactive. Choose a register.' }, 400)
@@ -132,6 +135,11 @@ export async function onRequestPost({ request, env }) {
     if (!session) return json({ error: DRAWER_REQUIRED_MESSAGE, code: 'DRAWER_CLOSED' }, 409)
   }
 
+  const card = built.payments.find(p => p.method === 'CARD_TERMINAL')
+  if (card && !register.stripeReaderId) {
+    return json({ error: 'This register has no card reader. An admin can pair one in Admin → Registers.' }, 409)
+  }
+
   // Only managers can discount: a discounted sale must carry an unused DISCOUNT approval
   let approval = null
   if (built.lines.some(l => l.discountCents > 0)) {
@@ -141,17 +149,17 @@ export async function onRequestPost({ request, env }) {
     }
   }
 
-  // A walk-in/phone booking is created just before the sale (re-checking space) and removed if the sale fails
+  // A walk-in/phone booking is created before the sale (re-checking space): paid right away for cash, held as
+  // PENDING while a card is on the reader. It's removed again if the sale fails or the card is cancelled.
   let createdBookingId = null
   if (built.newBooking) {
-    const created = await createBooking(supabase, built.newBooking, customer)
+    const created = await createBooking(supabase, built.newBooking, customer, card ? 'PENDING' : 'CONFIRMED')
     if (created.error) return json({ error: created.error }, created.status)
     createdBookingId = created.id
   }
-  const lines = built.lines.map(({ newBooking, ...line }) => (newBooking ? { ...line, bookingId: createdBookingId } : line))
 
-  const { data: created, error } = await supabase.rpc('create_sale', {
-    p_sale: {
+  const prepared = {
+    sale: {
       registerId: register.id,
       cashierId: employee.id,
       customerId: customer?.id ?? null,
@@ -161,114 +169,31 @@ export async function onRequestPost({ request, env }) {
       changeCents: built.changeCents,
       receiptEmail,
     },
-    p_items: lines,
-    p_payments: built.payments,
-  })
-  if (error) {
+    items: built.lines.map(({ newBooking, ...line }) => (newBooking ? { ...line, bookingId: createdBookingId } : line)),
+    payments: built.payments,
+    customerId: customer?.id ?? null,
+    membership,
+    approvalId: approval?.id ?? null,
+    receiptEmail,
+    createdBookingId,
+  }
+
+  // Card (or split): charge the card on the reader first; the sale saves when Stripe confirms (202)
+  if (card) {
+    return startCardCheckout(supabase, env, {
+      ...prepared,
+      registerId: register.id,
+      registerName: register.name,
+      cashierId: employee.id,
+      readerId: register.stripeReaderId,
+      cardCents: card.amountCents,
+    })
+  }
+
+  const saved = await saveSale(supabase, env, prepared)
+  if (saved.error) {
     if (createdBookingId) await supabase.from('Booking').delete().eq('id', createdBookingId)
-    return json({ error: error.message }, 500)
+    return json({ error: saved.error }, 500)
   }
-
-  if (approval) await supabase.from('ManagerApproval').update({ saleId: created.id }).eq('id', approval.id)
-
-  // The sale is saved; the steps below link and update records and report problems without failing the sale
-  const warnings = []
-  let sale = await loadSale(supabase, created.id)
-  const linkError = await linkBookings(supabase, sale, lines)
-  if (linkError) warnings.push(`The tee time wasn't linked to this receipt: ${linkError}`)
-  if (membership) {
-    const memberError = await applyMembership(supabase, customer.id, membership, today)
-    if (memberError) warnings.push(`The membership wasn't added to the customer's account: ${memberError}. Update them in Admin → Users.`)
-  }
-  if (linkError === null && lines.some(l => l.bookingId)) sale = await loadSale(supabase, created.id)
-
-  const emailError = receiptEmail ? await emailReceipt(env, sale, receiptEmail) : null
-
-  return json({ sale, emailError, warnings }, 201)
-}
-
-// Slots with the players already booked (pending and paid bookings hold spots)
-async function loadSlots(supabase, ids) {
-  const { data, error } = await supabase
-    .from('TeeTimeSlot')
-    .select('id, date, startTime, maxPlayers, memberOnly, bookings:Booking(players, status)')
-    .in('id', ids)
-  if (error) return { error }
-  return {
-    data: data.map(({ bookings, ...slot }) => ({
-      ...slot,
-      bookedPlayers: (bookings || []).filter(b => b.status === 'PENDING' || b.status === 'CONFIRMED').reduce((sum, b) => sum + b.players, 0),
-    })),
-  }
-}
-
-/**
- * Creates a paid (CONFIRMED) walk-in/phone booking. Space is checked again right before the insert;
- * the online booking flow works the same way, so two bookings in the same instant could still overfill a slot.
- * totalCents is 0: the greens fees are on the sale, and counting them here too would double the revenue.
- */
-async function createBooking(supabase, nb, customer) {
-  const { data: [slot] = [], error } = await loadSlots(supabase, [nb.teeTimeSlotId])
-  if (error) return { error: error.message, status: 500 }
-  if (!slot || slot.maxPlayers - slot.bookedPlayers < nb.players) {
-    return { error: 'That tee time just filled up. Pick another time.', status: 409 }
-  }
-  const id = crypto.randomUUID()
-  const { error: insertError } = await supabase.from('Booking').insert({
-    id,
-    teeTimeSlotId: nb.teeTimeSlotId,
-    userId: customer?.id ?? null,
-    guestName: nb.name,
-    guestEmail: null,
-    players: nb.players,
-    totalCents: 0,
-    status: 'CONFIRMED',
-    source: nb.source,
-  })
-  if (insertError) return { error: insertError.message, status: 500 }
-  return { id }
-}
-
-// Sets SaleItem.bookingId on the receipt lines for tee times (create_sale saves lines in order).
-// Returns an error message, null when it linked lines, or undefined when there was nothing to link.
-async function linkBookings(supabase, sale, lines) {
-  if (!lines.some(l => l.bookingId)) return undefined
-  for (const [i, line] of lines.entries()) {
-    if (!line.bookingId) continue
-    const item = sale.items[i]
-    if (!item || item.description !== line.description) return 'receipt lines are out of order'
-    if (item.bookingId === line.bookingId) continue
-    const { error } = await supabase.from('SaleItem').update({ bookingId: line.bookingId }).eq('id', item.id)
-    if (error) return error.message
-  }
-  return null
-}
-
-/** { months, tier } bought in this sale, or null. Several membership lines add up; the last tier named wins. */
-export function membershipPurchase(items, variantsById) {
-  let months = 0
-  let tier = null
-  for (const item of items) {
-    const product = item?.variantId ? variantsById[item.variantId]?.product : null
-    if (!product?.membershipMonths) continue
-    months += product.membershipMonths * Number(item.quantity)
-    tier = product.membershipTier || tier
-  }
-  return months > 0 ? { months, tier } : null
-}
-
-// Makes the customer a member through their new end date. Admins keep their role.
-async function applyMembership(supabase, userId, { months, tier }, today) {
-  const { data: user, error } = await supabase.from('User').select('id, role, memberUntil').eq('id', userId).single()
-  if (error) return error.message
-  // A member with no end date (added by hand) starts counting from today
-  const current = user.role === 'MEMBER' || user.role === 'ADMIN' ? user.memberUntil : null
-  const update = {
-    memberUntil: extendMembership(current, months, today),
-    renewalReminderKey: null,
-    ...(tier ? { membershipTier: tier } : {}),
-    ...(user.role === 'ADMIN' ? {} : { role: 'MEMBER' }),
-  }
-  const { error: updateError } = await supabase.from('User').update(update).eq('id', userId)
-  return updateError ? updateError.message : null
+  return json(saved, 201)
 }

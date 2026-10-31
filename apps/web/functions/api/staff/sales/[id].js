@@ -4,6 +4,8 @@ import { loadSale, emailReceipt } from './_sale.js'
 import { consumeApproval } from '../_approvals.js'
 import { localDate } from '../../../../src/lib/timeclock.js'
 import { openSession } from '../_drawer.js'
+import { makeStripe, stripeMessage } from '../_stripe.js'
+import { refundForLine } from '../../../../src/lib/pricing.js'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -24,6 +26,8 @@ export async function onRequestGet({ request, env, params }) {
 //   { action: 'email', email }
 //   { action: 'void', approvalId, reason, registerId }                       whole sale, same day only
 //   { action: 'refund', approvalId, reason, registerId, items: [{ saleItemId, quantity }], restock }
+//   Both take method: 'CARD_TERMINAL' | 'CASH' (default: card when the sale was paid by card and some is left).
+//   Card refunds go back through Stripe (up to what's left of the card payment); cash needs the drawer open.
 // Voids and refunds need a manager approval (POST /api/staff/approvals) for that action.
 export async function onRequestPost({ request, env, params }) {
   const result = await requireRegister(request, env)
@@ -37,7 +41,7 @@ export async function onRequestPost({ request, env, params }) {
   }
 
   if (body.action === 'email') return sendReceipt(result, env, params.id, body)
-  if (body.action === 'void' || body.action === 'refund') return refund(result, params.id, body)
+  if (body.action === 'void' || body.action === 'refund') return refund(result, env, params.id, body)
   return json({ error: 'Unknown action' }, 400)
 }
 
@@ -52,7 +56,29 @@ async function sendReceipt({ supabase }, env, saleId, body) {
   return error ? json({ error }, 502) : json({ success: true })
 }
 
-async function refund({ supabase, dbUser, employee }, saleId, body) {
+const money = (cents) => `$${(cents / 100).toFixed(2)}`
+
+/** The sale's card payment and how much of it can still be refunded to the card. */
+export function cardRefundable(sale) {
+  const payment = sale.payments.find(p => p.method === 'CARD_TERMINAL') ?? null
+  const refunded = (sale.refunds || []).filter(r => r.method === 'CARD_TERMINAL').reduce((sum, r) => sum + r.amountCents, 0)
+  return { payment, availableCents: payment ? Math.max(0, payment.amountCents - refunded) : 0 }
+}
+
+/** How much of the sale's cash payment hasn't been refunded yet. */
+export function cashRefundable(sale) {
+  const paid = sale.payments.filter(p => p.method === 'CASH').reduce((sum, p) => sum + p.amountCents, 0)
+  const refunded = (sale.refunds || []).filter(r => r.method === 'CASH').reduce((sum, r) => sum + r.amountCents, 0)
+  return Math.max(0, paid - refunded)
+}
+
+/** What refund_sale() will return for these lines (refundForLine mirrors its per-line formula). */
+export function refundAmount(sale, items) {
+  const lines = Object.fromEntries(sale.items.map(i => [i.id, i]))
+  return items.reduce((sum, { saleItemId, quantity }) => sum + refundForLine(lines[saleItemId], quantity).amountCents, 0)
+}
+
+async function refund({ supabase, dbUser, employee }, env, saleId, body) {
   const isVoid = body.action === 'void'
   const sale = await loadSale(supabase, saleId)
   if (!sale) return json({ error: 'Sale not found' }, 404)
@@ -63,14 +89,16 @@ async function refund({ supabase, dbUser, employee }, saleId, body) {
   const { data: register } = await supabase.from('Register').select('id, active').eq('id', body.registerId ?? '').maybeSingle()
   if (!register?.active) return json({ error: 'Choose a register' }, 400)
 
-  // Cash comes out of this register's drawer, so it must be open
-  if (!(await openSession(supabase, register.id))) {
-    return json({ error: 'Open the cash drawer first (count the starting cash), then give the refund.', code: 'DRAWER_CLOSED' }, 409)
+  // Money goes back the way it came: to the card (through Stripe) or in cash (out of the drawer)
+  if (sale.payments.some(p => !['CASH', 'CARD_TERMINAL'].includes(p.method))) {
+    return json({ error: 'This sale has a payment type the register can\'t refund yet. Refund it from the admin panel.' }, 409)
   }
-
-  // Money goes back the way it came. Only cash exists today; card refunds arrive with Stripe Terminal.
-  if (sale.payments.some(p => p.method !== 'CASH')) {
-    return json({ error: 'This sale wasn\'t paid in cash. Card and account refunds aren\'t available yet.' }, 409)
+  const card = cardRefundable(sale)
+  const method = body.method ?? (card.availableCents > 0 ? 'CARD_TERMINAL' : 'CASH')
+  if (!['CASH', 'CARD_TERMINAL'].includes(method)) return json({ error: 'Refund method must be cash or card' }, 400)
+  if (method === 'CARD_TERMINAL' && !card.payment) return json({ error: 'This sale wasn\'t paid by card' }, 400)
+  if (method === 'CASH' && !(await openSession(supabase, register.id))) {
+    return json({ error: 'Open the cash drawer first (count the starting cash), then give the refund.', code: 'DRAWER_CLOSED' }, 409)
   }
 
   let items
@@ -99,6 +127,29 @@ async function refund({ supabase, dbUser, employee }, saleId, body) {
     }
   }
 
+  // Card refunds can't send back more than is left of the card payment (split sales: refund the rest in cash)
+  const amountCents = refundAmount(sale, items)
+  if (isVoid && method === 'CARD_TERMINAL' && amountCents > card.availableCents) {
+    return json({ error: 'Part of this sale was paid in cash. Use Refund twice: some items to the card, the rest in cash.' }, 409)
+  }
+  if (method === 'CARD_TERMINAL' && amountCents > card.availableCents) {
+    return json({
+      error: card.availableCents
+        ? `Only ${money(card.availableCents)} can go back to the card. Refund fewer items to the card and the rest in cash.`
+        : 'The card payment has already been refunded in full. Refund in cash.',
+    }, 409)
+  }
+
+  // Likewise, cash refunds only give back what was paid in cash (a card sale goes back to the card)
+  const cash = cashRefundable(sale)
+  if (method === 'CASH' && amountCents > cash) {
+    return json({
+      error: cash
+        ? `Only ${money(cash)} was paid in cash. Refund fewer items in cash and the rest to the card.`
+        : 'This sale was paid by card. Refund it to the card.',
+    }, 409)
+  }
+
   const approval = await consumeApproval(supabase, body.approvalId, {
     action: isVoid ? 'VOID' : 'REFUND',
     cashierId: employee.id,
@@ -108,11 +159,30 @@ async function refund({ supabase, dbUser, employee }, saleId, body) {
     return json({ error: `A manager needs to approve this ${isVoid ? 'void' : 'refund'}, and the approval may have expired. Approve it again.`, code: 'APPROVAL_REQUIRED' }, 403)
   }
 
+  // Card: return the money through Stripe first (idempotent per approval), then record it. If Stripe refuses,
+  // the approval is released so the cashier can try again without asking the manager twice.
+  let stripeRefundId = null
+  if (method === 'CARD_TERMINAL') {
+    const stripe = makeStripe(env)
+    if (!stripe) return json({ error: 'Card refunds aren\'t set up (STRIPE_SECRET_KEY)' }, 503)
+    try {
+      const refund = await stripe.refunds.create(
+        { payment_intent: card.payment.stripePaymentIntentId, amount: amountCents, metadata: { saleId: sale.id, approvalId: approval.id } },
+        { idempotencyKey: `sale-refund-${approval.id}` },
+      )
+      stripeRefundId = refund.id
+    } catch (e) {
+      await supabase.from('ManagerApproval').update({ usedAt: null }).eq('id', approval.id)
+      return json({ error: `The card refund didn't go through: ${stripeMessage(e)}` }, 502)
+    }
+  }
+
   const { data: refunded, error } = await supabase.rpc('refund_sale', {
     p_refund: {
       saleId: sale.id,
       kind: isVoid ? 'VOID' : 'REFUND',
-      method: 'CASH',
+      method,
+      stripeRefundId,
       reason,
       restock: isVoid ? true : Boolean(body.restock),
       approvalId: approval.id,
@@ -123,7 +193,12 @@ async function refund({ supabase, dbUser, employee }, saleId, body) {
     p_items: items,
   })
   // P0001 = RAISE EXCEPTION in refund_sale (already refunded, quantity too high, …)
-  if (error) return json({ error: error.message }, error.code === 'P0001' ? 409 : 500)
+  if (error) {
+    if (stripeRefundId) {
+      return json({ error: `The card was refunded ${money(amountCents)} in Stripe (${stripeRefundId}), but the refund didn't save here: ${error.message}. Tell a manager.` }, 500)
+    }
+    return json({ error: error.message }, error.code === 'P0001' ? 409 : 500)
+  }
 
   return json({ refund: refunded, sale: await loadSale(supabase, sale.id) })
 }

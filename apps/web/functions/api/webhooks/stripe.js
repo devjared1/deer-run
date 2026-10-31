@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 import { Resend } from 'resend'
+import { completeCardCheckout } from '../staff/_cardCheckout.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -20,6 +21,20 @@ export async function onRequestPost({ request, env }) {
     return json({ error: `Webhook signature verification failed: ${err.message}` }, 400)
   }
 
+  // Register (POS) card payments: save the sale if the register hasn't already (e.g. it was closed mid-payment)
+  if (event.type === 'payment_intent.succeeded' && event.data.object.metadata?.cardCheckoutId) {
+    const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+    try {
+      const done = await completeCardCheckout(supabase, env, event.data.object.metadata.cardCheckoutId, event.data.object)
+      if (done.checkout?.status === 'SUCCEEDED') console.error('POS card checkout charged but not saved:', done.checkout.id, done.checkout.lastError)
+    } catch (e) {
+      // 500 makes Stripe retry the webhook later
+      return json({ error: e.message }, 500)
+    }
+    return json({ received: true })
+  }
+
+  // Online tee time bookings
   if (event.type === 'payment_intent.succeeded') {
     const paymentIntent = event.data.object
     const bookingId = paymentIntent.metadata?.bookingId

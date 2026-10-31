@@ -25,7 +25,26 @@
           <tr v-for="r in registers" :key="r.id">
             <td class="td text-bark font-semibold">{{ r.name }}</td>
             <td class="td text-gray-600">
-              <code v-if="r.stripeReaderId" class="text-xs">{{ r.stripeReaderId }}</code>
+              <template v-if="r.stripeReaderId">
+                <div class="flex items-center gap-2">
+                  <span
+                    :class="['w-2 h-2 rounded-full flex-shrink-0', readerFor(r)?.status === 'online' ? 'bg-pine' : readerFor(r) ? 'bg-red-400' : 'bg-gray-300']"
+                    :title="readerFor(r)?.status ?? 'unknown'"
+                  />
+                  <span v-if="readerFor(r)" class="text-sm">
+                    {{ readerFor(r).label }}
+                    <span class="text-xs" :class="readerFor(r).status === 'online' ? 'text-pine' : 'text-red-500'">
+                      {{ readerFor(r).status === 'online' ? 'Online' : 'Offline' }}
+                    </span>
+                    <span v-if="readerFor(r).simulated" class="text-xs text-amber-dark"> · simulated</span>
+                  </span>
+                  <span v-else-if="readers" class="text-xs text-red-500">Not found in Stripe</span>
+                </div>
+                <code class="text-[11px] text-gray-400">{{ r.stripeReaderId }}</code>
+              </template>
+              <button v-else-if="readers?.configured" class="text-xs text-lake hover:text-pine" @click="openPair(r)">
+                + Pair a reader
+              </button>
               <span v-else class="text-gray-400 text-xs">Not assigned</span>
             </td>
             <td class="td">
@@ -45,6 +64,43 @@
       </table>
     </div>
 
+    <p v-if="readers && !readers.configured" class="text-gray-400 text-xs font-body mt-3">
+      Card readers need Stripe (STRIPE_SECRET_KEY) set in the Pages project.
+    </p>
+    <p v-else-if="readers" class="text-gray-400 text-xs font-body mt-3">
+      Reader status comes from Stripe<template v-if="readers.testMode"> (test mode: pair code <code>simulated-wpe</code> makes a simulated reader)</template>.
+      <button class="text-lake hover:text-pine ml-1" @click="loadReaders">Refresh</button>
+    </p>
+    <p v-if="readersError" class="text-red-500 text-xs font-body mt-2">{{ readersError }}</p>
+
+    <!-- Pair a reader -->
+    <div v-if="pairing" class="modal-overlay" @click.self="pairing = null">
+      <div class="modal-box">
+        <h2 class="font-display font-bold text-bark mb-1">Pair a card reader</h2>
+        <p class="text-gray-500 text-sm font-body mb-4">
+          For {{ pairing.register.name }}. On the reader, open <strong>Settings → Generate pairing code</strong>
+          (it needs Wi-Fi or Ethernet) and enter the code here.
+        </p>
+        <div class="space-y-3">
+          <div>
+            <label class="label-sm">Pairing code *</label>
+            <input v-model="pairing.code" type="text" class="input-field w-full" :placeholder="readers?.testMode ? 'simulated-wpe' : 'e.g. sepia-cerulean-aardvark'" />
+          </div>
+          <div>
+            <label class="label-sm">Reader name *</label>
+            <input v-model="pairing.label" type="text" maxlength="100" class="input-field w-full" />
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-5">
+          <button class="btn-outline-sm" @click="pairing = null">Cancel</button>
+          <button :disabled="pairing.busy || !pairing.code.trim() || !pairing.label.trim()" class="btn-amber px-4 py-2 text-sm disabled:opacity-50" @click="pair">
+            {{ pairing.busy ? 'Pairing…' : 'Pair Reader' }}
+          </button>
+        </div>
+        <p v-if="pairing.error" class="text-red-500 text-xs mt-2">{{ pairing.error }}</p>
+      </div>
+    </div>
+
     <div v-if="form" class="modal-overlay" @click.self="form = null">
       <div class="modal-box">
         <h2 class="font-display font-bold text-bark mb-4">{{ form.id ? 'Edit Register' : 'New Register' }}</h2>
@@ -56,7 +112,7 @@
           <div>
             <label class="label-sm">Stripe Card Reader ID</label>
             <input v-model="form.stripeReaderId" type="text" class="input-field w-full" placeholder="tmr_…" />
-            <p class="text-gray-400 text-xs mt-1 font-body">From the Stripe dashboard once the reader is set up. Card payments come in a later phase.</p>
+            <p class="text-gray-400 text-xs mt-1 font-body">Set automatically by "Pair a reader". Clear it to unassign the reader.</p>
           </div>
           <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer">
             <input v-model="form.active" type="checkbox" class="rounded" /> Active
@@ -84,6 +140,46 @@ const error     = ref(null)
 const form      = ref(null)
 const saving    = ref(false)
 const formError = ref(null)
+
+// Stripe Terminal readers: { configured, testMode, readers: [{ id, label, status, simulated }] }
+const readers      = ref(null)
+const readersError = ref(null)
+const pairing      = ref(null)
+
+function readerFor(r) {
+  return readers.value?.readers.find(x => x.id === r.stripeReaderId) ?? null
+}
+
+async function loadReaders() {
+  readersError.value = null
+  try {
+    readers.value = await apiFetch('/api/admin/registers/readers')
+  } catch (e) {
+    readersError.value = `Couldn't load card readers from Stripe: ${e.message}`
+  }
+}
+
+function openPair(register) {
+  pairing.value = { register, code: readers.value?.testMode ? 'simulated-wpe' : '', label: register.name, busy: false, error: null }
+}
+
+async function pair() {
+  const p = pairing.value
+  p.busy  = true
+  p.error = null
+  try {
+    await apiFetch('/api/admin/registers/readers', {
+      method: 'POST',
+      body: { registrationCode: p.code.trim(), label: p.label.trim(), registerId: p.register.id },
+    })
+    pairing.value = null
+    await Promise.all([load(), loadReaders()])
+  } catch (e) {
+    p.error = e.message
+  } finally {
+    p.busy = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -127,7 +223,10 @@ async function remove(r) {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadReaders()
+})
 </script>
 
 <style scoped>
