@@ -28,6 +28,46 @@
         </div>
       </div>
 
+      <!-- Pro shop sales today -->
+      <div class="bg-white rounded-xl border border-gray-200 mb-6">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+          <h2 class="font-display font-bold text-bark text-sm">
+            Today's Register Sales
+            <span v-if="sales" class="text-gray-400 font-body font-normal ml-1">
+              ({{ sales.sales.count }} sale{{ sales.sales.count === 1 ? '' : 's' }})
+            </span>
+          </h2>
+          <RouterLink to="/admin/sales" class="text-xs text-lake hover:text-pine font-body">
+            Sales & reports →
+          </RouterLink>
+        </div>
+        <div v-if="salesError" class="px-5 py-4 text-red-500 text-sm">
+          {{ salesError }}
+        </div>
+        <div v-else-if="sales" class="px-5 py-4 font-body">
+          <div class="flex flex-wrap gap-x-8 gap-y-2 mb-4 text-sm">
+            <div><span class="text-gray-400">Net sales</span> <span class="text-bark font-semibold tabular-nums">{{ formatCents(sales.net.salesCents) }}</span></div>
+            <div><span class="text-gray-400">Tax</span> <span class="text-bark tabular-nums">{{ formatCents(sales.net.taxCents) }}</span></div>
+            <div><span class="text-gray-400">Total</span> <span class="text-bark tabular-nums">{{ formatCents(sales.net.totalCents) }}</span></div>
+            <div v-if="sales.returns.voidCount + sales.returns.refundCount" class="text-clay">
+              {{ sales.returns.voidCount + sales.returns.refundCount }} void/refund{{ sales.returns.voidCount + sales.returns.refundCount === 1 ? '' : 's' }}
+            </div>
+          </div>
+          <div v-if="sales.categories.length" class="space-y-1.5">
+            <div v-for="c in sales.categories" :key="c.name" class="grid grid-cols-[10rem,1fr,5rem] items-center gap-3 text-sm">
+              <span class="text-bark truncate">{{ c.name }}</span>
+              <div class="h-2 rounded-full bg-gray-100 overflow-hidden">
+                <div class="h-full bg-pine/70" :style="{ width: `${categoryWidth(c.netCents)}%` }" />
+              </div>
+              <span class="text-right tabular-nums text-gray-600">{{ formatCents(c.netCents) }}</span>
+            </div>
+          </div>
+          <div v-else class="text-gray-400 text-sm text-center py-2">
+            No register sales yet today
+          </div>
+        </div>
+      </div>
+
       <!-- On the clock -->
       <div class="bg-white rounded-xl border border-gray-200 mb-6">
         <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
@@ -103,6 +143,8 @@ import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { positionLabel } from '@/data/employeePositions'
 import { localDate, formatClockTime, formatLocalDate } from '@/lib/timeclock'
+import { apiFetch } from '@/lib/api'
+import { formatCents } from '@/lib/money'
 
 const authStore = useAuthStore()
 const loading = ref(true)
@@ -154,8 +196,27 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
+// Today's register sales by category (same report as Admin → Sales → Report)
+const sales      = ref(null)
+const salesError = ref(null)
+
+async function loadSales() {
+  salesError.value = null
+  try {
+    sales.value = await apiFetch(`/api/admin/sales/report?date=${today}`)
+  } catch (e) {
+    salesError.value = e.message
+  }
+}
+
+function categoryWidth(cents) {
+  const max = Math.max(1, ...sales.value.categories.map(c => c.netCents))
+  return Math.max(0, Math.round((cents / max) * 100))
+}
+
 onMounted(() => {
   load()
   loadOnClock()
+  loadSales()
 })
 </script>

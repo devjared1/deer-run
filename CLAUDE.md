@@ -33,7 +33,7 @@ deer-run/
 │   │   │   │   ├── booking/   # BookingWizard + 4 step components
 │   │   │   │   ├── layout/    # AppNav, AppFooter, PageHero
 │   │   │   │   ├── membership/# MembershipInquiryForm, MembershipTierCard
-│   │   │   │   ├── pos/       # Register modals (tender, approval, refund, recent sales…) and receipts
+│   │   │   │   ├── pos/       # Register modals, receipts/slips (incl. ZReportSlip), SalesReport
 │   │   │   │   ├── schedule/  # ScheduleGrid, ScheduleMonth, schedule/time off display helpers
 │   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
 │   │   │   │   ├── tournament/# EventCard, EventFilterBar
@@ -208,7 +208,7 @@ export async function onRequest({ request, env }) { ... }
 ### Endpoints
 
 Each handler file starts with a comment giving its exact request/response shape; read it before changing a call.
-Files starting with `_` (e.g. `_auth.js`, `_validate.js`) are shared modules, not routes. Static files win over
+Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared modules, not routes. Static files win over
 `[id].js` in the same folder (e.g. `shifts/copy.js`, `time-off/count.js`).
 
 **Public site**
@@ -249,6 +249,9 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`) are shared modules, no
 | `/api/admin/products[/:id]` | GET, POST / PUT, DELETE | Products with nested variants |
 | `/api/admin/inventory/:variantId` | GET, POST | Stock history / adjust (`adjust_inventory()`) |
 | `/api/admin/registers[/:id]` | GET, POST / PUT, DELETE | Registers (Stripe reader ID) |
+| `/api/admin/sales?from=&to=&registerId=&status=&number=&page=` | GET | Sales list (paged); `&format=csv&detail=sales\|items` exports the range |
+| `/api/admin/sales/:id` | GET, POST | Sale detail; `{ action: 'email', email }` |
+| `/api/admin/sales/report?date=` (or `?from=&to=`, `&registerId=`) | GET | Sales / end-of-day (Z) report (`_report.js` → `buildReport`) |
 
 **Staff portal** (`requireStaff`: an active `Employee` linked to the login; register endpoints use `requireRegister`)
 
@@ -261,6 +264,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`) are shared modules, no
 | `/api/staff/pin` | GET, PUT | Register manager's own PIN |
 | `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch |
 | `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
+| `/api/staff/register/report?registerId=&date=` | GET | Z report for one register and day (register managers only) |
 | `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`) |
 | `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`) |
 
@@ -362,7 +366,7 @@ reach the database. `TODO.md` → Housekeeping tracks which migrations still nee
 | `/confirmation` | `ConfirmationView.vue` (`?booking_id=`) | — |
 | `/login`        | `LoginView.vue`       | — |
 | `/account`      | `AccountView.vue`     | `requiresAuth` |
-| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `registers` | `requiresAdmin` |
+| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `registers` | `requiresAdmin` |
 | `/staff`        | `staff/StaffLayout.vue` + `TimeClockView` | `requiresStaff` |
 | `/staff/timesheet`, `/staff/schedule`, `/staff/time-off` | `MyTimesheetView`, `MyScheduleView`, `TimeOffView` | `requiresStaff` |
 | `/staff/register` | `RegisterView.vue` | `requiresStaff` + `requiresRegister` |
@@ -454,6 +458,9 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
 - **Time off**: staff request on `/staff/time-off`; admins approve/deny on `/admin/time-off` (sidebar badge shows
   the pending count) and the employee is emailed. Approved and pending time off shows on the schedule.
 - **POS**: see `TODO.md` → Feature 2 for the register, manager approvals, receipts, voids and refunds.
+  Reporting lives on `/admin/sales` (sales list, receipts, CSV, end-of-day report) and the dashboard; managers print
+  the end-of-day (Z) slip from the register. Sales count on the day they're rung up and voids/refunds on the day they
+  happen. Supabase returns at most 1,000 rows per request, so reports and exports page through with `fetchAll()`.
 
 ---
 
