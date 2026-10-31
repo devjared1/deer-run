@@ -80,14 +80,25 @@ employee and the register lives in the staff portal.
       (`supabase.rpc`) if it ever happens; same pattern as the POS `create_sale`
 
 ### Phase 3: Scheduling
-- [ ] Admin API: `GET /api/admin/shifts?from=&to=`, `POST`, `PUT/DELETE /:id`
-- [ ] Admin **Schedule** builder: week grid (employees × days), add/edit/delete shifts, filter by department
-- [ ] Copy last week's schedule into this week
-- [ ] Warnings: overlapping shifts, scheduling over approved time off, inactive employees
-- [ ] Staff API: `GET /api/staff/schedule?from=&to=` (own shifts; option for the whole team, read-only)
-- [ ] Staff **My Schedule** page: week view with previous/next navigation
-- [ ] Printable schedule: **weekly, bi-weekly and monthly** views with previous/next (future and past)
-      period navigation, a print stylesheet (`@media print`, landscape), and a "Print" button
+- [x] Shared schedule helpers `src/lib/schedule.js` (used by both the app and Functions): shift length
+      (an end at or before the start runs past midnight), overlap checks, warnings, week / 2-week / month periods
+- [x] Admin API: `GET /api/admin/shifts?from=&to=` (or `?view=week|biweek|month&date=`, which resolves the
+      period on the server; weeks start on the pay period anchor's weekday and 2-week views line up with pay
+      periods), `POST`, `PUT/DELETE /:id`. The GET also returns employees and approved/pending time off
+- [x] Admin **Schedule** builder (`/admin/schedule`): week grid (employees × days), click a cell to add a shift
+      or a shift to edit/delete it, "working as" position override and notes, per-employee and per-day hour
+      totals, filter by department
+- [x] Copy last week's schedule into this week (`POST /api/admin/shifts/copy`; 2-week view copies the previous
+      2 weeks). Skips inactive employees and exact duplicates, so running it twice is harmless
+- [x] Warnings (shown, not enforced): overlapping shifts, shifts on approved time off or a pending request,
+      inactive employees. Shown on the grid, as a count, and live in the shift form before saving
+- [x] Staff API: `GET /api/staff/schedule?view=&date=[&team=1]` (own shifts; `team=1` for the whole team,
+      read-only, names/positions only; coworkers' time off shows as "Off" without the type)
+- [x] Staff **My Schedule** page (`/staff/schedule`): week view with previous/next navigation, plus 2-week,
+      month and whole-team views
+- [x] Printable schedule: **weekly, bi-weekly and monthly** views with previous/next (future and past)
+      period navigation, a print stylesheet (`@media print`, landscape `@page` added only while printing),
+      and a "Print" button on both the admin and staff pages
 - [ ] Optional: email employees their schedule when it's published (Resend)
 
 ### Phase 4: Time off
@@ -95,7 +106,8 @@ employee and the register lives in the staff portal.
 - [ ] Staff **Time Off** page: request form (dates, type, reason) + my requests with status
 - [ ] Admin API: list (filter by status/date), approve/deny with a note (records `reviewedById`, `reviewedAt`)
 - [ ] Admin **Time Off** queue; pending-count badge in the admin sidebar
-- [ ] Show approved time off on the schedule grid and the printed schedule
+- [x] Show approved time off on the schedule grid and the printed schedule (pending requests show too,
+      in amber, on the admin schedule)
 - [ ] Email the employee when a request is approved or denied (Resend)
 
 ---
@@ -285,7 +297,8 @@ manager can print a statement for any member **on demand**.
       are applied
 - [ ] Later, from a network that can reach the database:
       `npx prisma migrate resolve --applied <name>` for each migration
-- [ ] Fix `npm run lint` in `apps/web`: `--ignore-path .gitignore` points at `apps/web/.gitignore`, which
-      doesn't exist. Also, the script runs `--fix`, which rewrites files whenever lint runs
+- [x] Fix `npm run lint` in `apps/web`: now uses the root `.gitignore` and no longer runs `--fix`
+      (use `npm run lint:fix --workspace=apps/web` to auto-format). Lint passes with 0 errors; the ~2,700
+      warnings are template formatting rules that `lint:fix` would rewrite
 - [ ] Update `CLAUDE.md`: new models, endpoints and routes. It also still describes Stripe Checkout and
       `checkout.session.completed`, but the code uses PaymentIntents and `payment_intent.succeeded`

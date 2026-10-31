@@ -90,6 +90,7 @@ const sidebarOpen = ref(false)
 const navItems = computed(() => [
   { to: '/staff',           label: 'Time Clock',   icon: '⏱' },
   { to: '/staff/timesheet', label: 'My Timesheet', icon: '🗓' },
+  { to: '/staff/schedule',  label: 'My Schedule',  icon: '📅' },
   ...(authStore.canUseRegister ? [{ to: '/staff/register', label: 'Register', icon: '🧾' }] : []),
   ...(authStore.isRegisterManager ? [{ to: '/staff/pin', label: 'Manager PIN', icon: '🔑' }] : []),
 ])
@@ -97,6 +98,7 @@ const navItems = computed(() => [
 const titles = {
   '/staff':           'Time Clock',
   '/staff/timesheet': 'My Timesheet',
+  '/staff/schedule':  'My Schedule',
   '/staff/register':  'Register',
   '/staff/pin':       'Manager PIN',
 }

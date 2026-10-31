@@ -27,6 +27,7 @@ const routes = [
       { path: 'users',      component: () => import('@/views/admin/UsersView.vue') },
       { path: 'employees',  component: () => import('@/views/admin/EmployeesView.vue') },
       { path: 'timesheets', component: () => import('@/views/admin/TimesheetsView.vue') },
+      { path: 'schedule',   component: () => import('@/views/admin/ScheduleView.vue') },
       { path: 'products',   component: () => import('@/views/admin/ProductsView.vue') },
       { path: 'registers',  component: () => import('@/views/admin/RegistersView.vue') },
     ],
@@ -40,6 +41,7 @@ const routes = [
     children: [
       { path: '',          component: () => import('@/views/staff/TimeClockView.vue') },
       { path: 'timesheet', component: () => import('@/views/staff/MyTimesheetView.vue') },
+      { path: 'schedule',  component: () => import('@/views/staff/MyScheduleView.vue') },
       { path: 'register',  component: () => import('@/views/staff/RegisterView.vue'), meta: { requiresRegister: true } },
       { path: 'pin',       component: () => import('@/views/staff/ManagerPinView.vue'), meta: { requiresRegisterManager: true } },
     ],
