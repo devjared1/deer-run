@@ -102,13 +102,21 @@ employee and the register lives in the staff portal.
 - [ ] Optional: email employees their schedule when it's published (Resend)
 
 ### Phase 4: Time off
-- [ ] Staff API: create, list and cancel own requests (cancel only while pending)
-- [ ] Staff **Time Off** page: request form (dates, type, reason) + my requests with status
-- [ ] Admin API: list (filter by status/date), approve/deny with a note (records `reviewedById`, `reviewedAt`)
-- [ ] Admin **Time Off** queue; pending-count badge in the admin sidebar
+- [x] Staff API: create, list and cancel own requests (cancel only while pending)
+      (`GET/POST /api/staff/time-off`, `PUT /api/staff/time-off/:id { action: 'cancel' }`). Requests can't start in
+      the past, are at most 60 days, and can't overlap the employee's own pending/approved requests
+- [x] Staff **Time Off** page (`/staff/time-off`): request form (dates, type, reason) + my requests with status and
+      the manager's note; after sending, mentions any shifts already scheduled in those days
+- [x] Admin API: list (filter by status/date), approve/deny with a note (records `reviewedById`, `reviewedAt`)
+      (`GET /api/admin/time-off?status=&from=&to=`, `PUT /api/admin/time-off/:id { action, note }`). Each request
+      comes with the shifts scheduled during it. Decisions only apply to pending requests (no double decisions)
+- [x] Admin **Time Off** queue (`/admin/time-off`); pending-count badge in the admin sidebar
+      (`GET /api/admin/time-off/count`)
 - [x] Show approved time off on the schedule grid and the printed schedule (pending requests show too,
       in amber, on the admin schedule)
-- [ ] Email the employee when a request is approved or denied (Resend)
+- [x] Email the employee when a request is approved or denied (Resend; the decision is saved even if the email fails,
+      and the admin sees the email error)
+- [ ] Optional: let a manager revoke an approved request (today: deny only works on pending requests)
 
 ---
 
@@ -220,8 +228,8 @@ Membership Dues, Concessions (food & drink), Apparel, Golf Equipment & Balls, Re
       exactly what's left), restocks tracked items (`RETURN` stock log) and sets the status
       (PARTIALLY_REFUNDED / REFUNDED / VOIDED). The register shows "Give the customer $X" and prints a refund
       slip with a signature line (which opens the drawer). Cash only for now; card refunds come in Phase 3
-- [ ] Setup guide in the repo (`docs/register-setup.md`): Chrome kiosk-printing shortcut, setting the
-      receipt printer as default, paper size, scanner test, reader pairing
+- [x] Setup guide in the repo (`docs/register-setup.md`): Chrome kiosk-printing shortcut, setting the
+      receipt printer as default, paper size, drawer kick, scanner test, reader pairing
 
 ### Phase 3: Card payments (Stripe Terminal)
 - [ ] Stripe setup: a Terminal Location for the course; register the reader(s) to it
@@ -300,5 +308,5 @@ manager can print a statement for any member **on demand**.
 - [x] Fix `npm run lint` in `apps/web`: now uses the root `.gitignore` and no longer runs `--fix`
       (use `npm run lint:fix --workspace=apps/web` to auto-format). Lint passes with 0 errors; the ~2,700
       warnings are template formatting rules that `lint:fix` would rewrite
-- [ ] Update `CLAUDE.md`: new models, endpoints and routes. It also still describes Stripe Checkout and
-      `checkout.session.completed`, but the code uses PaymentIntents and `payment_intent.succeeded`
+- [x] Update `CLAUDE.md`: new models, endpoints and routes, auth helpers, shared libraries, migrations workflow,
+      and the PaymentIntents / `payment_intent.succeeded` booking flow (was still describing Stripe Checkout)

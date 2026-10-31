@@ -26,6 +26,11 @@
         >
           <span class="text-base w-5 text-center">{{ item.icon }}</span>
           {{ item.label }}
+          <span
+            v-if="item.to === '/admin/time-off' && pendingTimeOff"
+            class="ml-auto min-w-[1.25rem] text-center text-xs font-semibold rounded-full px-1.5 py-0.5 bg-clay text-parch"
+            :title="`${pendingTimeOff} time off request${pendingTimeOff === 1 ? '' : 's'} waiting`"
+          >{{ pendingTimeOff }}</span>
         </RouterLink>
       </nav>
 
@@ -70,14 +75,19 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { usePendingTimeOff } from '@/composables/usePendingTimeOff'
 import DeerLogo from '@/components/ui/DeerLogo.vue'
 
 const route     = useRoute()
 const authStore = useAuthStore()
 const sidebarOpen = ref(false)
+
+// Pending time off badge, refreshed on every admin page change
+const { pending: pendingTimeOff, refresh: refreshPendingTimeOff } = usePendingTimeOff()
+watch(() => route.path, refreshPendingTimeOff, { immediate: true })
 
 const navItems = [
   { to: '/admin',             label: 'Dashboard',    icon: '▦' },
@@ -89,6 +99,7 @@ const navItems = [
   { to: '/admin/employees',   label: 'Employees',    icon: '🪪' },
   { to: '/admin/timesheets',  label: 'Timesheets',   icon: '⏱' },
   { to: '/admin/schedule',    label: 'Schedule',     icon: '📅' },
+  { to: '/admin/time-off',    label: 'Time Off',     icon: '🏖' },
   { to: '/admin/products',    label: 'Products',     icon: '🏷' },
   { to: '/admin/registers',   label: 'Registers',    icon: '🧾' },
 ]
@@ -103,6 +114,7 @@ const titles = {
   '/admin/employees':   'Employee Management',
   '/admin/timesheets':  'Timesheets',
   '/admin/schedule':    'Schedule',
+  '/admin/time-off':    'Time Off Requests',
   '/admin/products':    'Products & Inventory',
   '/admin/registers':   'Registers',
 }
