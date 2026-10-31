@@ -2,7 +2,7 @@
   <div class="min-h-screen bg-gray-50 flex">
     <!-- Sidebar -->
     <aside
-      :class="['fixed inset-y-0 left-0 z-40 w-60 bg-pine text-parch flex flex-col transition-transform duration-200',
+      :class="['fixed inset-y-0 left-0 z-40 w-60 bg-pine text-parch flex flex-col transition-transform duration-200 print:hidden',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0']"
     >
       <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 flex-shrink-0">
@@ -46,9 +46,9 @@
     />
 
     <!-- Main content -->
-    <div class="flex-1 lg:ml-60 flex flex-col min-h-screen">
+    <div class="flex-1 lg:ml-60 flex flex-col min-h-screen print:ml-0">
       <!-- Top bar -->
-      <header class="sticky top-0 z-20 h-16 bg-white border-b border-gray-200 flex items-center gap-4 px-5">
+      <header class="sticky top-0 z-20 h-16 bg-white border-b border-gray-200 flex items-center gap-4 px-5 print:hidden">
         <button
           @click="sidebarOpen = !sidebarOpen"
           class="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100"
@@ -62,7 +62,7 @@
       </header>
 
       <!-- Page content -->
-      <main class="flex-1 p-5 md:p-8">
+      <main class="flex-1 p-5 md:p-8 print:p-0">
         <RouterView />
       </main>
     </div>
@@ -88,6 +88,7 @@ const navItems = [
   { to: '/admin/users',       label: 'Users',        icon: '👤' },
   { to: '/admin/employees',   label: 'Employees',    icon: '🪪' },
   { to: '/admin/timesheets',  label: 'Timesheets',   icon: '⏱' },
+  { to: '/admin/schedule',    label: 'Schedule',     icon: '📅' },
   { to: '/admin/products',    label: 'Products',     icon: '🏷' },
   { to: '/admin/registers',   label: 'Registers',    icon: '🧾' },
 ]
@@ -101,6 +102,7 @@ const titles = {
   '/admin/users':       'User Management',
   '/admin/employees':   'Employee Management',
   '/admin/timesheets':  'Timesheets',
+  '/admin/schedule':    'Schedule',
   '/admin/products':    'Products & Inventory',
   '/admin/registers':   'Registers',
 }
