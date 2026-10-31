@@ -77,6 +77,14 @@
             <span class="font-semibold text-bark mr-auto">{{ register.name }}</span>
             <button class="text-lake hover:text-pine" @click="showRecentSales = true">Recent sales</button>
             <button class="text-lake hover:text-pine" @click="noSale">No sale</button>
+            <button
+              v-if="authStore.isRegisterManager"
+              class="text-lake hover:text-pine"
+              title="Print today's end-of-day (Z) report for this register"
+              @click="printZReport"
+            >
+              End of day
+            </button>
             <button class="text-lake hover:text-pine" @click="changeRegister">Change register</button>
           </div>
           <p v-if="registerError" class="px-4 pt-2 text-red-500 text-xs font-body">{{ registerError }}</p>
@@ -191,6 +199,7 @@
       <SaleReceipt v-if="printDoc.type === 'sale'" :sale="printDoc.sale" />
       <RefundReceipt v-else-if="printDoc.type === 'refund'" :sale="printDoc.sale" :refund="printDoc.refund" :register-name="register?.name" />
       <NoSaleSlip v-else-if="printDoc.type === 'noSale'" :at="printDoc.at" :register-name="register?.name" :approver-name="printDoc.approverName" />
+      <ZReportSlip v-else-if="printDoc.type === 'z'" :report="printDoc.report" />
     </div>
 
     <RecentSalesModal
@@ -298,6 +307,7 @@ import { unitPriceCents, priceLine, saleTotals, variantDescription } from '@/lib
 import { printReceipt } from '@/lib/printReceipt'
 import { useAuthStore } from '@/stores/auth'
 import SaleReceipt from '@/components/pos/SaleReceipt.vue'
+import ZReportSlip from '@/components/pos/ZReportSlip.vue'
 import RefundReceipt from '@/components/pos/RefundReceipt.vue'
 import NoSaleSlip from '@/components/pos/NoSaleSlip.vue'
 import VariantPickerModal from '@/components/pos/VariantPickerModal.vue'
@@ -500,6 +510,18 @@ async function printDocument(doc) {
   printDoc.value = doc
   await nextTick()
   printReceipt()
+}
+
+// Managers print today's Z report for this register (it also opens the drawer for the count)
+async function printZReport() {
+  registerError.value = null
+  try {
+    const report = await apiFetch(`/api/staff/register/report?${new URLSearchParams({ registerId: registerId.value })}`)
+    await printDocument({ type: 'z', report })
+  } catch (e) {
+    registerError.value = e.message
+  }
+  focusSearch()
 }
 
 async function noSale() {

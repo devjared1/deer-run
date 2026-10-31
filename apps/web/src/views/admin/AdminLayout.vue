@@ -101,6 +101,7 @@ const navItems = [
   { to: '/admin/schedule',    label: 'Schedule',     icon: '📅' },
   { to: '/admin/time-off',    label: 'Time Off',     icon: '🏖' },
   { to: '/admin/products',    label: 'Products',     icon: '🏷' },
+  { to: '/admin/sales',       label: 'Sales',        icon: '💵' },
   { to: '/admin/registers',   label: 'Registers',    icon: '🧾' },
 ]
 
@@ -116,6 +117,7 @@ const titles = {
   '/admin/schedule':    'Schedule',
   '/admin/time-off':    'Time Off Requests',
   '/admin/products':    'Products & Inventory',
+  '/admin/sales':       'Sales & Reports',
   '/admin/registers':   'Registers',
 }
 

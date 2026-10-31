@@ -290,9 +290,16 @@ manager can print a statement for any member **on demand**.
 
 ### Phase 7: Cash management and reporting
 - [ ] Cash drawer sessions: open with a float, close with a count, over/short
-- [ ] End-of-day (Z) report: sales by category and tender, tax collected, voids/refunds, cash expected
-- [ ] Admin **Sales** page: search sales, view/reprint receipts, export CSV
-- [ ] Dashboard: today's revenue by category
+- [x] End-of-day (Z) report: sales by category and tender, tax collected, discounts, voids/refunds, cash expected
+      (cash in − cash out; the opening float comes with drawer sessions), No Sale count. Sales count on the day
+      they're rung up and returns on the day they happen, so a past day's report never changes. Shared builder in
+      `functions/api/admin/sales/_report.js`. Admin: `GET /api/admin/sales/report?date=` or `?from=&to=`
+      (`&registerId=`), shown on **Sales → Report** (letter print or 80 mm slip). Register managers: **End of day**
+      button at the register prints the 80 mm slip for that register (`GET /api/staff/register/report`)
+- [x] Admin **Sales** page (`/admin/sales`): date range / register / status filters, find by receipt number, paged
+      list, sale detail with receipt preview and refund history, reprint (80 mm) and email the receipt, CSV export
+      (one row per sale or per item) (`GET /api/admin/sales[?format=csv&detail=sales|items]`, `GET/POST /api/admin/sales/:id`)
+- [x] Dashboard: today's register sales by category (net, with tax/total and void/refund count)
 
 ---
 

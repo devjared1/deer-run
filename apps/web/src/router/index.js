@@ -30,6 +30,7 @@ const routes = [
       { path: 'schedule',   component: () => import('@/views/admin/ScheduleView.vue') },
       { path: 'time-off',   component: () => import('@/views/admin/TimeOffView.vue') },
       { path: 'products',   component: () => import('@/views/admin/ProductsView.vue') },
+      { path: 'sales',      component: () => import('@/views/admin/SalesView.vue') },
       { path: 'registers',  component: () => import('@/views/admin/RegistersView.vue') },
     ],
   },

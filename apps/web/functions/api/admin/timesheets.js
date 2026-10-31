@@ -2,6 +2,7 @@ import { requireAdmin, json } from './_auth.js'
 import { serializeEntry, loadPayPeriod, resolvePeriod, fetchEntries, buildTimesheet } from '../staff/_timesheet.js'
 import { isValidYmd, formatClockTime } from '../../../src/lib/timeclock.js'
 import { positionLabel } from '../../../src/data/employeePositions.js'
+import { dollars, toCsv, csvResponse } from './_csv.js'
 
 // GET /api/admin/timesheets?date=YYYY-MM-DD[&format=csv&detail=summary|entries]
 // Every employee's timesheet for the pay period containing `date` (default: today).
@@ -66,27 +67,6 @@ export async function onRequestGet({ request, env }) {
 // ─── CSV ────────────────────────────────────────────────────────────────────
 
 const hours = (minutes) => (minutes / 60).toFixed(2)
-const dollars = (cents) => (cents / 100).toFixed(2)
-
-function csvCell(value) {
-  let s = value === null || value === undefined ? '' : String(value)
-  // Keep spreadsheet apps from treating text as a formula
-  if (/^[=+\-@]/.test(s)) s = `'${s}`
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
-}
-
-function toCsv(header, rows) {
-  return [header, ...rows].map(r => r.map(csvCell).join(',')).join('\r\n') + '\r\n'
-}
-
-function csvResponse(body, filename) {
-  return new Response(body, {
-    headers: {
-      'Content-Type': 'text/csv; charset=utf-8',
-      'Content-Disposition': `attachment; filename="${filename}"`,
-    },
-  })
-}
 
 // One row per employee: hours and an estimated gross (overtime at 1.5×)
 function summaryCsv(rows) {
