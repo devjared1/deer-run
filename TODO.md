@@ -176,9 +176,9 @@ Membership Dues, Concessions (food & drink), Apparel, Golf Equipment & Balls, Re
 - [x] Seed (`prisma/seed-pos.sql`): 12 categories, the "Pro Shop" register, and products. Greens fees,
       range, rentals and membership dues use the site's real prices; concessions, apparel and golf supplies
       are **placeholder prices to review**
-- [ ] Member Pro Shop discounts (10% Individual, 15% Premier/Family per `membershipTiers.js`) need the
-      member's tier, which isn't stored yet. Add `User.membershipTier` and apply the discount to eligible
-      categories at the register (Phase 2 or Phase 6)
+- [ ] Member Pro Shop discounts (10% Individual, 15% Premier/Family per `membershipTiers.js`). `User.membershipTier`
+      is now stored (set when a membership is sold, editable in Admin → Users); what's left is applying the discount
+      to eligible categories in `pricing.js` (register and server)
 
 ### Phase 2: Register (cash and no-charge sales)
 - [x] Schema, migration `4_pos_sales`: `Sale` (receipt number, status, register, cashier, customer,
@@ -274,22 +274,48 @@ manager can print a statement for any member **on demand**.
       online, PIN, autopay settings
 
 ### Phase 5: Tee sheet integration (online bookings flow into the POS)
-- [ ] Schema: `Booking.source` (ONLINE / POS / PHONE), `Booking.checkedInAt`, `SaleItem.bookingId`
-- [ ] Staff **Tee Sheet**: today's slots with bookings; online bookings show "Paid online"
-- [ ] Check-in: sets `checkedInAt` and opens a sale with the prepaid greens fee at $0 so add-ons
-      (cart, range, drinks) can be rung up on the same ticket
-- [ ] Walk-ins / phone bookings from the POS: create a `CONFIRMED` booking (source POS/PHONE) and the
-      greens fee sale together, respecting slot capacity
-- [ ] Keep the tee sheet current (poll every ~30 s; Supabase Realtime would need RLS policies)
+- [x] Schema: `Booking.source` (ONLINE / POS / PHONE), `Booking.checkedInAt`, `SaleItem.bookingId`
+      (SQL: `apps/api/prisma/sql/6_pos_teesheet_memberships_drawers.sql`)
+- [x] Staff **Tee Sheet** (`/staff/teesheet`, register positions): any day's slots with bookings,
+      golfer, players, member badge, "Paid online" / "Walk-in · paid" / "Phone · paid" / "Payment not finished",
+      check-in time and the receipts each booking was rung up on (`GET /api/staff/teesheet?date=`)
+- [x] Check-in: sets `checkedInAt` (paid bookings only) and opens the register with the prepaid greens fee as a
+      $0 line, plus the golfer's account if they have one, so add-ons go on the same ticket
+      (`POST /api/staff/teesheet/:bookingId { action: 'check_in' | 'undo_check_in' }`). "Ring up add-ons" reopens it
+- [x] Walk-ins / phone bookings from the POS: **+ Book** on an open slot → players, name, walk-in or phone → the
+      register gets a $0 "Tee time …" line and the cashier adds the greens fees as normal products. When the sale
+      completes the booking is created `CONFIRMED` (source POS/PHONE, `totalCents` 0 since the money is on the sale)
+      right before `create_sale` (space re-checked), and deleted again if the sale fails. Members-only slots need an
+      active member attached. Like online booking, two bookings in the same instant could still overfill a slot
+- [x] Keep the tee sheet current (polls every 30 s while the tab is visible)
+- [ ] Optional: cancel or move a booking from the tee sheet (today: Admin → Bookings)
+- [ ] Optional: unpaid online bookings ("Payment not finished") hold their spots indefinitely; release them after
+      e.g. 30 minutes
 
 ### Phase 6: Memberships through the POS
-- [ ] Selling a membership product requires a linked customer, sets role `MEMBER`, and records
-      `User.memberUntil`
-- [ ] Expiry: downgrade lapsed members (a scheduled Worker, since Pages has no cron; or check at sign-in)
-- [ ] Renewal reminder emails
+- [x] Selling a membership product requires a linked customer, sets role `MEMBER`, and records
+      `User.memberUntil` (+ `membershipTier`). Products get **Membership length (months)** and **Tier** in the product
+      form (`Product.membershipMonths`, `membershipTier`; the migration fills them in for the seeded membership
+      products). Renewing early extends from the current end date; quantity × months. Admins keep their role.
+      The update runs right after `create_sale`; if it fails the sale still stands and the register shows a warning
+- [x] Expiry: `isActiveMember()` (`src/lib/membership.js`) is used for member pricing at the register, the customer
+      search ("Membership expired" badge) and members-only tee times. Lapsed members drop to GUEST at sign-in
+      (`/api/auth/me`) and in the daily job. Members with no `memberUntil` (added by hand) never expire.
+      Admin → Users shows and edits the end date and tier
+- [x] Renewal reminder emails: 30 and 7 days before the last day, and once when it has passed (each once per end
+      date, `User.renewalReminderKey`). Daily job `POST /api/internal/memberships` (Bearer `CRON_SECRET`), called by
+      the scheduled Worker in `apps/cron` (Pages has no cron triggers)
+- [ ] Optional: refunding a membership sale doesn't shorten the membership; adjust it in Admin → Users
 
 ### Phase 7: Cash management and reporting
-- [ ] Cash drawer sessions: open with a float, close with a count, over/short
+- [x] Cash drawer sessions: open with a float, close with a count, over/short (`CashDrawerSession`, one open per
+      register). Expected = float + cash payments − cash refunds at that register while the session was open, worked
+      out from `Payment`/`SaleRefund` so `create_sale`/`refund_sale` didn't change. Cash sales and cash refunds are
+      refused until the drawer is open (409 `DRAWER_CLOSED`; the register opens the drawer form and returns to payment).
+      Cashiers count blind (managers see the running expected amount); closing prints a close slip with signature lines.
+      Drawers show on the end-of-day report and on **Sales → Drawers**, where an admin can close a stuck drawer
+      (`GET/POST /api/staff/register/drawer`, `GET /api/admin/drawer-sessions`, `POST /api/admin/drawer-sessions/:id`)
+- [ ] Optional: paid-ins / paid-outs and safe drops during a session (today: note them when closing)
 - [x] End-of-day (Z) report: sales by category and tender, tax collected, discounts, voids/refunds, cash expected
       (cash in − cash out; the opening float comes with drawer sessions), No Sale count. Sales count on the day
       they're rung up and returns on the day they happen, so a past day's report never changes. Shared builder in
@@ -310,8 +336,16 @@ manager can print a statement for any member **on demand**.
       `prisma/seed-pos.sql`, `migrations/4_pos_sales`, `migrations/5_pos_approvals_refunds`. The admin
       Settings page saves the new pay period and POS fields, so saving settings fails until the migrations
       are applied
+- [ ] Then run `apps/api/prisma/sql/6_pos_teesheet_memberships_drawers.sql` (tee sheet, memberships, cash
+      drawers). Until it runs, the tee sheet, drawer and membership features fail, **and cash sales are refused**
+      because no drawer can be opened. Deploy the code and run the SQL together
+- [ ] Set `CRON_SECRET` in the Pages project (Production), then deploy the cron Worker:
+      `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy` (same secret value)
 - [ ] Later, from a network that can reach the database:
-      `npx prisma migrate resolve --applied <name>` for each migration
+      `npx prisma migrate resolve --applied <name>` for each migration (copy files from `prisma/sql/` into
+      `prisma/migrations/<name>/migration.sql` first)
+- [ ] ❓ New sign-ups get `role: MEMBER` (`/api/auth/me` and the Prisma default), so every account gets member
+      pricing and members-only tee times. Should new accounts be `GUEST` until they buy a membership?
 - [x] Fix `npm run lint` in `apps/web`: now uses the root `.gitignore` and no longer runs `--fix`
       (use `npm run lint:fix --workspace=apps/web` to auto-format). Lint passes with 0 errors; the ~2,700
       warnings are template formatting rules that `lint:fix` would rewrite

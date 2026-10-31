@@ -37,13 +37,13 @@
       </div>
       <div class="stat-card">
         <div class="stat-label">
-          Cash expected
+          Net cash
         </div>
         <div class="stat-value">
           {{ money(report.cashExpectedCents) }}
         </div>
         <div class="stat-sub">
-          plus opening float
+          cash sales − cash refunds
         </div>
       </div>
     </div>
@@ -190,15 +190,24 @@
       </table>
     </div>
 
+    <!-- Cash drawers -->
+    <div v-if="report.drawerSessions?.length" class="panel">
+      <h3 class="panel-title">
+        Cash drawers
+      </h3>
+      <DrawerSessionsTable :sessions="report.drawerSessions" :show-register="!report.register" />
+    </div>
+
     <p class="text-xs text-gray-400 font-body">
       Sales count on the day they were rung up; voids and refunds come off on the day they happen, so a past day's
-      report doesn't change. Cash expected is cash taken minus cash refunded, without the opening float.
+      report doesn't change. Net cash is cash taken minus cash refunded; each drawer's expected amount adds its starting cash.
     </p>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
+import DrawerSessionsTable from './DrawerSessionsTable.vue'
 
 const props = defineProps({
   report: { type: Object, required: true },

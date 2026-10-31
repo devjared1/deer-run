@@ -21,7 +21,8 @@
             <span class="block font-body text-sm text-bark truncate">{{ u.name || u.email }}</span>
             <span v-if="u.name" class="block font-body text-xs text-gray-400 truncate">{{ u.email }}</span>
           </span>
-          <span v-if="u.role === 'MEMBER'" class="text-xs px-2 py-0.5 rounded-full bg-lake/20 text-lake font-body flex-shrink-0">Member</span>
+          <span v-if="u.isMember ?? u.role === 'MEMBER'" class="text-xs px-2 py-0.5 rounded-full bg-lake/20 text-lake font-body flex-shrink-0">Member</span>
+          <span v-else-if="u.role === 'MEMBER'" class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 font-body flex-shrink-0">Membership expired</span>
         </button>
         <p v-if="searching" class="text-gray-400 text-sm py-2">Searching…</p>
         <p v-else-if="search.trim().length >= 2 && !results.length" class="text-gray-400 text-sm py-2">No customers found.</p>

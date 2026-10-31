@@ -47,13 +47,29 @@
     </div>
     <div class="rule" />
 
-    <div class="row strong"><span>Cash expected</span><span>{{ money(report.cashExpectedCents) }}</span></div>
+    <div class="row strong"><span>Net cash</span><span>{{ money(report.cashExpectedCents) }}</span></div>
     <div class="sub">
-      Cash sales minus cash refunds (add your opening float)
+      Cash sales minus cash refunds
     </div>
+    <template v-if="report.drawerSessions?.length">
+      <div class="rule" />
+      <div class="heading">
+        CASH DRAWER
+      </div>
+      <div v-for="d in report.drawerSessions" :key="d.id" class="drawer">
+        <div>{{ report.register ? '' : `${d.register?.name} · ` }}{{ time(d.openedAt) }}–{{ d.closedAt ? time(d.closedAt) : 'open' }}</div>
+        <div class="row"><span>Starting cash</span><span>{{ money(d.openingFloatCents) }}</span></div>
+        <div class="row"><span>Expected{{ d.closedAt ? '' : ' so far' }}</span><span>{{ money(d.expectedCents) }}</span></div>
+        <template v-if="d.closedAt">
+          <div class="row"><span>Counted</span><span>{{ money(d.countedCents) }}</span></div>
+          <div class="row strong">
+            <span>{{ d.overShortCents === 0 ? 'Balanced' : d.overShortCents > 0 ? 'Over' : 'Short' }}</span><span>{{ money(Math.abs(d.overShortCents)) }}</span>
+          </div>
+        </template>
+      </div>
+    </template>
     <div class="row"><span>No Sale openings</span><span>{{ report.noSaleCount }}</span></div>
     <div class="rule" />
-    <div>Counted cash: ______________</div>
     <div class="sig">
       Signature: ______________
     </div>
@@ -77,6 +93,7 @@ const preTaxVoids   = computed(() => props.report.returns.voidCents - props.repo
 const preTaxRefunds = computed(() => props.report.returns.refundCents - props.report.returns.refundTaxCents)
 
 const money = (cents) => `$${(cents / 100).toFixed(2)}`
+const time = (ts) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ })
 </script>
 
 <style scoped>
@@ -91,4 +108,5 @@ const money = (cents) => `$${(cents / 100).toFixed(2)}`
 .strong  { font-weight: bold; }
 .sub     { padding-left: 12px; font-size: 10px; }
 .sig     { margin-top: 10px; }
+.drawer  { margin-bottom: 4px; }
 </style>

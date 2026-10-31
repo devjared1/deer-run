@@ -31,6 +31,7 @@
                 <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Name</th>
                 <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Email</th>
                 <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Role</th>
+                <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Membership</th>
                 <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Joined</th>
                 <th class="px-5 py-3"></th>
               </tr>
@@ -42,13 +43,23 @@
                 <td class="px-5 py-3">
                   <span :class="roleClass(u.role)" class="text-xs px-2 py-0.5 rounded-full">{{ u.role }}</span>
                 </td>
+                <td class="px-5 py-3 text-xs">
+                  <template v-if="u.memberUntil">
+                    <span :class="u.memberUntil < today ? 'text-red-500' : 'text-gray-600'">
+                      {{ u.memberUntil < today ? 'Ended' : 'Through' }} {{ formatYmd(u.memberUntil) }}
+                    </span>
+                    <span v-if="u.membershipTier" class="text-gray-400"> · {{ u.membershipTier }}</span>
+                  </template>
+                  <span v-else-if="u.role === 'MEMBER'" class="text-gray-400">No end date</span>
+                  <span v-else class="text-gray-300">—</span>
+                </td>
                 <td class="px-5 py-3 text-gray-400 text-xs">{{ formatDate(u.createdAt) }}</td>
                 <td class="px-5 py-3">
-                  <button @click="openRoleModal(u)" class="text-xs text-lake hover:text-pine">Change role</button>
+                  <button @click="openRoleModal(u)" class="text-xs text-lake hover:text-pine">Edit</button>
                 </td>
               </tr>
               <tr v-if="!users.length">
-                <td colspan="5" class="px-5 py-8 text-center text-gray-400">No users found.</td>
+                <td colspan="6" class="px-5 py-8 text-center text-gray-400">No users found.</td>
               </tr>
             </tbody>
           </table>
@@ -67,7 +78,7 @@
     <!-- Role modal -->
     <div v-if="editing" class="modal-overlay" @click.self="editing = null">
       <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-1">Change Role</h2>
+        <h2 class="font-display font-bold text-bark mb-1">Edit User</h2>
         <p class="text-gray-400 text-xs mb-4 font-body">{{ editing.email }}</p>
         <div class="space-y-2">
           <label
@@ -80,10 +91,27 @@
             <span class="text-gray-500 text-xs font-body">{{ roleDesc[r] }}</span>
           </label>
         </div>
+        <div class="grid grid-cols-2 gap-3 mt-4">
+          <div>
+            <label class="block text-xs text-gray-500 mb-1 font-body">Member until</label>
+            <input v-model="membership.until" type="date" class="input-field w-full" />
+          </div>
+          <div>
+            <label class="block text-xs text-gray-500 mb-1 font-body">Tier</label>
+            <select v-model="membership.tier" class="input-field w-full">
+              <option value="">—</option>
+              <option v-for="t in membershipTiers" :key="t.name" :value="t.name">{{ t.name }}</option>
+            </select>
+          </div>
+          <p class="col-span-2 text-xs text-gray-400 font-body -mt-1">
+            Last day of membership. Leave empty for no end date. Memberships sold at the register set this
+            automatically; members drop to Guest after it passes.
+          </p>
+        </div>
         <div class="flex justify-end gap-3 mt-5">
           <button @click="editing = null" class="btn-outline-sm">Cancel</button>
-          <button @click="updateRole" :disabled="saving || newRole === editing.role" class="btn-amber px-4 py-2 text-sm disabled:opacity-50">
-            {{ saving ? 'Saving…' : 'Update Role' }}
+          <button @click="updateRole" :disabled="saving || !changed" class="btn-amber px-4 py-2 text-sm disabled:opacity-50">
+            {{ saving ? 'Saving…' : 'Save' }}
           </button>
         </div>
         <p v-if="formError" class="text-red-500 text-xs mt-2">{{ formError }}</p>
@@ -95,6 +123,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { localDate, formatLocalDate } from '@/lib/timeclock'
+import { membershipTiers } from '@/data/membershipTiers'
 
 const authStore = useAuthStore()
 const users     = ref([])
@@ -109,6 +139,11 @@ const editing   = ref(null)
 const newRole   = ref('')
 const saving    = ref(false)
 const formError = ref(null)
+const membership = ref({ until: '', tier: '' })
+const today      = localDate()
+
+const changed = computed(() => editing.value && (newRole.value !== editing.value.role ||
+  membership.value.until !== (editing.value.memberUntil ?? '') || membership.value.tier !== (editing.value.membershipTier ?? '')))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
@@ -148,6 +183,7 @@ function resetFilters() {
 function openRoleModal(user) {
   editing.value = user
   newRole.value = user.role
+  membership.value = { until: user.memberUntil ?? '', tier: user.membershipTier ?? '' }
   formError.value = null
 }
 
@@ -158,7 +194,11 @@ async function updateRole() {
     const res = await fetch(`/api/admin/users/${editing.value.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.getToken()}` },
-      body: JSON.stringify({ role: newRole.value }),
+      body: JSON.stringify({
+        ...(newRole.value !== editing.value.role ? { role: newRole.value } : {}),
+        memberUntil: membership.value.until || null,
+        membershipTier: membership.value.tier || null,
+      }),
     })
     if (!res.ok) throw new Error((await res.json()).error || res.statusText)
     editing.value = null
@@ -176,6 +216,10 @@ function roleClass(role) {
     MEMBER: 'bg-lake/20 text-lake',
     ADMIN:  'bg-pine/20 text-pine font-semibold',
   }[role] || 'bg-gray-100 text-gray-500'
+}
+
+function formatYmd(ymd) {
+  return formatLocalDate(ymd, { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
 function formatDate(iso) {

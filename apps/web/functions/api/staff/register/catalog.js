@@ -18,7 +18,7 @@ export async function onRequestGet({ request, env }) {
       .order('name', { ascending: true }),
     supabase
       .from('Product')
-      .select('id, categoryId, name, priceCents, memberPriceCents, trackInventory, sortOrder, ' +
+      .select('id, categoryId, name, priceCents, memberPriceCents, trackInventory, sortOrder, membershipMonths, membershipTier, ' +
         'variants:ProductVariant(id, size, color, sku, barcode, priceCents, memberPriceCents, stockQty, active, sortOrder)')
       .eq('active', true)
       .order('sortOrder', { ascending: true })

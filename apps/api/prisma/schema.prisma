@@ -17,6 +17,12 @@ model User {
   employee   Employee?
   purchases  Sale[]
   createdAt  DateTime  @default(now())
+
+  // Memberships sold at the register (POS Phase 6). memberUntil null = no expiry (members added
+  // by hand before memberships were sold through the POS). Lapsed members drop to GUEST.
+  memberUntil        DateTime? @db.Date
+  membershipTier     String? // "Individual" | "Premier" | "Family" (membershipTiers.js)
+  renewalReminderKey String? // "<memberUntil>:<30|7|expired>" of the last reminder email sent
 }
 
 enum Role {
@@ -50,7 +56,16 @@ model Booking {
   status          BookingStatus @default(PENDING)
   stripeSessionId String?       @unique
   stripePaymentId String?
+  source          BookingSource @default(ONLINE)
+  checkedInAt     DateTime? // set when the group checks in at the pro shop
+  saleItems       SaleItem[]
   createdAt       DateTime      @default(now())
+}
+
+enum BookingSource {
+  ONLINE
+  POS // walk-in booked at the register
+  PHONE // phone booking entered (and paid) at the register
 }
 
 enum BookingStatus {
@@ -175,10 +190,12 @@ model Employee {
 
   // Register manager PIN (PBKDF2 hash, never returned by the API) and lockout after wrong tries
   managerPinHash           String?
-  managerPinFailedAttempts Int               @default(0)
+  managerPinFailedAttempts Int                 @default(0)
   managerPinLockedUntil    DateTime?
-  approvalsGiven           ManagerApproval[] @relation("ApprovalApprover")
-  approvalsReceived        ManagerApproval[] @relation("ApprovalCashier")
+  approvalsGiven           ManagerApproval[]   @relation("ApprovalApprover")
+  approvalsReceived        ManagerApproval[]   @relation("ApprovalCashier")
+  drawersOpened            CashDrawerSession[] @relation("DrawerOpenedBy")
+  drawersClosed            CashDrawerSession[] @relation("DrawerClosedBy")
 }
 
 // One clock-in/clock-out pair. clockOut is null while the employee is on the clock;
@@ -262,6 +279,9 @@ model Product {
   trackInventory   Boolean          @default(false)
   active           Boolean          @default(true)
   sortOrder        Int              @default(0)
+  // Selling a product with membershipMonths makes the attached customer a member for that long
+  membershipMonths Int?
+  membershipTier   String?
   variants         ProductVariant[]
   createdAt        DateTime         @default(now())
 
@@ -318,14 +338,15 @@ model InventoryAdjustment {
 
 // A checkout station (PC + printer + card reader). More can be added from the admin panel.
 model Register {
-  id             String            @id @default(cuid())
-  name           String            @unique
-  stripeReaderId String?           @unique
-  active         Boolean           @default(true)
+  id             String              @id @default(cuid())
+  name           String              @unique
+  stripeReaderId String?             @unique
+  active         Boolean             @default(true)
   sales          Sale[]
   refunds        SaleRefund[]
   approvals      ManagerApproval[]
-  createdAt      DateTime          @default(now())
+  drawerSessions CashDrawerSession[]
+  createdAt      DateTime            @default(now())
 }
 
 // ─── Point of sale: sales ────────────────────────────────────────────────────
@@ -383,6 +404,8 @@ model SaleItem {
   saleId         String
   variant        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
   variantId      String? // null for a custom-amount item
+  booking        Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  bookingId      String? // tee time this line is for (prepaid greens fee or walk-in/phone booking)
   description    String // product name + size/color at the time of sale
   categoryName   String?
   quantity       Int
@@ -402,6 +425,7 @@ model SaleItem {
 
   @@index([saleId])
   @@index([variantId])
+  @@index([bookingId])
 }
 
 model Payment {
@@ -489,4 +513,32 @@ model SaleRefundItem {
   taxCents    Int
 
   @@index([refundId])
+}
+
+// ─── Point of sale: cash drawer sessions ─────────────────────────────────────
+
+// A shift of a register's cash drawer: opened with a float, closed with a count. Expected cash is the
+// float plus cash taken minus cash refunded at that register between openedAt and closedAt (worked out
+// from Payment and SaleRefund, so sales don't need a session column). One open session per register
+// (partial unique index CashDrawerSession_one_open_per_register, which Prisma can't model).
+model CashDrawerSession {
+  id                String    @id @default(cuid())
+  register          Register  @relation(fields: [registerId], references: [id])
+  registerId        String
+  openedBy          Employee  @relation("DrawerOpenedBy", fields: [openedById], references: [id])
+  openedById        String
+  openedAt          DateTime  @default(now())
+  openingFloatCents Int
+  openNote          String?
+  closedBy          Employee? @relation("DrawerClosedBy", fields: [closedById], references: [id])
+  closedById        String?
+  closedAt          DateTime?
+  cashSalesCents    Int? // snapshots taken at close
+  cashRefundsCents  Int?
+  expectedCents     Int?
+  countedCents      Int?
+  overShortCents    Int? // counted − expected (negative = short)
+  closeNote         String?
+
+  @@index([registerId, openedAt])
 }

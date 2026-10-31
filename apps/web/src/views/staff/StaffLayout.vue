@@ -92,7 +92,10 @@ const navItems = computed(() => [
   { to: '/staff/timesheet', label: 'My Timesheet', icon: '🗓' },
   { to: '/staff/schedule',  label: 'My Schedule',  icon: '📅' },
   { to: '/staff/time-off',  label: 'Time Off',     icon: '🏖' },
-  ...(authStore.canUseRegister ? [{ to: '/staff/register', label: 'Register', icon: '🧾' }] : []),
+  ...(authStore.canUseRegister ? [
+    { to: '/staff/teesheet', label: 'Tee Sheet', icon: '⛳' },
+    { to: '/staff/register', label: 'Register', icon: '🧾' },
+  ] : []),
   ...(authStore.isRegisterManager ? [{ to: '/staff/pin', label: 'Manager PIN', icon: '🔑' }] : []),
 ])
 
@@ -102,6 +105,7 @@ const titles = {
   '/staff/schedule':  'My Schedule',
   '/staff/time-off':  'Time Off',
   '/staff/register':  'Register',
+  '/staff/teesheet':  'Tee Sheet',
   '/staff/pin':       'Manager PIN',
 }
 

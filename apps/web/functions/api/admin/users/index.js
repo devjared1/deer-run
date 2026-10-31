@@ -15,7 +15,7 @@ export async function onRequestGet({ request, env }) {
 
   let query = supabase
     .from('User')
-    .select('id, email, name, role, createdAt', { count: 'exact' })
+    .select('id, email, name, role, memberUntil, membershipTier, createdAt', { count: 'exact' })
     .order('createdAt', { ascending: false })
     .range(offset, offset + limit - 1)
 
