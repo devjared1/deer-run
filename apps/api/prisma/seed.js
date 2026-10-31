@@ -71,7 +71,7 @@ async function main() {
     {
       name:        'Spring Opener Scramble',
       description: 'Kick off the season with Deer Run\'s annual Spring Opener. Four-person teams, best-ball format. Prizes for all flight winners.',
-      eventDate:   new Date('2025-03-22'),
+      eventDate:   new Date('2027-03-20'),
       startTime:   '8:00 AM',
       format:      '4-Person Scramble',
       entry:       2500,
@@ -83,7 +83,7 @@ async function main() {
     {
       name:        'Member Invitational',
       description: 'Annual member-only invitational with individual stroke play. Low gross and net winners in two flights.',
-      eventDate:   new Date('2025-04-12'),
+      eventDate:   new Date('2027-04-17'),
       startTime:   '7:30 AM',
       format:      'Individual Stroke',
       entry:       1500,
@@ -95,7 +95,7 @@ async function main() {
     {
       name:        'Lawrence County Charity Open',
       description: 'Benefiting the Lawrence County Boys & Girls Club. Two-person best ball. Includes cookout lunch, silent auction, and prizes.',
-      eventDate:   new Date('2025-05-17'),
+      eventDate:   new Date('2027-05-15'),
       startTime:   '9:00 AM',
       format:      'Best Ball',
       entry:       5000,
@@ -107,7 +107,7 @@ async function main() {
     {
       name:        'Junior Summer Classic',
       description: 'Annual junior tournament open to all youth golfers. Multiple age divisions. Parent / junior division available.',
-      eventDate:   new Date('2025-06-07'),
+      eventDate:   new Date('2027-06-12'),
       startTime:   '8:00 AM',
       format:      'Individual Stroke',
       entry:       1000,
@@ -119,7 +119,7 @@ async function main() {
     {
       name:        'Independence Day Scramble',
       description: 'Celebrate the 4th on the fairways. Three-person scramble, cookout included with registration.',
-      eventDate:   new Date('2025-07-04'),
+      eventDate:   new Date('2027-07-04'),
       startTime:   '7:30 AM',
       format:      '3-Person Scramble',
       entry:       2000,
@@ -131,7 +131,7 @@ async function main() {
     {
       name:        'Fall Member Classic',
       description: 'End-of-season member event using Stableford scoring. Fall foliage along the Bankhead Forest makes this round one of the most scenic.',
-      eventDate:   new Date('2025-09-20'),
+      eventDate:   new Date('2027-09-25'),
       startTime:   '8:00 AM',
       format:      'Stableford',
       entry:       null,

@@ -1,12 +1,21 @@
 <template>
-  <div class="sticky hero-bg top-0 z-50" style="border-bottom:1px solid rgba(255,255,255,.07);">
+  <div
+    class="sticky hero-bg top-0 z-50 print:hidden"
+    style="border-bottom:1px solid rgba(255,255,255,.07);"
+  >
     <div class="max-w-7xl mx-auto px-5 h-16 flex items-center justify-between">
       <!-- Logo -->
-      <RouterLink to="/" class="flex items-center gap-3 cursor-pointer flex-shrink-0">
+      <RouterLink
+        to="/"
+        class="flex items-center gap-3 cursor-pointer flex-shrink-0"
+      >
         <!-- <DeerLogo :size="36" /> -->
         <div class="hidden sm:block">
-          <div class="logo-text">Deer Run</div>
-          <div class="logo-sub">Golf Course</div>
+          <img
+            src="/images/deerrunlogo.svg"
+            alt="Deer Run Logo"
+            class="h-16"
+          >
         </div>
       </RouterLink>
 
@@ -24,36 +33,64 @@
 
       <!-- CTA + mobile toggle -->
       <div class="flex items-center gap-3">
-        <RouterLink v-if="authStore.isAdmin" to="/admin"
-          class="btn-outline hidden sm:inline-flex" style="padding:9px 16px;font-size:12px;">
+        <RouterLink
+          v-if="authStore.isStaff"
+          to="/staff"
+          class="btn-outline hidden sm:inline-flex"
+          style="padding:9px 16px;font-size:12px;"
+        >
+          Staff
+        </RouterLink>
+        <RouterLink
+          v-if="authStore.isAdmin"
+          to="/admin"
+          class="btn-outline hidden sm:inline-flex"
+          style="padding:9px 16px;font-size:12px;"
+        >
           Admin
         </RouterLink>
-        <RouterLink v-else-if="authStore.isLoggedIn" to="/account"
-          class="btn-outline hidden sm:inline-flex" style="padding:9px 16px;font-size:12px;">
+        <RouterLink
+          v-else-if="authStore.isLoggedIn"
+          to="/account"
+          class="btn-outline hidden sm:inline-flex"
+          style="padding:9px 16px;font-size:12px;"
+        >
           My Account
         </RouterLink>
-        <RouterLink v-else to="/login"
-          class="btn-outline hidden sm:inline-flex" style="padding:9px 16px;font-size:12px;">
+        <RouterLink
+          v-else
+          to="/login"
+          class="btn-outline hidden sm:inline-flex"
+          style="padding:9px 16px;font-size:12px;"
+        >
           Sign In
         </RouterLink>
-        <RouterLink to="/book" class="btn-amber hidden sm:inline-flex" style="padding:9px 20px;font-size:12px;">
+        <RouterLink
+          to="/book"
+          class="btn-amber hidden sm:inline-flex"
+          style="padding:9px 20px;font-size:12px;"
+        >
           Book Tee Time
         </RouterLink>
         <button
-          @click="mobileOpen = !mobileOpen"
           class="lg:hidden flex flex-col gap-1.5 p-2"
           aria-label="Menu"
+          @click="mobileOpen = !mobileOpen"
         >
-          <span :class="['block w-6 h-0.5 bg-parch/70 transition-all', mobileOpen ? 'rotate-45 translate-y-2' : '']"></span>
-          <span :class="['block w-6 h-0.5 bg-parch/70 transition-all', mobileOpen ? 'opacity-0' : '']"></span>
-          <span :class="['block w-6 h-0.5 bg-parch/70 transition-all', mobileOpen ? '-rotate-45 -translate-y-2' : '']"></span>
+          <span :class="['block w-6 h-0.5 bg-parch/70 transition-all', mobileOpen ? 'rotate-45 translate-y-2' : '']" />
+          <span :class="['block w-6 h-0.5 bg-parch/70 transition-all', mobileOpen ? 'opacity-0' : '']" />
+          <span :class="['block w-6 h-0.5 bg-parch/70 transition-all', mobileOpen ? '-rotate-45 -translate-y-2' : '']" />
         </button>
       </div>
     </div>
 
     <!-- Mobile menu -->
     <Transition name="slide-down">
-      <div v-if="mobileOpen" class="lg:hidden" style="background:#0D1F16;border-top:1px solid rgba(255,255,255,.07);">
+      <div
+        v-if="mobileOpen"
+        class="lg:hidden"
+        style="background:#0D1F16;border-top:1px solid rgba(255,255,255,.07);"
+      >
         <div class="max-w-7xl mx-auto px-5 py-2">
           <RouterLink
             v-for="p in pages"
@@ -65,16 +102,43 @@
             {{ p.label }}
           </RouterLink>
           <div class="py-4 flex flex-col gap-2">
-            <RouterLink to="/book" class="btn-amber w-full justify-center" @click="mobileOpen = false">
+            <RouterLink
+              to="/book"
+              class="btn-amber w-full justify-center"
+              @click="mobileOpen = false"
+            >
               Book Tee Time
             </RouterLink>
-            <RouterLink v-if="authStore.isAdmin" to="/admin" class="btn-outline w-full justify-center" @click="mobileOpen = false">
+            <RouterLink
+              v-if="authStore.isStaff"
+              to="/staff"
+              class="btn-outline w-full justify-center"
+              @click="mobileOpen = false"
+            >
+              Staff
+            </RouterLink>
+            <RouterLink
+              v-if="authStore.isAdmin"
+              to="/admin"
+              class="btn-outline w-full justify-center"
+              @click="mobileOpen = false"
+            >
               Admin
             </RouterLink>
-            <RouterLink v-else-if="authStore.isLoggedIn" to="/account" class="btn-outline w-full justify-center" @click="mobileOpen = false">
+            <RouterLink
+              v-else-if="authStore.isLoggedIn"
+              to="/account"
+              class="btn-outline w-full justify-center"
+              @click="mobileOpen = false"
+            >
               My Account
             </RouterLink>
-            <RouterLink v-else to="/login" class="btn-outline w-full justify-center" @click="mobileOpen = false">
+            <RouterLink
+              v-else
+              to="/login"
+              class="btn-outline w-full justify-center"
+              @click="mobileOpen = false"
+            >
               Sign In
             </RouterLink>
           </div>
@@ -85,10 +149,9 @@
 </template>
 
 <script setup>
+import { useAuthStore } from '@/stores/auth'
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import DeerLogo from '@/components/ui/DeerLogo.vue'
 
 const route      = useRoute()
 const authStore  = useAuthStore()

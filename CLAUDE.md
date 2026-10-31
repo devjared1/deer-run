@@ -41,7 +41,7 @@ deer-run/
 │   │   │   ├── App.vue        # Root component — calls auth.init() on mount
 │   │   │   └── main.js        # App entry point
 │   │   ├── index.html
-│   │   ├── vite.config.js     # Vite config (no API proxy — wrangler handles it)
+│   │   ├── vite.config.js     # Vite config (proxies /api to wrangler on :8788 in dev)
 │   │   ├── wrangler.toml      # Cloudflare Pages config
 │   │   ├── tailwind.config.js
 │   │   ├── postcss.config.js
@@ -101,14 +101,16 @@ npm run db:seed
 ### Running the dev servers
 
 ```bash
-# Frontend only (Vite on :5173). API calls will 404 without wrangler.
+# Frontend only (Vite on :5173). API calls fail with a proxy error without wrangler.
 npm run dev
 
-# Full local dev: Vite + Cloudflare Pages Functions via wrangler
+# Full local dev: Vite + Cloudflare Pages Functions via wrangler — open http://localhost:5173
 npm run dev:pages
-# ↳ Runs: wrangler pages dev --proxy 5173 -- vite
-# ↳ Functions serve /api/* and Vite serves everything else
-# ↳ Server-side secrets are read from apps/web/.dev.vars (gitignored)
+# ↳ Runs apps/web/scripts/dev-pages.mjs: `wrangler pages dev --port 8788` (Functions) and `vite` (:5173)
+# ↳ Vite proxies /api/* to wrangler on :8788 (server.proxy in vite.config.js)
+# ↳ Not `wrangler pages dev --proxy 5173 -- vite`: with pages_build_output_dir in wrangler.toml,
+#   Wrangler 4 refuses a proxy command ("Specify either a directory OR a proxy command, not both")
+# ↳ Server-side secrets are read from apps/web/.dev.vars, or apps/web/.env if there's no .dev.vars
 ```
 
 ### `.dev.vars` for local Functions

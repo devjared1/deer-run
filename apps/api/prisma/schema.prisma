@@ -14,10 +14,16 @@ model User {
   role       Role      @default(MEMBER)
   supabaseId String?   @unique
   bookings   Booking[]
+  employee   Employee?
+  purchases  Sale[]
   createdAt  DateTime  @default(now())
 }
 
-enum Role { GUEST MEMBER ADMIN }
+enum Role {
+  GUEST
+  MEMBER
+  ADMIN
+}
 
 model TeeTimeSlot {
   id         String    @id @default(cuid())
@@ -47,7 +53,12 @@ model Booking {
   createdAt       DateTime      @default(now())
 }
 
-enum BookingStatus { PENDING CONFIRMED CANCELLED REFUNDED }
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+}
 
 model CourseSettings {
   id                  String @id @default("singleton")
@@ -57,6 +68,17 @@ model CourseSettings {
   firstTeeTime        String @default("07:30")
   lastTeeTime         String @default("17:00")
   intervalMinutes     Int    @default(10)
+
+  // Payroll: pay periods are payPeriodDays long, counted from payPeriodAnchor (any date that
+  // starts a pay period). The workweek for overtime starts on the anchor's weekday.
+  payPeriodDays   Int      @default(14)
+  payPeriodAnchor DateTime @default(dbgenerated("'2026-01-04'::date")) @db.Date // a Sunday
+
+  // POS: one course-wide sales tax rate in basis points (900 = 9.00%). 0 until an admin sets it.
+  salesTaxBps       Int                @default(900)
+  // Positions allowed to ring sales, and positions that can approve No Sale / voids / refunds
+  registerPositions EmployeePosition[] @default([GENERAL_MANAGER, HEAD_GOLF_PROFESSIONAL, ASSISTANT_GOLF_PROFESSIONAL, PRO_SHOP_ATTENDANT, STARTER, FOOD_BEVERAGE_MANAGER, SERVER])
+  managerPositions  EmployeePosition[] @default([GENERAL_MANAGER, HEAD_GOLF_PROFESSIONAL, SUPERINTENDENT, FOOD_BEVERAGE_MANAGER])
 }
 
 model TournamentEvent {
@@ -93,4 +115,378 @@ model ContactMessage {
   subject   String
   message   String
   createdAt DateTime @default(now())
+}
+
+// ─── Employee time management ────────────────────────────────────────────────
+
+enum EmployeePosition {
+  GENERAL_MANAGER
+  HEAD_GOLF_PROFESSIONAL
+  ASSISTANT_GOLF_PROFESSIONAL
+  PRO_SHOP_ATTENDANT
+  STARTER
+  PLAYER_ASSISTANT
+  OUTSIDE_SERVICES
+  SUPERINTENDENT
+  ASSISTANT_SUPERINTENDENT
+  GROUNDS_CREW
+  EQUIPMENT_TECHNICIAN
+  FOOD_BEVERAGE_MANAGER
+  COOK
+  SERVER
+  BEVERAGE_CART_ATTENDANT
+}
+
+enum TimeOffType {
+  VACATION
+  SICK
+  PERSONAL
+  UNPAID
+}
+
+enum TimeOffStatus {
+  PENDING
+  APPROVED
+  DENIED
+  CANCELLED
+}
+
+// An employee is linked to a login (User) by email so they can clock in and view
+// their schedule. Admin panel access comes from User.role = ADMIN; register managers are employees
+// whose position is in CourseSettings.managerPositions.
+model Employee {
+  id              String           @id @default(cuid())
+  user            User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId          String?          @unique
+  firstName       String
+  lastName        String
+  email           String           @unique
+  phone           String?
+  position        EmployeePosition
+  hourlyRateCents Int?
+  hireDate        DateTime?        @db.Date
+  active          Boolean          @default(true)
+  timeEntries     TimeEntry[]
+  shifts          Shift[]
+  timeOffRequests TimeOffRequest[]
+  sales           Sale[]
+  refunds         SaleRefund[]
+  createdAt       DateTime         @default(now())
+
+  // Register manager PIN (PBKDF2 hash, never returned by the API) and lockout after wrong tries
+  managerPinHash           String?
+  managerPinFailedAttempts Int               @default(0)
+  managerPinLockedUntil    DateTime?
+  approvalsGiven           ManagerApproval[] @relation("ApprovalApprover")
+  approvalsReceived        ManagerApproval[] @relation("ApprovalCashier")
+}
+
+// One clock-in/clock-out pair. clockOut is null while the employee is on the clock;
+// the API allows at most one open entry per employee.
+model TimeEntry {
+  id         String      @id @default(cuid())
+  employee   Employee    @relation(fields: [employeeId], references: [id])
+  employeeId String
+  clockIn    DateTime
+  clockOut   DateTime?
+  breaks     TimeBreak[]
+  note       String?
+  editedById String? // User.id of the manager who last corrected this entry
+  editedAt   DateTime?
+  createdAt  DateTime    @default(now())
+
+  @@index([employeeId, clockIn])
+}
+
+model TimeBreak {
+  id          String    @id @default(cuid())
+  timeEntry   TimeEntry @relation(fields: [timeEntryId], references: [id], onDelete: Cascade)
+  timeEntryId String
+  startedAt   DateTime
+  endedAt     DateTime?
+}
+
+// A scheduled shift. Times use the same "HH:MM" convention as TeeTimeSlot.
+model Shift {
+  id         String            @id @default(cuid())
+  employee   Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId String
+  date       DateTime          @db.Date
+  startTime  String
+  endTime    String
+  position   EmployeePosition? // overrides the employee's position for this shift
+  notes      String?
+  createdAt  DateTime          @default(now())
+
+  @@index([date])
+}
+
+model TimeOffRequest {
+  id           String        @id @default(cuid())
+  employee     Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employeeId   String
+  startDate    DateTime      @db.Date
+  endDate      DateTime      @db.Date
+  type         TimeOffType
+  reason       String?
+  status       TimeOffStatus @default(PENDING)
+  reviewedById String? // User.id of the manager who approved/denied
+  reviewedAt   DateTime?
+  reviewNote   String?
+  createdAt    DateTime      @default(now())
+
+  @@index([employeeId, startDate])
+}
+
+// ─── Point of sale: catalog ──────────────────────────────────────────────────
+
+// A table rather than an enum so admins can add categories and mark them tax-exempt
+model ProductCategory {
+  id        String    @id @default(cuid())
+  name      String    @unique
+  taxExempt Boolean   @default(false)
+  sortOrder Int       @default(0)
+  active    Boolean   @default(true)
+  products  Product[]
+  createdAt DateTime  @default(now())
+}
+
+model Product {
+  id               String           @id @default(cuid())
+  category         ProductCategory  @relation(fields: [categoryId], references: [id])
+  categoryId       String
+  name             String
+  description      String?
+  priceCents       Int
+  memberPriceCents Int? // null = members pay the regular price
+  trackInventory   Boolean          @default(false)
+  active           Boolean          @default(true)
+  sortOrder        Int              @default(0)
+  variants         ProductVariant[]
+  createdAt        DateTime         @default(now())
+
+  @@index([categoryId])
+}
+
+// What actually gets sold and stocked. Every product has at least one variant; products without
+// sizes/colors have a single default variant (size and color null).
+model ProductVariant {
+  id               String                @id @default(cuid())
+  product          Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId        String
+  size             String?
+  color            String?
+  sku              String?               @unique
+  barcode          String?               @unique
+  priceCents       Int? // overrides Product.priceCents
+  memberPriceCents Int? // overrides Product.memberPriceCents
+  stockQty         Int                   @default(0) // changed only through adjust_inventory()
+  active           Boolean               @default(true)
+  sortOrder        Int                   @default(0)
+  adjustments      InventoryAdjustment[]
+  saleItems        SaleItem[]
+  createdAt        DateTime              @default(now())
+
+  @@index([productId])
+}
+
+enum InventoryReason {
+  INITIAL
+  RECEIVED
+  COUNT_CORRECTION
+  DAMAGED
+  RETURNED_TO_VENDOR
+  OTHER
+  SALE
+  RETURN
+}
+
+// Stock change log. Restrict on delete: variants with stock history are deactivated, not deleted.
+model InventoryAdjustment {
+  id             String          @id @default(cuid())
+  variant        ProductVariant  @relation(fields: [variantId], references: [id])
+  variantId      String
+  quantityChange Int
+  stockAfter     Int
+  reason         InventoryReason
+  note           String?
+  userId         String? // User.id of whoever made the change
+  createdAt      DateTime        @default(now())
+
+  @@index([variantId, createdAt])
+}
+
+// A checkout station (PC + printer + card reader). More can be added from the admin panel.
+model Register {
+  id             String            @id @default(cuid())
+  name           String            @unique
+  stripeReaderId String?           @unique
+  active         Boolean           @default(true)
+  sales          Sale[]
+  refunds        SaleRefund[]
+  approvals      ManagerApproval[]
+  createdAt      DateTime          @default(now())
+}
+
+// ─── Point of sale: sales ────────────────────────────────────────────────────
+
+enum SaleStatus {
+  COMPLETED
+  PARTIALLY_REFUNDED
+  VOIDED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD_TERMINAL
+  HOUSE_ACCOUNT
+  PREPAID_ONLINE
+  GIFT_CARD
+}
+
+// A completed checkout. Written only by the create_sale() Postgres function so the sale, its items,
+// payments and stock changes save together. Amounts are snapshots: later price or tax changes
+// never alter a past sale.
+model Sale {
+  id              String            @id @default(cuid())
+  number          Int               @unique @default(autoincrement()) // receipt number
+  status          SaleStatus        @default(COMPLETED)
+  register        Register          @relation(fields: [registerId], references: [id])
+  registerId      String
+  cashier         Employee          @relation(fields: [cashierId], references: [id])
+  cashierId       String
+  customer        User?             @relation(fields: [customerId], references: [id])
+  customerId      String?
+  isMemberPricing Boolean           @default(false)
+  subtotalCents   Int // after line discounts, before tax
+  discountCents   Int               @default(0) // total of line discounts
+  taxCents        Int
+  totalCents      Int
+  changeCents     Int               @default(0) // cash handed back
+  refundedCents   Int               @default(0) // total of all refunds and voids
+  receiptEmail    String?
+  items           SaleItem[]
+  payments        Payment[]
+  refunds         SaleRefund[]
+  approvals       ManagerApproval[]
+  createdAt       DateTime          @default(now())
+
+  @@index([createdAt])
+  @@index([registerId, createdAt])
+  @@index([customerId])
+}
+
+model SaleItem {
+  id             String          @id @default(cuid())
+  sale           Sale            @relation(fields: [saleId], references: [id])
+  saleId         String
+  variant        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variantId      String? // null for a custom-amount item
+  description    String // product name + size/color at the time of sale
+  categoryName   String?
+  quantity       Int
+  unitPriceCents Int
+  discountCents  Int             @default(0)
+  taxRateBps     Int // 0 for tax-exempt categories
+  subtotalCents  Int // quantity × unit price − discount
+  taxCents       Int
+  totalCents     Int
+  sortOrder      Int             @default(0)
+
+  // Running totals of what has been refunded from this line
+  refundedQuantity Int              @default(0)
+  refundedCents    Int              @default(0)
+  refundedTaxCents Int              @default(0)
+  refundItems      SaleRefundItem[]
+
+  @@index([saleId])
+  @@index([variantId])
+}
+
+model Payment {
+  id                    String        @id @default(cuid())
+  sale                  Sale          @relation(fields: [saleId], references: [id])
+  saleId                String
+  method                PaymentMethod
+  amountCents           Int // applied to the sale
+  tenderedCents         Int? // cash handed over (amount + change)
+  stripePaymentIntentId String?       @unique
+  createdAt             DateTime      @default(now())
+
+  @@index([saleId])
+}
+
+// ─── Point of sale: manager approvals, voids and refunds ─────────────────────
+
+enum ApprovalAction {
+  DISCOUNT
+  NO_SALE
+  VOID
+  REFUND
+  CHANGE_REGISTER
+}
+
+// A manager's sign-off on a register action. Each approval is single-use and short-lived:
+// the action that needs it marks it used (usedAt), linking the sale when there is one.
+model ManagerApproval {
+  id         String         @id @default(cuid())
+  action     ApprovalAction
+  approver   Employee       @relation("ApprovalApprover", fields: [approverId], references: [id])
+  approverId String
+  cashier    Employee       @relation("ApprovalCashier", fields: [cashierId], references: [id])
+  cashierId  String
+  register   Register?      @relation(fields: [registerId], references: [id])
+  registerId String?
+  sale       Sale?          @relation(fields: [saleId], references: [id])
+  saleId     String?
+  reason     String?
+  expiresAt  DateTime
+  usedAt     DateTime?
+  refund     SaleRefund?
+  createdAt  DateTime       @default(now())
+
+  @@index([createdAt])
+}
+
+enum RefundKind {
+  VOID // whole sale, same day
+  REFUND // some or all items, any time
+}
+
+// Money returned on a sale. Written only by the refund_sale() Postgres function.
+model SaleRefund {
+  id          String           @id @default(cuid())
+  sale        Sale             @relation(fields: [saleId], references: [id])
+  saleId      String
+  kind        RefundKind
+  method      PaymentMethod // how the money went back
+  amountCents Int // including tax
+  taxCents    Int
+  restocked   Boolean
+  reason      String
+  approval    ManagerApproval  @relation(fields: [approvalId], references: [id])
+  approvalId  String           @unique
+  cashier     Employee         @relation(fields: [cashierId], references: [id])
+  cashierId   String
+  register    Register         @relation(fields: [registerId], references: [id])
+  registerId  String
+  items       SaleRefundItem[]
+  createdAt   DateTime         @default(now())
+
+  @@index([saleId])
+  @@index([createdAt])
+}
+
+model SaleRefundItem {
+  id          String     @id @default(cuid())
+  refund      SaleRefund @relation(fields: [refundId], references: [id])
+  refundId    String
+  saleItem    SaleItem   @relation(fields: [saleItemId], references: [id])
+  saleItemId  String
+  quantity    Int
+  amountCents Int // including tax
+  taxCents    Int
+
+  @@index([refundId])
 }

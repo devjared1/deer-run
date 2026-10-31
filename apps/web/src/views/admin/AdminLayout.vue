@@ -86,6 +86,10 @@ const navItems = [
   { to: '/admin/tournaments', label: 'Tournaments',  icon: '🏆' },
   { to: '/admin/settings',    label: 'Settings',     icon: '⚙' },
   { to: '/admin/users',       label: 'Users',        icon: '👤' },
+  { to: '/admin/employees',   label: 'Employees',    icon: '🪪' },
+  { to: '/admin/timesheets',  label: 'Timesheets',   icon: '⏱' },
+  { to: '/admin/products',    label: 'Products',     icon: '🏷' },
+  { to: '/admin/registers',   label: 'Registers',    icon: '🧾' },
 ]
 
 const titles = {
@@ -95,6 +99,10 @@ const titles = {
   '/admin/tournaments': 'Tournament Scheduling',
   '/admin/settings':    'Course Settings',
   '/admin/users':       'User Management',
+  '/admin/employees':   'Employee Management',
+  '/admin/timesheets':  'Timesheets',
+  '/admin/products':    'Products & Inventory',
+  '/admin/registers':   'Registers',
 }
 
 const pageTitle = computed(() => titles[route.path] || 'Admin')

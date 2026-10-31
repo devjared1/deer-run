@@ -10,8 +10,8 @@ export function makeSupabase(env) {
   })
 }
 
-/** Returns { supabase, dbUser } if admin, or a 401/403 Response if not. */
-export async function requireAdmin(request, env) {
+/** Returns { supabase, dbUser } for a valid bearer token, or a 401 Response. */
+export async function authenticate(request, env) {
   const authHeader = request.headers.get('Authorization')
   if (!authHeader?.startsWith('Bearer ')) {
     return json({ error: 'Unauthorized' }, 401)
@@ -22,7 +22,15 @@ export async function requireAdmin(request, env) {
   if (error || !user) return json({ error: 'Unauthorized' }, 401)
 
   const { data: dbUser } = await supabase.from('User').select('*').eq('supabaseId', user.id).maybeSingle()
-  if (!dbUser || dbUser.role !== 'ADMIN') return json({ error: 'Forbidden' }, 403)
+  if (!dbUser) return json({ error: 'Unauthorized' }, 401)
 
   return { supabase, dbUser }
+}
+
+/** Returns { supabase, dbUser } if admin, or a 401/403 Response if not. */
+export async function requireAdmin(request, env) {
+  const result = await authenticate(request, env)
+  if (result instanceof Response) return result
+  if (result.dbUser.role !== 'ADMIN') return json({ error: 'Forbidden' }, 403)
+  return result
 }

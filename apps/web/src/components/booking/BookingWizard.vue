@@ -17,7 +17,14 @@
                   ? 'background:#C4873A;color:#0D1F16;font-family:Lato,sans-serif;'
                   : 'background:rgba(61,43,26,.12);color:rgba(61,43,26,.4);font-family:Lato,sans-serif;'"
             >
-              <svg v-if="currentStep > i + 1" class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7"/></svg>
+              <svg
+                v-if="currentStep > i + 1"
+                class="w-3.5 h-3.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="3"
+                viewBox="0 0 24 24"
+              ><path d="M5 13l4 4L19 7" /></svg>
               <span v-else>{{ i + 1 }}</span>
             </div>
             <span
@@ -29,13 +36,20 @@
               {{ step }}
             </span>
           </div>
-          <div v-if="i < steps.length - 1" class="flex-1 h-px" style="background:rgba(61,43,26,.12);min-width:8px;"></div>
+          <div
+            v-if="i < steps.length - 1"
+            class="flex-1 h-px"
+            style="background:rgba(61,43,26,.12);min-width:8px;"
+          />
         </div>
       </div>
     </div>
 
     <!-- Step content -->
-    <Transition name="step-fade" mode="out-in">
+    <Transition
+      name="step-fade"
+      mode="out-in"
+    >
       <component
         :is="currentStepComponent"
         :key="currentStep"
@@ -47,12 +61,12 @@
 </template>
 
 <script setup>
-import { ref, computed, shallowRef } from 'vue'
 import { useBookingStore } from '@/stores/booking'
+import { computed, ref } from 'vue'
 import StepDate from './StepDate.vue'
-import StepTime from './StepTime.vue'
 import StepDetails from './StepDetails.vue'
 import StepPayment from './StepPayment.vue'
+import StepTime from './StepTime.vue'
 
 const steps = ['Date', 'Tee Time', 'Details', 'Payment']
 const currentStep = ref(1)

@@ -11,5 +11,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // API calls go to the Pages Functions that `npm run dev:pages` runs with wrangler on :8788.
+    // With `npm run dev` alone they fail with a proxy error instead of returning index.html.
+    proxy: {
+      '/api': 'http://127.0.0.1:8788',
+    },
   }
 })

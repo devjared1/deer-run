@@ -1,28 +1,49 @@
 <template>
   <div class="card rounded-lg p-6">
-    <h2 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:#1E3D2F;margin-bottom:4px;">Select a Date</h2>
-    <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-bottom:24px;">
+    <h2 style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#1E3D2F;margin-bottom:4px;">
+      Select a Date
+    </h2>
+    <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-bottom:12px;">
       Tee times available up to {{ authStore.maxBookDays }} days in advance.
     </p>
 
-    <hr class="mb-2 p-0" styles="outline: 1px solid black;" />
+    <hr
+      class="mb-2 p-0"
+      style="border-bottom: 1px solid rgba(61,43,26,.12);"
+    >
 
     <!-- Calendar grid -->
     <div class="mb-6">
       <div class="flex items-center justify-between mb-4">
-        <button @click="prevMonth" class="btn-outline-pine" style="padding:6px 12px;">‹</button>
-        <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#1E3D2F;">
+        <button
+          class="btn-outline-pine"
+          style="padding:4px 8px;"
+          @click="prevMonth"
+        >
+          ‹
+        </button>
+        <div style="font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#1E3D2F;">
           {{ monthLabel }}
         </div>
-        <button @click="nextMonth" class="btn-outline-pine" style="padding:6px 12px;">›</button>
+        <button
+          class="btn-outline-pine"
+          style="padding:4px 8px;"
+          @click="nextMonth"
+        >
+          ›
+        </button>
       </div>
 
       <!-- Day headers -->
       <div class="grid grid-cols-7">
-        <div v-for="d in ['Su','Mo','Tu','We','Th','Fr','Sa']" :key="d"
-          class="text-center text-xs font-bold uppercase py-1"
+        <div
+          v-for="d in ['Su','Mo','Tu','We','Th','Fr','Sa']"
+          :key="d"
+          class="text-center text-xs font-bold uppercase"
           style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.4);letter-spacing:.08em;"
-        >{{ d }}</div>
+        >
+          {{ d }}
+        </div>
       </div>
 
       <!-- Day cells -->
@@ -30,14 +51,14 @@
         <div
           v-for="cell in calendarCells"
           :key="cell.key"
-          class="aspect-square"
+          class="flex items-center justify-center w-full h-9"
         >
           <button
             v-if="cell.date"
-            @click="selectDate(cell.date)"
             :disabled="cell.disabled"
-            class="w-full h-full flex items-center justify-center rounded text-sm font-bold transition-all"
+            class="w-full h-full flex items-center justify-center rounded text-xs font-bold transition-all"
             :style="cellStyle(cell)"
+            @click="selectDate(cell.date)"
           >
             {{ cell.day }}
           </button>
@@ -46,10 +67,10 @@
     </div>
 
     <button
-      @click="$emit('next')"
       :disabled="!selectedDate"
       class="btn-amber w-full justify-center"
       :style="!selectedDate ? 'opacity:.4;cursor:not-allowed;' : ''"
+      @click="$emit('next')"
     >
       Choose a Tee Time →
     </button>
@@ -57,9 +78,9 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import { useBookingStore } from '@/stores/booking'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore } from '@/stores/auth';
+import { useBookingStore } from '@/stores/booking';
+import { computed, ref } from 'vue';
 
 const emit = defineEmits(['next'])
 const bookingStore = useAuthStore()

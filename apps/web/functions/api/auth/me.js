@@ -1,8 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
+import { registerAccess } from '../staff/_auth.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
 }
+
+const EMPLOYEE_FIELDS = 'id, firstName, lastName, position, active'
 
 export async function onRequestGet({ request, env }) {
   const authHeader = request.headers.get('Authorization')
@@ -21,21 +24,40 @@ export async function onRequestGet({ request, env }) {
   }
 
   // Return existing user or create on first login
-  const { data: existing } = await supabase
+  let { data: user } = await supabase
     .from('User')
     .select('*')
     .eq('supabaseId', authUser.id)
     .maybeSingle()
 
-  if (existing) return json(existing)
+  if (!user) {
+    const { data: created, error: dbError } = await supabase
+      .from('User')
+      .insert({ id: crypto.randomUUID(), supabaseId: authUser.id, email: authUser.email, role: 'MEMBER' })
+      .select()
+      .single()
 
-  const { data: created, error: dbError } = await supabase
-    .from('User')
-    .insert({ id: crypto.randomUUID(), supabaseId: authUser.id, email: authUser.email, role: 'MEMBER' })
-    .select()
-    .single()
+    if (dbError) return json({ error: dbError.message }, 500)
+    user = created
 
-  if (dbError) return json({ error: dbError.message }, 500)
+    // If an admin already added this person as an employee, link the new login to that record
+    await supabase
+      .from('Employee')
+      .update({ userId: user.id })
+      .eq('email', user.email.toLowerCase())
+      .is('userId', null)
+  }
 
-  return json(created)
+  // Linked employee record (null for non-staff); the frontend uses it to show the staff portal
+  const { data: employee } = await supabase
+    .from('Employee')
+    .select(EMPLOYEE_FIELDS)
+    .eq('userId', user.id)
+    .maybeSingle()
+
+  return json({
+    ...user,
+    employee: employee ?? null,
+    ...(employee ? await registerAccess(supabase, user, employee) : { canUseRegister: false, isRegisterManager: false }),
+  })
 }

@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:pages": "wrangler pages dev --proxy 5173 -- vite",
+    "dev:pages": "node scripts/dev-pages.mjs",
     "build": "vite build",
     "preview": "wrangler pages dev dist",
     "deploy": "vite build && wrangler pages deploy dist",

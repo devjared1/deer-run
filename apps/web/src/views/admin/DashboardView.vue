@@ -28,6 +28,33 @@
         </div>
       </div>
 
+      <!-- On the clock -->
+      <div class="bg-white rounded-xl border border-gray-200 mb-6">
+        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h2 class="font-display font-bold text-bark text-sm">
+            On the Clock
+            <span v-if="onClock" class="text-gray-400 font-body font-normal ml-1">({{ onClock.length }})</span>
+          </h2>
+          <RouterLink to="/admin/timesheets" class="text-xs text-lake hover:text-pine font-body">Timesheets →</RouterLink>
+        </div>
+        <div v-if="onClockError" class="px-5 py-4 text-red-500 text-sm">{{ onClockError }}</div>
+        <div v-else-if="onClock" class="divide-y divide-gray-50">
+          <div v-for="e in onClock" :key="e.id" class="px-5 py-3 flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="font-body text-sm text-bark truncate">{{ e.employee?.firstName }} {{ e.employee?.lastName }}</div>
+              <div class="text-gray-400 text-xs">
+                {{ positionLabel(e.employee?.position) }} · since {{ formatClockTime(e.clockIn) }}
+                <template v-if="e.date !== today">({{ formatLocalDate(e.date) }})</template>
+              </div>
+            </div>
+            <span v-if="e.longOpen" class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-body flex-shrink-0">Missed clock-out?</span>
+            <span v-else-if="e.status === 'break'" class="text-xs px-2 py-0.5 rounded-full bg-amber/20 text-bark font-body flex-shrink-0">On break</span>
+            <span v-else class="text-xs px-2 py-0.5 rounded-full bg-pine/15 text-pine font-body flex-shrink-0">Working</span>
+          </div>
+          <div v-if="!onClock.length" class="px-5 py-6 text-gray-400 text-sm text-center">Nobody is on the clock</div>
+        </div>
+      </div>
+
       <div class="grid lg:grid-cols-2 gap-6">
         <!-- Recent bookings -->
         <div class="bg-white rounded-xl border border-gray-200">
@@ -74,11 +101,29 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { positionLabel } from '@/data/employeePositions'
+import { localDate, formatClockTime, formatLocalDate } from '@/lib/timeclock'
 
 const authStore = useAuthStore()
 const loading = ref(true)
 const error   = ref(null)
 const data    = ref(null)
+const onClock      = ref(null)
+const onClockError = ref(null)
+const today        = localDate()
+
+// Loaded separately so a time clock problem doesn't break the rest of the dashboard
+async function loadOnClock() {
+  try {
+    const res = await fetch('/api/admin/timeclock', {
+      headers: { Authorization: `Bearer ${authStore.getToken()}` },
+    })
+    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
+    onClock.value = await res.json()
+  } catch (e) {
+    onClockError.value = e.message
+  }
+}
 
 async function load() {
   loading.value = true
@@ -109,5 +154,8 @@ function formatDate(iso) {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  loadOnClock()
+})
 </script>

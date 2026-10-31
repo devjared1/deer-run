@@ -46,6 +46,62 @@
         </select>
       </div>
 
+      <div class="border-t border-gray-100 pt-5">
+        <h2 class="font-display font-bold text-bark text-sm mb-3">Payroll</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <label class="label-sm">Pay Period</label>
+            <select v-model.number="form.payPeriodDays" class="input-field w-full">
+              <option :value="7">Weekly</option>
+              <option :value="14">Bi-weekly</option>
+            </select>
+          </div>
+          <div>
+            <label class="label-sm">A Pay Period Starts On</label>
+            <input v-model="form.payPeriodAnchor" type="date" class="input-field w-full" />
+          </div>
+        </div>
+        <p v-if="periodPreview" class="text-gray-400 text-xs mt-2 font-body">
+          Workweeks start on {{ periodPreview.weekday }}. Current pay period:
+          {{ periodPreview.label }}. Overtime is calculated per workweek.
+        </p>
+      </div>
+
+      <div class="border-t border-gray-100 pt-5">
+        <h2 class="font-display font-bold text-bark text-sm mb-3">Point of Sale</h2>
+        <div>
+          <label class="label-sm">Sales Tax Rate (%)</label>
+          <input
+            v-model="form.salesTaxPercent"
+            type="number"
+            min="0"
+            max="20"
+            step="0.01"
+            class="input-field w-40"
+          />
+          <p class="text-gray-400 text-xs mt-1 font-body">
+            Combined state, county and city rate. Applies to every category not marked tax-exempt
+            (Admin → Products → Categories).
+          </p>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-4 mt-4">
+          <div v-for="group in positionGroups" :key="group.field">
+            <label class="label-sm">{{ group.label }}</label>
+            <p class="text-gray-400 text-xs mb-2 font-body">{{ group.help }}</p>
+            <div class="space-y-1 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2">
+              <label
+                v-for="p in employeePositions"
+                :key="p.value"
+                class="flex items-center gap-2 text-sm font-body text-bark cursor-pointer"
+              >
+                <input v-model="form[group.field]" type="checkbox" :value="p.value" class="rounded" />
+                {{ p.label }}
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="pt-2 flex items-center gap-4">
         <button type="submit" :disabled="saving" class="btn-amber px-5 py-2 text-sm">
           {{ saving ? 'Saving…' : 'Save Settings' }}
@@ -63,8 +119,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import {
+  DEFAULT_PAY_PERIOD, isValidYmd, localDate, payPeriodContaining, formatLocalDate,
+} from '@/lib/timeclock'
+import { employeePositions } from '@/data/employeePositions'
+
+const positionGroups = [
+  { field: 'registerPositions', label: 'Can Use the Register', help: 'Employees in these positions can ring sales.' },
+  { field: 'managerPositions',  label: 'Register Managers',    help: 'Can approve No Sale, voids and refunds.' },
+]
 
 const authStore = useAuthStore()
 const loading   = ref(true)
@@ -80,6 +145,21 @@ const form = ref({
   firstTeeTime: '07:30',
   lastTeeTime: '17:00',
   intervalMinutes: 10,
+  payPeriodDays: DEFAULT_PAY_PERIOD.lengthDays,
+  payPeriodAnchor: DEFAULT_PAY_PERIOD.anchor,
+  salesTaxPercent: '0.00',
+  registerPositions: [],
+  managerPositions: [],
+})
+
+const periodPreview = computed(() => {
+  const { payPeriodAnchor: anchor, payPeriodDays: lengthDays } = form.value
+  if (!isValidYmd(anchor) || !lengthDays) return null
+  const { start, end } = payPeriodContaining(localDate(), { anchor, lengthDays })
+  return {
+    weekday: formatLocalDate(anchor, { weekday: 'long' }),
+    label: `${formatLocalDate(start, { month: 'short', day: 'numeric' })} – ${formatLocalDate(end, { month: 'short', day: 'numeric', year: 'numeric' })}`,
+  }
 })
 
 async function load() {
@@ -98,12 +178,23 @@ async function load() {
       firstTeeTime:        data.firstTeeTime,
       lastTeeTime:         data.lastTeeTime,
       intervalMinutes:     data.intervalMinutes,
+      payPeriodDays:       data.payPeriodDays ?? DEFAULT_PAY_PERIOD.lengthDays,
+      payPeriodAnchor:     data.payPeriodAnchor ?? DEFAULT_PAY_PERIOD.anchor,
+      salesTaxPercent:     ((data.salesTaxBps ?? 0) / 100).toFixed(2),
+      registerPositions:   data.registerPositions ?? [],
+      managerPositions:    data.managerPositions ?? [],
     }
   } catch (e) {
     error.value = e.message
   } finally {
     loading.value = false
   }
+}
+
+// The form edits tax as a percentage; the API stores basis points (9.25% = 925)
+function settingsPayload() {
+  const { salesTaxPercent, ...rest } = form.value
+  return { ...rest, salesTaxBps: Math.round(Number(salesTaxPercent || 0) * 100) }
 }
 
 async function save() {
@@ -114,7 +205,7 @@ async function save() {
     const res = await fetch('/api/admin/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.getToken()}` },
-      body: JSON.stringify(form.value),
+      body: JSON.stringify(settingsPayload()),
     })
     if (!res.ok) throw new Error((await res.json()).error || res.statusText)
     saved.value = true

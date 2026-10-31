@@ -1,5 +1,5 @@
-import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { createRouter, createWebHistory } from 'vue-router'
 
 const routes = [
   { path: '/',             component: () => import('@/views/HomeView.vue') },
@@ -25,6 +25,23 @@ const routes = [
       { path: 'tournaments',component: () => import('@/views/admin/TournamentsView.vue') },
       { path: 'settings',   component: () => import('@/views/admin/SettingsView.vue') },
       { path: 'users',      component: () => import('@/views/admin/UsersView.vue') },
+      { path: 'employees',  component: () => import('@/views/admin/EmployeesView.vue') },
+      { path: 'timesheets', component: () => import('@/views/admin/TimesheetsView.vue') },
+      { path: 'products',   component: () => import('@/views/admin/ProductsView.vue') },
+      { path: 'registers',  component: () => import('@/views/admin/RegistersView.vue') },
+    ],
+  },
+
+  // Staff portal (employees with an active Employee record linked to their login)
+  {
+    path: '/staff',
+    component: () => import('@/views/staff/StaffLayout.vue'),
+    meta: { requiresStaff: true },
+    children: [
+      { path: '',          component: () => import('@/views/staff/TimeClockView.vue') },
+      { path: 'timesheet', component: () => import('@/views/staff/MyTimesheetView.vue') },
+      { path: 'register',  component: () => import('@/views/staff/RegisterView.vue'), meta: { requiresRegister: true } },
+      { path: 'pin',       component: () => import('@/views/staff/ManagerPinView.vue'), meta: { requiresRegisterManager: true } },
     ],
   },
 ]
@@ -35,11 +52,24 @@ const router = createRouter({
   scrollBehavior: () => ({ top: 0, behavior: 'smooth' }),
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const auth = useAuthStore()
+  // Wait for the session and profile to load so a page refresh doesn't look signed out
+  await auth.init()
+  console.log('Logged in: ', auth.isLoggedIn)
+  console.log('Is Admin: ', auth.isAdmin)
+  console.log('Is Staff: ', auth.isStaff)
+  console.log('Can Use Register: ', auth.canUseRegister)
+  console.log('Is Register Manager: ', auth.isRegisterManager)
   if (to.meta.requiresAdmin) {
     if (!auth.isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } }
     if (!auth.isAdmin) return { path: '/' }
+  }
+  if (to.meta.requiresStaff) {
+    if (!auth.isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } }
+    if (!auth.isStaff) return { path: '/' }
+    if (to.meta.requiresRegister && !auth.canUseRegister) return { path: '/staff' }
+    if (to.meta.requiresRegisterManager && !auth.isRegisterManager) return { path: '/staff' }
   }
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
