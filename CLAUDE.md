@@ -2,7 +2,12 @@
 
 ## Project Overview
 
-Production Vue 3 + Cloudflare Pages monorepo for [deerrun.golf](https://deerrun.golf) — an 18-hole public/semi-private golf course in Lawrence County, Alabama. The site handles tee time booking, membership inquiries, tournament listings, scorecards, rates, and course contact.
+Production Vue 3 + Cloudflare Pages monorepo for [deerrun.golf](https://deerrun.golf) — an 18-hole public/semi-private golf course in Lawrence County, Alabama. The public site handles tee time booking, membership inquiries, tournament listings, scorecards, rates, and course contact.
+Behind it are an **admin panel** (`/admin`) and a **staff portal** (`/staff`) for employee time management
+(time clock, timesheets, scheduling, time off) and an in-house **point of sale** (register, receipts, refunds).
+
+`TODO.md` at the repo root is the roadmap for the employee time management and POS features: what's done,
+what's next, and the decisions behind them. Keep it current when you finish or change an item.
 
 ---
 
@@ -12,47 +17,49 @@ Production Vue 3 + Cloudflare Pages monorepo for [deerrun.golf](https://deerrun.
 deer-run/
 ├── apps/
 │   ├── web/                   # Vue 3 frontend + Cloudflare Pages Functions
-│   │   ├── functions/         # Pages Functions — all served under /api/*
-│   │   │   └── api/
-│   │   │       ├── auth/
-│   │   │       │   └── me.js          # GET /api/auth/me
-│   │   │       ├── teetimes.js        # GET /api/teetimes?date=YYYY-MM-DD
-│   │   │       ├── bookings.js        # POST /api/bookings
-│   │   │       ├── events.js          # GET /api/events[?past=true|false]
-│   │   │       ├── inquiries.js       # POST /api/inquiries
-│   │   │       └── webhooks/
-│   │   │           └── stripe.js      # POST /api/webhooks/stripe
-│   │   ├── public/
-│   │   │   └── _redirects     # SPA fallback: /* → /index.html 200
+│   │   ├── functions/api/     # Pages Functions — all served under /api/* (see API section)
+│   │   │   ├── auth/me.js     # Profile + linked employee + register access
+│   │   │   ├── teetimes.js, events.js, bookings/, inquiries/   # public site
+│   │   │   ├── webhooks/stripe.js
+│   │   │   ├── admin/         # Admin panel APIs (requireAdmin); _auth.js holds the shared auth helpers
+│   │   │   └── staff/         # Staff portal APIs (requireStaff / requireRegister); _auth.js, _timesheet.js,
+│   │   │                      #   _timeoff.js, _approvals.js, _pin.js; register/ and sales/ for the POS
+│   │   ├── public/_redirects  # SPA fallback: /* → /index.html 200
+│   │   ├── scripts/dev-pages.mjs  # `npm run dev:pages` (wrangler + vite together)
 │   │   ├── src/
 │   │   │   ├── assets/        # Global CSS (main.css)
 │   │   │   ├── components/
+│   │   │   │   ├── admin/products/  # Product form, category manager, stock dialog
 │   │   │   │   ├── booking/   # BookingWizard + 4 step components
 │   │   │   │   ├── layout/    # AppNav, AppFooter, PageHero
 │   │   │   │   ├── membership/# MembershipInquiryForm, MembershipTierCard
+│   │   │   │   ├── pos/       # Register modals (tender, approval, refund, recent sales…) and receipts
+│   │   │   │   ├── schedule/  # ScheduleGrid, ScheduleMonth, schedule/time off display helpers
 │   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
 │   │   │   │   ├── tournament/# EventCard, EventFilterBar
 │   │   │   │   └── ui/        # CourseDiagram, DeerLogo, SectionLabel, TreelineDivider
-│   │   │   ├── data/          # Static JS data (holes, rates, membershipTiers, teeSets)
-│   │   │   ├── lib/           # supabase.js — anon client singleton
+│   │   │   ├── composables/   # usePendingTimeOff (admin sidebar badge)
+│   │   │   ├── data/          # Static JS data (holes, rates, membershipTiers, teeSets, employeePositions)
+│   │   │   ├── lib/           # supabase.js, api.js, and shared logic (see "Shared libraries")
 │   │   │   ├── router/        # Vue Router (index.js)
 │   │   │   ├── stores/        # Pinia stores (auth.js, booking.js)
-│   │   │   ├── views/         # Page-level components (one per route)
+│   │   │   ├── views/         # One per route; admin/ and staff/ hold the two portals
 │   │   │   ├── App.vue        # Root component — calls auth.init() on mount
 │   │   │   └── main.js        # App entry point
-│   │   ├── index.html
-│   │   ├── vite.config.js     # Vite config (proxies /api to wrangler on :8788 in dev)
-│   │   ├── wrangler.toml      # Cloudflare Pages config
-│   │   ├── tailwind.config.js
-│   │   ├── postcss.config.js
+│   │   ├── index.html, vite.config.js, wrangler.toml, tailwind.config.js, postcss.config.js
 │   │   ├── .eslintrc.cjs
 │   │   └── .env.example       # Both VITE_* (build-time) and server-side vars
 │   └── api/                   # DB management only — no running server
 │       ├── prisma/
-│       │   ├── schema.prisma  # DB schema (used for Prisma migrations)
-│       │   └── seed.js        # Seeds course settings, tee time slots, events
+│       │   ├── schema.prisma  # DB schema (source of truth for the data model)
+│       │   ├── seed.js        # Prisma seed: course settings, tee time slots, events
+│       │   ├── seed.sql       # Same base seed as SQL, for the Supabase SQL Editor
+│       │   ├── seed-pos.sql   # POS seed: categories, "Pro Shop" register, products
+│       │   └── migrations/    # Gitignored — kept locally (see "Database migrations")
 │       ├── package.json       # Prisma devDep only
 │       └── .env.example       # DATABASE_URL only
+├── docs/register-setup.md     # How to set up a POS register PC (printer, kiosk Chrome, scanner, reader)
+├── TODO.md                    # Roadmap: employee time management + POS
 └── package.json               # Workspace root (npm workspaces)
 ```
 
@@ -66,7 +73,7 @@ deer-run/
 | API        | Cloudflare Pages Functions (edge, ES modules)             |
 | Database   | Supabase (PostgreSQL) — accessed via `@supabase/supabase-js` |
 | Auth       | Supabase Auth (JWT via `supabase.auth.getUser(token)`)    |
-| Payments   | Stripe Checkout v14 (API version 2023-10-16)              |
+| Payments   | Stripe v14 PaymentIntents + Payment Element (API version 2023-10-16); Stripe Terminal planned for the POS |
 | Email      | Resend v3                                                 |
 | DB Mgmt    | Prisma 5 (migrations + seed only, not used at runtime)    |
 | Dev tools  | Wrangler 3, ESLint (vue3-recommended)                     |
@@ -128,7 +135,8 @@ CONTACT_EMAIL_TO=proshop@deerrun.golf
 ```bash
 npm run build               # Vite production build → apps/web/dist/
 npm run deploy              # Build + wrangler pages deploy
-npm run lint                # ESLint all workspaces
+npm run lint                # ESLint all workspaces (report only; 0 errors expected, many formatting warnings)
+npm run lint:fix --workspace=apps/web   # ESLint with --fix (rewrites files)
 npm run db:migrate          # Prisma migrate dev (schema changes)
 npm run db:migrate:deploy   # Prisma migrate deploy (CI/CD)
 npm run db:seed             # Seed the database
@@ -149,6 +157,7 @@ dashboard under **Settings → Environment Variables → Build** tab. Never use 
 | `VITE_SUPABASE_URL`       | Supabase project URL                 |
 | `VITE_SUPABASE_ANON_KEY`  | Supabase anon/public key             |
 | `VITE_GOOGLE_MAPS_API_KEY`| Google Maps embed key                |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | Stripe publishable key (`pk_test_...`) for the Payment Element |
 
 ### `apps/web/.dev.vars` / Cloudflare dashboard — server-side (Functions runtime)
 
@@ -164,6 +173,9 @@ Accessed in Functions via `context.env.<NAME>`.
 | `STRIPE_WEBHOOK_SECRET`   | Stripe webhook signing secret (`whsec_...`)       |
 | `RESEND_API_KEY`          | Resend API key                                    |
 | `CONTACT_EMAIL_TO`        | Recipient for inquiry notification emails         |
+
+Emails (inquiries, booking confirmations, receipts, time off decisions) are skipped silently when
+`RESEND_API_KEY` isn't set, so local dev works without it.
 
 ### `apps/api/.env` — DB management only
 
@@ -195,32 +207,82 @@ export async function onRequest({ request, env }) { ... }
 
 ### Endpoints
 
+Each handler file starts with a comment giving its exact request/response shape; read it before changing a call.
+Files starting with `_` (e.g. `_auth.js`, `_validate.js`) are shared modules, not routes. Static files win over
+`[id].js` in the same folder (e.g. `shifts/copy.js`, `time-off/count.js`).
+
+**Public site**
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/api/auth/me` | Required | Upsert + return DB user from Supabase JWT |
-| GET | `/api/teetimes?date=YYYY-MM-DD` | Optional | Available slots for a date (member-only slots hidden from guests) |
-| POST | `/api/bookings` | Optional | Create booking + Stripe Checkout session |
+| GET | `/api/auth/me` | Required | Upsert + return DB user, linked `employee`, `canUseRegister`, `isRegisterManager` |
+| GET | `/api/teetimes?date=YYYY-MM-DD` | Optional | Available slots (member-only slots hidden from guests) |
+| POST | `/api/bookings` | Optional | Create PENDING booking + Stripe PaymentIntent → `{ bookingId, clientSecret }` |
+| GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
+| GET | `/api/bookings/my` | Required | Signed-in user's bookings |
+| GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
-| POST | `/api/inquiries` | Public | Submit membership inquiry + send email |
-| POST | `/api/webhooks/stripe` | Stripe signature | Handle `checkout.session.completed` |
+| POST | `/api/inquiries/membership`, `/api/inquiries/contact` | Public | Save inquiry/message + email `CONTACT_EMAIL_TO` |
+| POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email |
 
-### Auth pattern in Functions
+**Admin panel** (all `requireAdmin`, i.e. `User.role = ADMIN`)
+
+| Path | Methods | Description |
+|------|---------|-------------|
+| `/api/admin/dashboard` | GET | Dashboard stats |
+| `/api/admin/teetimes[/:id]` | GET, POST / PUT, DELETE | Tee time slots |
+| `/api/admin/bookings[/:id]` | GET / PUT | Bookings list, status changes |
+| `/api/admin/events[/:id]` | GET, POST / PUT, DELETE | Tournaments |
+| `/api/admin/users[/:id]` | GET / PUT | Users, role changes |
+| `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS fields) |
+| `/api/admin/employees[/:id]` | GET, POST / PUT, DELETE | Employees (`resetManagerPin`; delete refused with clock history) |
+| `/api/admin/timeclock` | GET | Who's on the clock / on break / forgot to clock out |
+| `/api/admin/timesheets?date=` | GET | All employees' hours for a pay period |
+| `/api/admin/time-entries[/:id]` | POST / PUT, DELETE | Manager corrections to punches |
+| `/api/admin/shifts?view=week\|biweek\|month&date=` (or `?from=&to=`) | GET, POST | Schedule: shifts, employees, time off |
+| `/api/admin/shifts/:id` | PUT, DELETE | Edit / delete a shift |
+| `/api/admin/shifts/copy` | POST | Copy the previous 7/14 days of shifts forward (skips duplicates, inactive) |
+| `/api/admin/time-off?status=&from=&to=` | GET | Time off requests + shifts scheduled during each |
+| `/api/admin/time-off/:id` | PUT | `{ action: approve\|deny, note }` (pending only) + email the employee |
+| `/api/admin/time-off/count` | GET | `{ pending }` for the sidebar badge |
+| `/api/admin/product-categories[/:id]` | GET, POST / PUT, DELETE | POS categories (`taxExempt`) |
+| `/api/admin/products[/:id]` | GET, POST / PUT, DELETE | Products with nested variants |
+| `/api/admin/inventory/:variantId` | GET, POST | Stock history / adjust (`adjust_inventory()`) |
+| `/api/admin/registers[/:id]` | GET, POST / PUT, DELETE | Registers (Stripe reader ID) |
+
+**Staff portal** (`requireStaff`: an active `Employee` linked to the login; register endpoints use `requireRegister`)
+
+| Path | Methods | Description |
+|------|---------|-------------|
+| `/api/staff/clock` | GET, POST | Clock state / `clock_in\|clock_out\|break_start\|break_end` (server time) |
+| `/api/staff/timesheet?date=` | GET | Own timesheet for a pay period |
+| `/api/staff/schedule?view=&date=[&team=1]` | GET | Own shifts (or the whole team, read-only) + approved time off |
+| `/api/staff/time-off[/:id]` | GET, POST / PUT | Own requests; create; `{ action: 'cancel' }` while pending |
+| `/api/staff/pin` | GET, PUT | Register manager's own PIN |
+| `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch |
+| `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
+| `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`) |
+| `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`) |
+
+### Auth helpers in Functions
+`functions/api/admin/_auth.js` and `functions/api/staff/_auth.js` hold the helpers. Each returns either a
+`Response` (401/403 — return it as-is) or the context object:
 ```javascript
-// Strict auth (rejects unauthenticated requests):
-const authHeader = request.headers.get('Authorization')
-if (!authHeader?.startsWith('Bearer ')) return Response.json({ error: '...' }, { status: 401 })
-const { data: { user }, error } = await supabase.auth.getUser(authHeader.slice(7))
+import { requireAdmin, json } from '../_auth.js'
 
-// Optional auth helper (returns null if no/invalid token):
-async function getOptionalUser(request, supabase) {
-  const authHeader = request.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) return null
-  const { data: { user }, error } = await supabase.auth.getUser(authHeader.slice(7))
-  if (error || !user) return null
-  const { data: dbUser } = await supabase.from('User').select('*').eq('supabaseId', user.id).maybeSingle()
-  return dbUser
+export async function onRequestGet({ request, env }) {
+  const result = await requireAdmin(request, env)   // or authenticate / requireStaff / requireRegister
+  if (result instanceof Response) return result
+  const { supabase, dbUser } = result               // requireStaff adds `employee`; requireRegister adds access flags
+  ...
 }
 ```
+- `authenticate` — any signed-in user → `{ supabase, dbUser }`
+- `requireAdmin` — `dbUser.role === 'ADMIN'`
+- `requireStaff` — active `Employee` linked to the user → adds `employee` (admins need one too)
+- `requireRegister` — `requireStaff` + position in `CourseSettings.registerPositions` (managers and admins always allowed)
+
+Public endpoints with optional auth use a local `getOptionalUser(request, supabase)` that returns the DB user or null.
 
 ### Supabase client in Functions
 Always use the **service role key** (bypasses RLS, full admin access). Create a fresh client
@@ -245,55 +307,73 @@ await supabase.from('User').insert({ id: crypto.randomUUID(), ... })
 
 ## Database Schema (Prisma)
 
-Schema in `apps/api/prisma/schema.prisma`. Managed with the Prisma CLI (`npm run db:migrate`).
-The running application uses the Supabase JS client to access the same PostgreSQL database —
-**Prisma is not used at runtime**.
+Schema in `apps/api/prisma/schema.prisma`. The running application uses the Supabase JS client to access
+the same PostgreSQL database — **Prisma is not used at runtime**.
 
 ### Models
 
-| Model            | Key fields                                                           |
-|------------------|----------------------------------------------------------------------|
-| `User`           | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`    |
-| `TeeTimeSlot`    | `id`, `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
-| `Booking`        | `id`, `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `stripeSessionId?`, `stripePaymentId?` |
-| `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range |
-| `TournamentEvent`| `id`, `name`, `eventDate`, `format`, `entry`, `spotsTotal`, `memberOnly`, `featured`, `past` |
-| `Inquiry`        | Membership inquiry form submissions                                  |
-| `ContactMessage` | General contact form submissions                                     |
+| Area | Model | Key fields |
+|------|-------|------------|
+| Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId` |
+| | `TeeTimeSlot` | `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
+| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy) |
+| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range, pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`) |
+| | `TournamentEvent`, `Inquiry`, `ContactMessage` | Events and form submissions |
+| Staff | `Employee` | `userId?` (linked by email), names, `email`, `position` (`EmployeePosition`), `hourlyRateCents`, `active`, manager PIN hash/lockout |
+| | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
+| | `Shift` | `employeeId`, `date`, `startTime`/`endTime` ("HH:MM"; end ≤ start = overnight), `position?` override, `notes?` |
+| | `TimeOffRequest` | `startDate`/`endDate` (inclusive), `type`, `reason?`, `status` (PENDING/APPROVED/DENIED/CANCELLED), `reviewedById` (User.id), `reviewedAt`, `reviewNote` |
+| POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant |
+| | `InventoryAdjustment` | Stock change log (`InventoryReason`) |
+| | `Register` | Physical register; `stripeReaderId` |
+| | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line |
+| | `ManagerApproval` | Single-use, short-lived manager sign-offs |
+| | `SaleRefund`, `SaleRefundItem` | Voids and refunds |
 
-### Table names in Supabase queries
-Prisma creates tables with PascalCase names matching the model (e.g., `"User"`, `"TeeTimeSlot"`,
-`"Booking"` — quoted in PostgreSQL to preserve case). Use the same casing in Supabase JS calls:
-```javascript
-supabase.from('TeeTimeSlot').select(...)
-supabase.from('CourseSettings').select(...)
-```
+Postgres functions (in the migrations, callable only by the service role): `adjust_inventory()`,
+`create_sale()`, `refund_sale()`. The partial unique index `TimeEntry_one_open_per_employee` allows one open
+time entry per employee; Prisma can't model it, so delete the `DROP INDEX` line from any generated migration.
+
+### Database migrations
+`apps/api/prisma/migrations/` is **gitignored** — migration folders are kept locally. Each phase that changes the
+schema adds a folder (`0_init`, `1_employee_time_management`, `2_timeclock_admin`, `3_pos_catalog`, `4_pos_sales`,
+`5_pos_approvals_refunds`, …) whose SQL is written to be pasted into the **Supabase SQL Editor**: wrapped in a
+transaction, with RLS enabled on new tables (the Functions use the service role, which bypasses RLS). When a
+migration is applied that way, mark it with `npx prisma migrate resolve --applied <name>` from a network that can
+reach the database. `TODO.md` → Housekeeping tracks which migrations still need running.
 
 ### Seed data
-`npm run db:seed` creates:
+`npm run db:seed` (or `prisma/seed.sql` in the SQL Editor) creates:
 - A singleton `CourseSettings` record (7-day public / 14-day member booking window, $45/player, 07:30–17:00 tee times at 10-min intervals)
 - `TeeTimeSlot` records for the next 30 days
 - 8 `TournamentEvent` records (6 upcoming, 2 past) — only if none exist yet
+
+`prisma/seed-pos.sql` adds 12 product categories, the "Pro Shop" register and starter products (some placeholder prices).
 
 ---
 
 ## Frontend Routes & Views
 
-| Path            | View                  | Auth required |
+| Path            | View                  | Guard |
 |-----------------|-----------------------|---------------|
-| `/`             | `HomeView.vue`        | No            |
-| `/scorecard`    | `ScorecardView.vue`   | No            |
-| `/rates`        | `RatesView.vue`       | No            |
-| `/memberships`  | `MembershipsView.vue` | No            |
-| `/tournaments`  | `TournamentsView.vue` | No            |
-| `/contact`      | `ContactView.vue`     | No            |
-| `/book`         | `BookView.vue`        | No            |
-| `/confirmation` | `ConfirmationView.vue`| No            |
-| `/login`        | `LoginView.vue`       | No            |
-| `/account`      | `AccountView.vue`     | Yes (`requiresAuth: true`) |
+| `/`             | `HomeView.vue`        | — |
+| `/scorecard`, `/rates`, `/memberships`, `/tournaments`, `/contact` | matching `*View.vue` | — |
+| `/book`         | `BookView.vue`        | — |
+| `/confirmation` | `ConfirmationView.vue` (`?booking_id=`) | — |
+| `/login`        | `LoginView.vue`       | — |
+| `/account`      | `AccountView.vue`     | `requiresAuth` |
+| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `registers` | `requiresAdmin` |
+| `/staff`        | `staff/StaffLayout.vue` + `TimeClockView` | `requiresStaff` |
+| `/staff/timesheet`, `/staff/schedule`, `/staff/time-off` | `MyTimesheetView`, `MyScheduleView`, `TimeOffView` | `requiresStaff` |
+| `/staff/register` | `RegisterView.vue` | `requiresStaff` + `requiresRegister` |
+| `/staff/pin`    | `ManagerPinView.vue`  | `requiresStaff` + `requiresRegisterManager` |
 
-Unauthenticated access to `/account` redirects to `/login?redirect=<path>`.
-All routes are lazy-loaded via `() => import('@/views/...')`.
+The router guard awaits `auth.init()` (session + profile) before checking roles, so a page reload doesn't look
+signed out. Failing a guard redirects to `/login?redirect=<path>` (not signed in), `/` (wrong role) or `/staff`
+(no register access). All routes are lazy-loaded via `() => import('@/views/...')`.
+
+When adding a page to a portal, also add it to the layout's `navItems` and `titles` (`AdminLayout.vue` /
+`StaffLayout.vue`).
 
 ---
 
@@ -304,8 +384,11 @@ All routes are lazy-loaded via `() => import('@/views/...')`.
 - `profile` — User record from `GET /api/auth/me`
 - `isLoggedIn` — computed boolean
 - `isMember` — computed, true if `profile.role === 'MEMBER'`
-- `maxBookDays` — 14 for members, 7 for public
-- `init()` — called on app mount; hydrates session from Supabase
+- `isAdmin` — computed, `profile.role === 'ADMIN'`
+- `employee`, `isStaff` — linked employee record (from `/api/auth/me`) and whether it's active
+- `canUseRegister`, `isRegisterManager` — POS access flags from `/api/auth/me`
+- `maxBookDays` — 14 for members/admins, 7 for public
+- `init()` — restores the session and fetches the profile once per page load (memoized; App.vue and the router guard both await it)
 - `login(email, password)` — Supabase sign-in + fetches profile from `/api/auth/me`
 - `logout()` — Supabase sign-out + clears state
 - `getToken()` — returns current `access_token` or null
@@ -314,11 +397,30 @@ All routes are lazy-loaded via `() => import('@/views/...')`.
 - `selectedDate`, `selectedSlot`, `players`, `guestName`, `guestEmail` — booking state
 - `totalPrice` — computed: `players * 45` (frontend display only; authoritative price is `CourseSettings.pricePerPlayerCents` on the server)
 - `fetchAvailableSlots(date)` — GET `/api/teetimes?date=<date>`
-- `createBooking()` — POST `/api/bookings` → returns `{ bookingId, checkoutUrl }`
+- `createBooking()` — POST `/api/bookings` → returns `{ bookingId, clientSecret }`
 - `reset()` — clears all booking state
 
 API calls use **relative paths** (`/api/...`) — same origin as the static site on Cloudflare
-Pages. No `VITE_API_URL` env var is used.
+Pages. No `VITE_API_URL` env var is used. Authenticated calls in new code should use `apiFetch(url, { method, body })`
+from `src/lib/api.js`: it adds the bearer token and JSON body, and throws an `Error` carrying the API's `error`
+message (plus `status` and optional `code`).
+
+---
+
+## Shared libraries (`src/lib/`)
+
+`timeclock.js`, `schedule.js` and `pricing.js` are imported by **both** the Vue app and the Functions (by relative
+path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports or browser-only APIs.
+
+| File | Contents |
+|------|----------|
+| `timeclock.js` | `COURSE_TZ` (America/Chicago), course-local date helpers (`localDate`, `addDays`, `localDateTimeToUtc`…), worked/overtime minutes, pay periods, display formatting |
+| `schedule.js` | Shift length (overnight wrap), overlaps, `scheduleWarnings()`, week/2-week/month `schedulePeriod()` |
+| `pricing.js` | Register line/tax/total math, shared so the server recomputes exactly what the register showed |
+| `money.js` | Cents ↔ dollars helpers |
+| `api.js` | `apiFetch()` (see above) |
+| `printReceipt.js`, `print.js` | `printReceipt()` (80 mm `@page`) and `printLandscape()`; each adds its `@page` rule only while printing |
+| `supabase.js` | Anon client singleton (frontend only) |
 
 ---
 
@@ -329,13 +431,29 @@ Pages. No `VITE_API_URL` env var is used.
 1. **StepDate** — calendar date picker
 2. **StepTime** — fetches `/api/teetimes?date=...`, shows available slots with `available` count
 3. **StepDetails** — player count; guest name/email if not logged in
-4. **StepPayment** — summary + calls `/api/bookings` → redirects to Stripe Checkout
+4. **StepPayment** — calls `/api/bookings`, which creates a PENDING booking and a Stripe PaymentIntent
+   (`metadata.bookingId`), then mounts the Stripe **Payment Element** with the returned `clientSecret` and
+   confirms the payment on the page, returning to `/confirmation?booking_id=…`
 
-On payment completion, Stripe sends a `checkout.session.completed` event to
-`/api/webhooks/stripe`, which updates the booking `status` to `CONFIRMED` and stores
-`stripePaymentId`.
+Stripe then sends `payment_intent.succeeded` to `/api/webhooks/stripe`, which sets the booking `status` to
+`CONFIRMED`, stores the PaymentIntent id in `stripePaymentId`, and emails a confirmation.
 
 Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS transition.
+
+---
+
+## Staff features (overview)
+
+- **Employees ↔ logins** are linked by email (when the employee is saved, and on first sign-in in `/api/auth/me`).
+  Staff access comes from an active `Employee` record, not a `Role`; register managers are employees whose
+  position is in `CourseSettings.managerPositions`.
+- **Time clock**: punches use server time; one open entry per employee; overtime over 40 h per workweek, which starts
+  on the pay period anchor's weekday. Everything is displayed in `America/Chicago`.
+- **Scheduling**: admins build the schedule on `/admin/schedule`; warnings (overlaps, time off, inactive employees)
+  are shown, not enforced. Staff see theirs on `/staff/schedule`. Both print in landscape.
+- **Time off**: staff request on `/staff/time-off`; admins approve/deny on `/admin/time-off` (sidebar badge shows
+  the pending count) and the employee is emailed. Approved and pending time off shows on the schedule.
+- **POS**: see `TODO.md` → Feature 2 for the register, manager approvals, receipts, voids and refunds.
 
 ---
 
@@ -393,7 +511,10 @@ Pure JS modules in `apps/web/src/data/` — no API calls needed:
 ### Supabase conventions
 - Use the **service role key** in Functions (bypasses RLS, full admin access).
 - Use the **anon key** only in the frontend client (`apps/web/src/lib/supabase.js`).
-- Table names in queries match Prisma model names exactly (PascalCase): `'User'`, `'TeeTimeSlot'`, `'Booking'`, `'CourseSettings'`, `'TournamentEvent'`, `'Inquiry'`.
+- Table names in queries match Prisma model names exactly (PascalCase): `'User'`, `'TeeTimeSlot'`, `'Booking'`, `'CourseSettings'`, `'Employee'`, `'Shift'`, `'TimeOffRequest'`, `'Sale'`, etc.
+- `TIMESTAMP(3)` columns come back without a zone; pass them through `toUtcIso()` (`src/lib/timeclock.js`) before parsing.
+- `DATE` columns come back as `YYYY-MM-DD` strings; compare them as strings and format with `formatLocalDate()` (no time zone shift).
+- Multi-step writes that must be atomic (sales, refunds, stock changes) are Postgres functions called with `supabase.rpc()`.
 
 ### Git
 - Feature branches follow the pattern `claude/<description>-<id>`.
@@ -411,12 +532,12 @@ Pure JS modules in `apps/web/src/data/` — no API calls needed:
 - `apps/web/public/_redirects` handles SPA routing (Vue Router history mode).
 
 **Environment variable setup in Cloudflare dashboard:**
-1. Build-time vars (Build tab): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GOOGLE_MAPS_API_KEY`
+1. Build-time vars (Build tab): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GOOGLE_MAPS_API_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY`
 2. Runtime secrets (Production tab): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `CONTACT_EMAIL_TO`
 
 ### Stripe Webhook
 - Register endpoint: `https://deerrun.golf/api/webhooks/stripe`
-- Event to enable: `checkout.session.completed`
+- Event to enable: `payment_intent.succeeded`
 - Paste the signing secret into `STRIPE_WEBHOOK_SECRET`.
 
 ### Database Migrations (CI/CD)
