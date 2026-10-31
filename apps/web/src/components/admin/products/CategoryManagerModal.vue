@@ -4,6 +4,9 @@
       <h2 class="font-display font-bold text-bark mb-1">Categories</h2>
       <p class="text-gray-400 text-xs font-body mb-4">
         Tax-exempt categories are never charged sales tax. Lower sort numbers show first on the register.
+        <template v-if="hasMemberDiscount">
+          Active members get their Pro Shop discount (10% or 15% by tier) in Member Discount categories, except on products with a member price.
+        </template>
       </p>
 
       <table class="w-full text-sm font-body">
@@ -12,6 +15,7 @@
             <th class="py-1 pr-2">Name</th>
             <th class="py-1 pr-2 w-20">Sort</th>
             <th class="py-1 pr-2 text-center">Tax Exempt</th>
+            <th v-if="hasMemberDiscount" class="py-1 pr-2 text-center">Member Discount</th>
             <th class="py-1 pr-2 text-center">Active</th>
             <th class="py-1 pr-2 text-right">Products</th>
             <th class="py-1 w-28" />
@@ -22,6 +26,7 @@
             <td class="py-1.5 pr-2"><input v-model="row.name" type="text" class="input-field w-full" placeholder="New category" /></td>
             <td class="py-1.5 pr-2"><input v-model="row.sortOrder" type="number" step="1" class="input-field w-20" /></td>
             <td class="py-1.5 pr-2 text-center"><input v-model="row.taxExempt" type="checkbox" class="rounded" /></td>
+            <td v-if="hasMemberDiscount" class="py-1.5 pr-2 text-center"><input v-model="row.memberDiscount" type="checkbox" class="rounded" /></td>
             <td class="py-1.5 pr-2 text-center"><input v-model="row.active" type="checkbox" class="rounded" /></td>
             <td class="py-1.5 pr-2 text-right text-gray-500 tabular-nums">{{ row.id ? row.productCount : '—' }}</td>
             <td class="py-1.5 text-right space-x-2 whitespace-nowrap">
@@ -63,7 +68,10 @@ const props = defineProps({
 })
 const emit = defineEmits(['close', 'changed'])
 
-const FIELDS = ['name', 'sortOrder', 'taxExempt', 'active']
+// ProductCategory.memberDiscount only comes back once its migration has run; until then the column is hidden
+// (and the register uses its default categories, see src/lib/pricing.js)
+const hasMemberDiscount = props.categories.some(c => 'memberDiscount' in c)
+const FIELDS = ['name', 'sortOrder', 'taxExempt', 'active', ...(hasMemberDiscount ? ['memberDiscount'] : [])]
 let keySeq = 0
 
 const toRow = (c) => ({
@@ -72,6 +80,7 @@ const toRow = (c) => ({
   name: c.name ?? '',
   sortOrder: c.sortOrder ?? 0,
   taxExempt: c.taxExempt ?? false,
+  memberDiscount: c.memberDiscount ?? false,
   active: c.active ?? true,
   productCount: c.productCount ?? 0,
   original: c.id ? { ...c } : null,
@@ -96,6 +105,7 @@ async function saveRow(row) {
   error.value = null
   try {
     const body = { name: row.name, sortOrder: Number(row.sortOrder), taxExempt: row.taxExempt, active: row.active }
+    if (hasMemberDiscount) body.memberDiscount = row.memberDiscount
     const saved = await apiFetch(row.id ? `/api/admin/product-categories/${row.id}` : '/api/admin/product-categories', {
       method: row.id ? 'PUT' : 'POST',
       body,

@@ -1,9 +1,12 @@
 import { requireAdmin, json } from './_auth.js'
 import { isValidYmd } from '../../../src/lib/timeclock.js'
 import { POSITIONS } from './employees/_validate.js'
+import { makeStripe, syncTerminalTipping, stripeMessage } from '../staff/_stripe.js'
 
 const PAY_PERIOD_LENGTHS = [7, 14]
 const MAX_TAX_BPS = 2000 // 20%
+const MAX_TIP_PERCENT = 50
+const MAX_LATE_FEE_CENTS = 50000 // house account late fee, $500
 
 // GET /api/admin/settings
 export async function onRequestGet({ request, env }) {
@@ -53,12 +56,30 @@ export async function onRequestPut({ request, env }) {
     }
     allowed.salesTaxBps = bps
   }
+  if (body.lateFeeCents !== undefined) {
+    const fee = Number(body.lateFeeCents)
+    if (!Number.isInteger(fee) || fee < 0 || fee > MAX_LATE_FEE_CENTS) {
+      return json({ error: 'The late fee must be between $0 (off) and $500' }, 400)
+    }
+    allowed.lateFeeCents = fee
+  }
   for (const f of ['registerPositions', 'managerPositions']) {
     if (body[f] === undefined) continue
     if (!Array.isArray(body[f]) || body[f].some(p => !POSITIONS.includes(p))) {
       return json({ error: `${f} must be a list of positions` }, 400)
     }
     allowed[f] = [...new Set(body[f])]
+  }
+
+  // On-reader tipping (off by default): up to 3 whole-number percentages shown on the card reader
+  if (body.tippingEnabled !== undefined) allowed.tippingEnabled = !!body.tippingEnabled
+  if (body.tipPreTax !== undefined) allowed.tipPreTax = !!body.tipPreTax
+  if (body.tipPercentages !== undefined) {
+    const list = Array.isArray(body.tipPercentages) ? body.tipPercentages.map(Number) : []
+    if (!list.length || list.length > 3 || list.some(p => !Number.isInteger(p) || p < 1 || p > MAX_TIP_PERCENT)) {
+      return json({ error: `Tip suggestions must be 1 to 3 whole percentages between 1 and ${MAX_TIP_PERCENT}` }, 400)
+    }
+    allowed.tipPercentages = [...new Set(list)].sort((a, b) => a - b)
   }
 
   const { data, error } = await supabase
@@ -69,5 +90,20 @@ export async function onRequestPut({ request, env }) {
     .single()
 
   if (error) return json({ error: error.message }, 500)
-  return json(data)
+
+  // The readers take the tip percentages from Stripe (a Terminal configuration). The setting is saved either way;
+  // a Stripe problem comes back as a warning.
+  let warning = null
+  if (data.tippingEnabled && (allowed.tippingEnabled || allowed.tipPercentages)) {
+    const stripe = makeStripe(env)
+    if (!stripe) warning = 'Card payments aren\'t set up (STRIPE_SECRET_KEY), so the readers can\'t show tips yet.'
+    else {
+      try {
+        await syncTerminalTipping(stripe, data.tipPercentages)
+      } catch (e) {
+        warning = `Saved, but the tip percentages didn't reach the card readers: ${stripeMessage(e)}. Save again to retry.`
+      }
+    }
+  }
+  return json(warning ? { ...data, warning } : data)
 }

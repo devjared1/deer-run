@@ -1,6 +1,6 @@
 import { requireAdmin, json } from '../_auth.js'
 import { ENTRY_SELECT, serializeEntry } from '../../staff/_timesheet.js'
-import { parseEntryInput, findOverlap, replaceBreaks, writeErrorMessage } from './_validate.js'
+import { parseEntryInput, findOverlap, saveTimeEntry } from './_validate.js'
 
 // POST /api/admin/time-entries — manager adds an entry (e.g. a missed punch)
 // Body: { employeeId, date, clockIn, clockOut, breaks, note } — see parseEntryInput
@@ -29,18 +29,14 @@ export async function onRequestPost({ request, env }) {
   const overlap = await findOverlap(supabase, employee.id, entry)
   if (overlap) return json({ error: overlap }, 409)
 
-  const id = crypto.randomUUID()
-  const { error } = await supabase.from('TimeEntry').insert({
-    id,
+  // Entry + breaks in one transaction
+  const { id, error, status } = await saveTimeEntry(supabase, {
     employeeId: employee.id,
-    ...entry,
     editedById: dbUser.id,
-    editedAt: new Date().toISOString(),
+    entry,
+    breaks,
   })
-  if (error) return json({ error: writeErrorMessage(error) }, error.code === '23505' ? 409 : 500)
-
-  const breakError = await replaceBreaks(supabase, id, breaks)
-  if (breakError) return json({ error: breakError }, 500)
+  if (error) return json({ error }, status)
 
   const { data: saved } = await supabase.from('TimeEntry').select(ENTRY_SELECT).eq('id', id).single()
   return json(serializeEntry(saved), 201)

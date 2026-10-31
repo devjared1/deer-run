@@ -6,6 +6,7 @@ export const membershipTiers = [
     featured: false,
     annual: 750,
     monthly: 70,
+    proShopDiscountBps: 1000, // 10% off Pro Shop merchandise (src/lib/pricing.js)
     subtitle: 'Single golfer · Unlimited rounds',
     benefits: [
       'Unlimited 18-hole rounds',
@@ -22,6 +23,7 @@ export const membershipTiers = [
     featured: true,
     annual: 1200,
     monthly: 110,
+    proShopDiscountBps: 1500,
     subtitle: 'Individual + spouse or partner',
     benefits: [
       '2 golfers unlimited rounds',
@@ -39,6 +41,7 @@ export const membershipTiers = [
     featured: false,
     annual: 1650,
     monthly: 150,
+    proShopDiscountBps: 1500,
     subtitle: 'Up to 2 adults + dependent children under 18',
     benefits: [
       'Unlimited rounds for the family',

@@ -70,6 +70,11 @@
               Deny
             </button>
           </div>
+          <div v-else-if="r.status === 'APPROVED' && r.endDate >= today" class="flex gap-2 w-full sm:w-auto">
+            <button class="btn-outline-sm text-red-500" @click="openDecision(r, 'revoke')">
+              Revoke
+            </button>
+          </div>
         </div>
       </li>
     </ul>
@@ -78,7 +83,7 @@
     <div v-if="deciding" class="modal-overlay" @click.self="deciding = null">
       <div class="modal-box">
         <h2 class="font-display font-bold text-bark mb-2">
-          {{ deciding.action === 'approve' ? 'Approve' : 'Deny' }} time off?
+          {{ ACTION_LABELS[deciding.action] }} {{ deciding.action === 'revoke' ? 'approved time off' : 'time off' }}?
         </h2>
         <p class="text-gray-500 text-sm font-body mb-4">
           {{ deciding.request.employee?.firstName }} {{ deciding.request.employee?.lastName }},
@@ -87,8 +92,11 @@
             Their {{ deciding.request.scheduledShifts.length }} scheduled shift{{ deciding.request.scheduledShifts.length === 1 ? '' : 's' }}
             during this time stay on the schedule (flagged) until you change them.
           </span>
+          <span v-if="deciding.action === 'revoke'" class="block mt-2">
+            The request becomes Denied (with your note) and comes off the schedule. Add any shifts they should now work.
+          </span>
         </p>
-        <label class="label-sm">Note to the employee (optional)</label>
+        <label class="label-sm">Note to the employee {{ deciding.action === 'revoke' ? '*' : '(optional)' }}</label>
         <textarea v-model="deciding.note" rows="2" maxlength="500" class="input-field w-full" />
         <div class="flex justify-end gap-3 mt-4">
           <button class="btn-outline-sm" @click="deciding = null">
@@ -96,10 +104,10 @@
           </button>
           <button
             :class="[deciding.action === 'approve' ? 'btn-pine' : 'bg-red-500 hover:bg-red-600 text-white rounded-lg font-body', 'px-4 py-2 text-sm disabled:opacity-50']"
-            :disabled="saving"
+            :disabled="saving || (deciding.action === 'revoke' && !deciding.note.trim())"
             @click="decide"
           >
-            {{ saving ? 'Saving…' : deciding.action === 'approve' ? 'Approve' : 'Deny' }}
+            {{ saving ? 'Saving…' : ACTION_LABELS[deciding.action] }}
           </button>
         </div>
         <p v-if="formError" class="text-red-500 text-xs mt-2">
@@ -132,7 +140,11 @@ const TABS = [
   { value: 'all',       label: 'All' },
 ]
 
+const ACTION_LABELS = { approve: 'Approve', deny: 'Deny', revoke: 'Revoke' }
+const DONE_LABELS   = { approve: 'Approved', deny: 'Denied', revoke: 'Approval revoked' }
+
 const pendingTimeOff = usePendingTimeOff()
+const today          = localDate()
 
 const status       = ref('PENDING')
 const upcomingOnly = ref(true)
@@ -174,7 +186,7 @@ async function decide() {
     deciding.value = null
     showNotice(res.emailError
       ? `Saved, but the email to the employee failed: ${res.emailError}`
-      : `${action === 'approve' ? 'Approved' : 'Denied'}. ${request.employee?.firstName ?? 'The employee'} has been emailed.`)
+      : `${DONE_LABELS[action]}. ${request.employee?.firstName ?? 'The employee'} has been emailed.`)
     await Promise.all([load(), pendingTimeOff.refresh()])
   } catch (e) {
     formError.value = e.message

@@ -1,4 +1,5 @@
 import { requireAdmin, json } from '../_auth.js'
+import { bookedPlayers, HOLD_COLUMNS } from '../../../../src/lib/teesheet.js'
 
 // GET /api/admin/teetimes?start=YYYY-MM-DD&end=YYYY-MM-DD
 export async function onRequestGet({ request, env }) {
@@ -12,7 +13,7 @@ export async function onRequestGet({ request, env }) {
 
   const { data, error } = await supabase
     .from('TeeTimeSlot')
-    .select('*, Booking(id, players, status)')
+    .select(`*, Booking(id, ${HOLD_COLUMNS})`)
     .gte('date', start)
     .lte('date', end)
     .order('date')
@@ -20,10 +21,10 @@ export async function onRequestGet({ request, env }) {
 
   if (error) return json({ error: error.message }, 500)
 
+  // Unpaid online bookings past their hold don't count (src/lib/teesheet.js)
+  const now = new Date()
   const slots = (data || []).map(slot => {
-    const booked = (slot.Booking || [])
-      .filter(b => b.status === 'PENDING' || b.status === 'CONFIRMED')
-      .reduce((sum, b) => sum + b.players, 0)
+    const booked = bookedPlayers(slot.Booking, now)
     const { Booking, ...slotData } = slot
     return { ...slotData, bookedPlayers: booked, available: Math.max(0, slot.maxPlayers - booked) }
   })

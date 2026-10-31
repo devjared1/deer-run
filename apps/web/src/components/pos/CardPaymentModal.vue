@@ -10,6 +10,9 @@
       <div v-if="cashCents" class="text-xs text-gray-400 font-body mt-1">
         plus {{ formatCents(cashCents) }} cash
       </div>
+      <div v-if="checkout.tipping" class="text-xs text-gray-400 font-body mt-1">
+        The customer can add a tip on the reader
+      </div>
 
       <!-- Charged, sale not saved (rare): let the cashier retry saving -->
       <template v-if="checkout.status === 'SUCCEEDED'">
@@ -44,9 +47,12 @@
           <div class="text-[11px] uppercase tracking-wider text-gray-400 font-body mb-2">
             Test mode (simulated reader)
           </div>
-          <div class="flex gap-2 justify-center">
+          <div class="flex flex-wrap gap-2 justify-center">
             <button class="btn-outline-xs" :disabled="busy" @click="act('simulate')">
               Simulate card
+            </button>
+            <button v-if="checkout.tipping" class="btn-outline-xs" :disabled="busy" @click="act('simulate', { tipCents: 500 })">
+              Card + $5 tip
             </button>
             <button class="btn-outline-xs" :disabled="busy" @click="act('simulate', { decline: true })">
               Simulate decline
@@ -81,7 +87,7 @@ import { apiFetch } from '@/lib/api'
 import { formatCents } from '@/lib/money'
 
 const props = defineProps({
-  initial:   { type: Object, required: true }, // { id, status, amountCents, lastError, testMode }
+  initial:   { type: Object, required: true }, // { id, status, amountCents, lastError, tipping, testMode }
   cashCents: { type: Number, default: 0 },
 })
 const emit = defineEmits(['done', 'canceled'])

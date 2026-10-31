@@ -95,13 +95,18 @@
             <span class="text-xs font-body text-bark flex-1">The cash drawer is closed. Count the starting cash and open it to take cash.</span>
             <button class="btn-amber px-3 py-1.5 text-xs whitespace-nowrap" @click="openDrawerForm">Open drawer</button>
           </div>
-          <div v-else-if="drawer?.session" class="px-4 pt-2 flex items-center gap-2 text-xs font-body text-gray-400">
-            <span class="flex-1 truncate">
+          <div v-else-if="drawer?.session" class="px-4 pt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-body text-gray-400">
+            <span class="basis-full truncate">
               Drawer open since {{ formatTime(drawer.session.openedAt) }} ({{ drawer.session.openedBy?.firstName }})
               · start {{ formatCents(drawer.session.openingFloatCents) }}
+              <template v-if="drawer.session.movements?.length"> · {{ drawer.session.movements.length }} paid in/out</template>
               <template v-if="drawer.session.expectedCents !== undefined"> · expected {{ formatCents(drawer.session.expectedCents) }}</template>
             </span>
-            <button class="text-lake hover:text-pine" @click="closeDrawerForm">Close drawer</button>
+            <!-- Paid in / paid out / safe drop: each needs a manager and prints a slip, which opens the drawer -->
+            <button class="text-lake hover:text-pine" @click="startCashMovement('PAID_IN')">Paid in</button>
+            <button class="text-lake hover:text-pine" @click="startCashMovement('PAID_OUT')">Paid out</button>
+            <button class="text-lake hover:text-pine" @click="startCashMovement('SAFE_DROP')">Safe drop</button>
+            <button class="text-lake hover:text-pine ml-auto" @click="closeDrawerForm">Close drawer</button>
           </div>
 
           <!-- Customer -->
@@ -110,7 +115,8 @@
               <div class="min-w-0">
                 <div class="font-body text-sm text-bark truncate">{{ customer.name || customer.email }}</div>
                 <div class="text-xs font-body" :class="isMember ? 'text-lake' : 'text-gray-400'">
-                  {{ isMember ? 'Member pricing' : customer.role === 'MEMBER' ? 'Membership expired' : 'Not a member' }}
+                  <template v-if="isMember">Member pricing · {{ memberDiscountRateBps(customer.membershipTier) / 100 }}% off Pro Shop</template>
+                  <template v-else>{{ customer.role === 'MEMBER' ? 'Membership expired' : 'Not a member' }}</template>
                 </div>
               </div>
               <button class="text-xs text-red-400 hover:text-red-600 font-body" @click="customer = null">Remove</button>
@@ -135,9 +141,13 @@
                 <button class="qty-btn" aria-label="Increase quantity" @click="changeQty(line, 1)">+</button>
                 <span class="text-xs text-gray-400 font-body">@ {{ formatCents(line.unitPriceCents) }}</span>
                 <span v-if="line.taxRateBps === 0" class="text-xs text-gray-400 font-body">· no tax</span>
+                <!-- Automatic for active members; the Discount button is the manager's discount (needs approval) -->
+                <span v-if="line.memberDiscountCents" class="text-xs text-lake font-body">
+                  · member {{ line.memberDiscountBps / 100 }}% −{{ formatCents(line.memberDiscountCents) }}
+                </span>
                 <span class="ml-auto space-x-2 text-xs font-body">
                   <button class="text-lake hover:text-pine" @click="openDiscount(line)">
-                    {{ line.discountCents ? `−${formatCents(line.discountCents)}` : 'Discount' }}
+                    {{ line.managerDiscountCents ? `−${formatCents(line.managerDiscountCents)}` : 'Discount' }}
                   </button>
                   <button class="text-red-400 hover:text-red-600" @click="removeLine(line)">Remove</button>
                 </span>
@@ -148,8 +158,11 @@
 
           <!-- Totals -->
           <div class="border-t border-gray-100 px-4 py-3 font-body text-sm space-y-1">
-            <div v-if="totals.discountCents" class="flex justify-between text-gray-500">
-              <span>Discounts</span><span class="tabular-nums">−{{ formatCents(totals.discountCents) }}</span>
+            <div v-if="memberDiscountTotal" class="flex justify-between text-lake">
+              <span>Member discount</span><span class="tabular-nums">−{{ formatCents(memberDiscountTotal) }}</span>
+            </div>
+            <div v-if="totals.discountCents - memberDiscountTotal" class="flex justify-between text-gray-500">
+              <span>Discounts</span><span class="tabular-nums">−{{ formatCents(totals.discountCents - memberDiscountTotal) }}</span>
             </div>
             <div class="flex justify-between text-gray-500"><span>Subtotal</span><span class="tabular-nums">{{ formatCents(totals.subtotalCents) }}</span></div>
             <div class="flex justify-between text-gray-500">
@@ -221,6 +234,10 @@
           <div class="font-display font-bold text-clay text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
           <div class="text-gray-400 text-xs font-body">cash</div>
         </template>
+        <p v-for="w in refundResult.warnings" :key="w" class="text-clay text-sm font-body mt-3">{{ w }}</p>
+        <p v-if="refundResult.memberUntil" class="text-lake text-sm font-body mt-3">
+          {{ refundResult.memberUntil.ended ? 'Membership ended' : 'Membership now runs through' }} {{ refundResult.memberUntil.label }}
+        </p>
         <div class="mt-5 space-y-2">
           <button class="btn-outline-sm w-full" @click="printDocument({ type: 'refund', sale: refundResult.sale, refund: refundResult.refund })">
             Print Refund Slip
@@ -283,6 +300,9 @@
               <div class="text-xs text-gray-400">
                 Start {{ formatCents(drawerForm.result.openingFloatCents) }} + cash taken {{ formatCents(drawerForm.result.cashSalesCents) }}
                 − cash refunds {{ formatCents(drawerForm.result.cashRefundsCents) }}
+                <template v-if="drawerForm.result.paidInCents"> + paid in {{ formatCents(drawerForm.result.paidInCents) }}</template>
+                <template v-if="drawerForm.result.paidOutCents"> − paid out {{ formatCents(drawerForm.result.paidOutCents) }}</template>
+                <template v-if="drawerForm.result.safeDropCents"> − safe drops {{ formatCents(drawerForm.result.safeDropCents) }}</template>
               </div>
             </div>
           </div>
@@ -301,6 +321,7 @@
       <NoSaleSlip v-else-if="printDoc.type === 'noSale'" :at="printDoc.at" :register-name="register?.name" :approver-name="printDoc.approverName" />
       <ZReportSlip v-else-if="printDoc.type === 'z'" :report="printDoc.report" />
       <DrawerCloseSlip v-else-if="printDoc.type === 'drawer'" :session="printDoc.session" />
+      <DrawerMovementSlip v-else-if="printDoc.type === 'movement'" :movement="printDoc.movement" :register-name="register?.name" />
       <AccountPaymentSlip
         v-else-if="printDoc.type === 'accountPayment'"
         :payment="printDoc.payment"
@@ -327,6 +348,14 @@
       :error="refundError"
       @submit="submitRefund"
       @cancel="refunding = null"
+    />
+    <CashMovementModal
+      v-if="cashMovement"
+      :type="cashMovement.type"
+      :busy="cashMovement.busy"
+      :error="cashMovement.error"
+      @submit="submitCashMovement"
+      @cancel="cashMovement = null; focusSearch()"
     />
     <ApprovalModal
       v-if="approvalRequest"
@@ -450,14 +479,16 @@
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { apiFetch } from '@/lib/api'
 import { formatCents, dollarsToCents } from '@/lib/money'
-import { unitPriceCents, priceLine, saleTotals, variantDescription } from '@/lib/pricing'
+import { unitPriceCents, memberDiscountBps, memberDiscountCents, memberDiscountRateBps, priceLine, saleTotals, variantDescription } from '@/lib/pricing'
 import { printReceipt } from '@/lib/printReceipt'
 import { useAuthStore } from '@/stores/auth'
 import { takeRegisterHandoff } from '@/lib/registerHandoff'
-import { formatLocalDate, COURSE_TZ } from '@/lib/timeclock'
+import { formatLocalDate, localDate, COURSE_TZ } from '@/lib/timeclock'
 import SaleReceipt from '@/components/pos/SaleReceipt.vue'
 import ZReportSlip from '@/components/pos/ZReportSlip.vue'
 import DrawerCloseSlip from '@/components/pos/DrawerCloseSlip.vue'
+import DrawerMovementSlip from '@/components/pos/DrawerMovementSlip.vue'
+import CashMovementModal from '@/components/pos/CashMovementModal.vue'
 import RefundReceipt from '@/components/pos/RefundReceipt.vue'
 import NoSaleSlip from '@/components/pos/NoSaleSlip.vue'
 import VariantPickerModal from '@/components/pos/VariantPickerModal.vue'
@@ -509,12 +540,13 @@ const showRecentSales = ref(false)
 const refunding       = ref(null) // { sale, mode: 'void' | 'refund' }
 const refundBusy      = ref(false)
 const refundError     = ref(null)
-const refundResult    = ref(null) // { sale, refund } after it's done
+const refundResult    = ref(null) // { sale, refund, warnings, memberUntil: { label, ended } | null } after it's done
 
 // Cash drawer: { session, last } for this register; session is null while the drawer is closed
 const drawer            = ref(null)
 const drawerForm        = ref(null) // { mode: 'open' | 'close', amount, note, busy, error, result }
 const drawerAmountInput = ref(null)
+const cashMovement      = ref(null) // { type: 'PAID_IN' | 'PAID_OUT' | 'SAFE_DROP', busy, error } while the form is open
 
 let keySeq = 0
 
@@ -569,9 +601,10 @@ function isOutOfStock(p) {
 
 // ─── Cart ───────────────────────────────────────────────────────────────────
 
-// Same pricing functions the server uses, so the total shown is the total charged
+// Same pricing functions the server uses, so the total shown is the total charged. The cart line's discountCents
+// is the manager's discount; priced lines carry discountCents (member + manager) and the two parts apart.
 const pricedLines = computed(() => cart.value.map(line => {
-  let unit, taxRateBps, description
+  let unit, taxRateBps, description, bps = 0
   if (line.booking || line.newBooking) {
     unit = 0
     taxRateBps = 0
@@ -583,19 +616,23 @@ const pricedLines = computed(() => cart.value.map(line => {
   } else {
     const { product, variant } = variantIndex.value[line.variantId]
     unit = unitPriceCents(product, variant, isMember.value)
-    taxRateBps = categoryById.value[product.categoryId]?.taxExempt ? 0 : catalog.value.salesTaxBps
+    const category = categoryById.value[product.categoryId]
+    taxRateBps = category?.taxExempt ? 0 : catalog.value.salesTaxBps
     description = variantDescription(product.name, variant)
+    bps = memberDiscountBps({ product, variant, category, isMember: isMember.value, tier: customer.value?.membershipTier })
   }
-  const discountCents = Math.min(line.discountCents, unit * line.quantity)
+  const discountCents = Math.min(line.discountCents, unit * line.quantity - memberDiscountCents(unit, line.quantity, bps))
   return {
     ...line,
     description,
     unitPriceCents: unit,
     taxRateBps,
-    discountCents,
-    ...priceLine({ unitPriceCents: unit, quantity: line.quantity, discountCents, taxRateBps }),
+    memberDiscountBps: bps,
+    ...priceLine({ unitPriceCents: unit, quantity: line.quantity, discountCents, memberDiscountBps: bps, taxRateBps }),
   }
 }))
+
+const memberDiscountTotal = computed(() => pricedLines.value.reduce((sum, l) => sum + l.memberDiscountCents, 0))
 
 const totals = computed(() => saleTotals(pricedLines.value))
 
@@ -707,11 +744,12 @@ async function openDiscount(line) {
     if (!approval) return
     discountApprovalId.value = approval.approvalId
   }
+  // The manager's discount comes off what's left after any member discount
   discounting.value = {
     line,
-    gross: line.unitPriceCents * line.quantity,
+    gross: line.unitPriceCents * line.quantity - line.memberDiscountCents,
     mode: '$',
-    value: line.discountCents ? (line.discountCents / 100).toFixed(2) : '',
+    value: line.managerDiscountCents ? (line.managerDiscountCents / 100).toFixed(2) : '',
   }
 }
 
@@ -897,12 +935,12 @@ function printAccountSlip() {
   return printDocument({ type: 'accountPayment', payment: r.payment, memberName: r.memberName, changeCents: r.changeCents })
 }
 
-// What the API expects for each cart line (see buildSale)
+// What the API expects for each cart line (see buildSale). The server works out the member discount itself.
 function saleItem(l) {
   if (l.booking) return { booking: l.booking }
   if (l.newBooking) return { newBooking: l.newBooking }
-  if (l.custom) return { custom: l.custom, quantity: l.quantity, discountCents: l.discountCents }
-  return { variantId: l.variantId, quantity: l.quantity, discountCents: l.discountCents }
+  if (l.custom) return { custom: l.custom, quantity: l.quantity, discountCents: l.managerDiscountCents }
+  return { variantId: l.variantId, quantity: l.quantity, discountCents: l.managerDiscountCents }
 }
 
 // The customer's new membership end date, for the sale-complete screen
@@ -957,7 +995,14 @@ async function submitRefund({ items, restock, reason, totalCents, method }) {
     const refund = result.sale.refunds.find(r => r.id === result.refund.id)
     refunding.value       = null
     showRecentSales.value = false
-    refundResult.value    = { sale: result.sale, refund }
+    // Refunded membership months come off the customer's end date (warnings if that didn't save)
+    const until = result.memberUntil
+    refundResult.value    = {
+      sale: result.sale, refund, warnings: result.warnings ?? [],
+      memberUntil: until
+        ? { label: formatLocalDate(until, { month: 'short', day: 'numeric', year: 'numeric' }), ended: until < localDate() }
+        : null,
+    }
     // Printing the refund slip opens the drawer for the cash (card refunds print from the button instead)
     if (refund.method === 'CASH') await printDocument({ type: 'refund', sale: result.sale, refund })
     loadCatalog() // stock may have changed
@@ -1046,6 +1091,50 @@ async function submitDrawer() {
     f.error = e.message
   } finally {
     f.busy = false
+  }
+}
+
+// Paid in / paid out / safe drop on the open drawer: a manager approves (no prompt for a manager at the
+// register), then the slip prints, which opens the drawer
+const MOVEMENT_TITLES = { PAID_IN: 'Paid in', PAID_OUT: 'Paid out', SAFE_DROP: 'Safe drop' }
+
+function startCashMovement(type) {
+  registerError.value = null
+  cashMovement.value = { type, busy: false, error: null }
+}
+
+async function submitCashMovement({ amountCents, reason, recipient }) {
+  const m = cashMovement.value
+  if (!m || m.busy) return
+  m.busy  = true
+  m.error = null
+  const what = [reason, recipient && `to ${recipient}`].filter(Boolean).join(' ')
+  const summary = `${MOVEMENT_TITLES[m.type]} ${formatCents(amountCents)}${what ? `: ${what}` : ''}`
+  try {
+    const approval = await requestApproval(m.type, `${summary}.`, summary)
+    if (!approval) {
+      m.error = registerError.value
+      registerError.value = null
+      return
+    }
+    const { movement } = await apiFetch('/api/staff/register/drawer', {
+      method: 'POST',
+      body: { action: 'movement', registerId: registerId.value, type: m.type, amountCents, reason, recipient, approvalId: approval.approvalId },
+    })
+    cashMovement.value = null
+    await printDocument({ type: 'movement', movement })
+    loadDrawer()
+    focusSearch()
+  } catch (e) {
+    if (e.code === 'DRAWER_CLOSED') {
+      cashMovement.value = null
+      await loadDrawer()
+      openDrawerForm()
+      return
+    }
+    m.error = e.message
+  } finally {
+    m.busy = false
   }
 }
 

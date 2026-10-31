@@ -1,7 +1,7 @@
 import { isValidYmd, localDate, startOfLocalDay, addDays, daysBetween } from '../../../../src/lib/timeclock.js'
 import { PAYMENT_LABELS } from '../../staff/sales/_sale.js'
 import { fetchAll } from '../_db.js'
-import { loadDrawerSessions } from '../../staff/_drawer.js'
+import { loadDrawerSessions, MOVEMENT_SELECT, serializeMovement } from '../../staff/_drawer.js'
 
 // Longest range a report or export covers at once
 export const MAX_REPORT_DAYS = 366
@@ -31,16 +31,17 @@ const UNCATEGORIZED = 'Custom / Misc'
 /**
  * Builds a sales report (the end-of-day "Z" report when the range is one day) from:
  *   sales    — sales rung up in the range, with items { categoryName, quantity, subtotalCents, taxCents,
- *              totalCents, discountCents } and payments { method, amountCents }
+ *              totalCents, discountCents } and payments { method, amountCents, tipCents }
  *   refunds  — voids and refunds made in the range (on sales from any day), with { kind, method,
  *              amountCents, taxCents, items: [{ quantity, amountCents, taxCents, saleItem: { categoryName } }] }
  *   noSales  — number of No Sale drawer openings in the range
+ *   drawerMovements — paid-ins, paid-outs and safe drops made in the range ({ type, amountCents, ... })
  * Sales count in full on the day they were rung up; voids and refunds come off on the day they happen,
  * so a day's report never changes after the day ends. All amounts are in cents.
  */
 const ACCOUNT_PAYMENT_LABELS = { CASH: 'Cash', CARD: 'Card', ONLINE: 'Online', AUTOPAY: 'Autopay' }
 
-export function buildReport({ sales, refunds, noSales = 0, accountPayments = [] }) {
+export function buildReport({ sales, refunds, noSales = 0, accountPayments = [], drawerMovements = [] }) {
   const categories = new Map()
   const category = name => {
     const key = name || UNCATEGORIZED
@@ -54,6 +55,8 @@ export function buildReport({ sales, refunds, noSales = 0, accountPayments = [] 
   }
 
   const totals = { count: 0, grossCents: 0, discountCents: 0, salesCents: 0, taxCents: 0, totalCents: 0, noChargeCount: 0 }
+  // Tips added on the card reader: charged on top of the sale, so not sales, tax or a card tender amount
+  const tips = { count: 0, totalCents: 0 }
   for (const sale of sales) {
     totals.count++
     totals.discountCents += sale.discountCents
@@ -71,6 +74,7 @@ export function buildReport({ sales, refunds, noSales = 0, accountPayments = [] 
       const t = tender(p.method)
       t.count++
       t.collectedCents += p.amountCents
+      if (p.tipCents > 0) { tips.count++; tips.totalCents += p.tipCents }
     }
   }
   totals.grossCents = totals.salesCents + totals.discountCents
@@ -114,15 +118,37 @@ export function buildReport({ sales, refunds, noSales = 0, accountPayments = [] 
   const accountPaymentRows = [...byMethod.values()].sort((a, b) => b.amountCents - a.amountCents)
   const cashAccountPayments = byMethod.get('CASH')?.amountCents ?? 0
 
+  // Paid-ins, paid-outs and safe drops: cash moved in or out of the drawers that isn't a sale
+  const movementTotals = { PAID_IN: 0, PAID_OUT: 0, SAFE_DROP: 0 }
+  const movementCounts = { PAID_IN: 0, PAID_OUT: 0, SAFE_DROP: 0 }
+  for (const m of drawerMovements) {
+    if (!(m.type in movementTotals)) continue
+    movementTotals[m.type] += m.amountCents
+    movementCounts[m.type]++
+  }
+
   const cash = tenders.get('CASH')
+  const netCash = (cash ? cash.collectedCents - cash.refundedCents : 0) + cashAccountPayments
   return {
     sales: totals,
     returns,
     net,
     categories: categoryRows,
     tenders: tenderRows,
-    // No opening float yet (cash drawer sessions are a later phase): this is cash in minus cash out
-    cashExpectedCents: (cash ? cash.collectedCents - cash.refundedCents : 0) + cashAccountPayments,
+    cardTips: tips,
+    // Net cash from transactions: cash taken (sales + account payments) minus cash refunds, no starting cash
+    cashExpectedCents: netCash,
+    // Drawer cash movements; drawerCashCents = net cash + paid in − paid out − safe drops (before starting cash)
+    cashMovements: {
+      paidInCents: movementTotals.PAID_IN,
+      paidInCount: movementCounts.PAID_IN,
+      paidOutCents: movementTotals.PAID_OUT,
+      paidOutCount: movementCounts.PAID_OUT,
+      safeDropCents: movementTotals.SAFE_DROP,
+      safeDropCount: movementCounts.SAFE_DROP,
+      rows: drawerMovements,
+    },
+    drawerCashCents: netCash + movementTotals.PAID_IN - movementTotals.PAID_OUT - movementTotals.SAFE_DROP,
     accountPayments: { rows: accountPaymentRows, totalCents: accountPaymentRows.reduce((sum, r) => sum + r.amountCents, 0) },
     noSaleCount: noSales,
   }
@@ -131,12 +157,20 @@ export function buildReport({ sales, refunds, noSales = 0, accountPayments = [] 
 /** Loads the data for a report and builds it. `registerId` limits it to one register. */
 export async function loadReport(supabase, range, registerId = null) {
   const scoped = q => (registerId ? q.eq('registerId', registerId) : q)
+  // Paid-ins, paid-outs and safe drops made in the range (count on the day they happen)
+  const movementsPromise = fetchAll(() => scoped(supabase
+    .from('CashDrawerMovement')
+    .select(MOVEMENT_SELECT)
+    .gte('createdAt', range.startUtc)
+    .lt('createdAt', range.endUtc)
+    .order('createdAt', { ascending: true })
+    .order('id', { ascending: true })))
 
   const [sales, refunds, noSaleRes, registerRes, drawerSessions, accountPayments] = await Promise.all([
     fetchAll(() => scoped(supabase
       .from('Sale')
       .select('id, subtotalCents, discountCents, taxCents, totalCents, ' +
-        'items:SaleItem!SaleItem_saleId_fkey(categoryName, quantity, subtotalCents, taxCents), payments:Payment(method, amountCents)')
+        'items:SaleItem!SaleItem_saleId_fkey(categoryName, quantity, subtotalCents, taxCents), payments:Payment(*)')
       .gte('createdAt', range.startUtc)
       .lt('createdAt', range.endUtc)
       .order('createdAt', { ascending: true }))),
@@ -164,13 +198,14 @@ export async function loadReport(supabase, range, registerId = null) {
       .order('createdAt', { ascending: true }))),
   ])
   if (noSaleRes.error) throw new Error(noSaleRes.error.message)
+  const drawerMovements = (await movementsPromise).map(serializeMovement)
 
   return {
     from: range.from,
     to: range.to,
     register: registerRes.data ?? null,
     generatedAt: new Date().toISOString(),
-    ...buildReport({ sales, refunds, noSales: noSaleRes.count ?? 0, accountPayments }),
+    ...buildReport({ sales, refunds, noSales: noSaleRes.count ?? 0, accountPayments, drawerMovements }),
     // Drawer sessions open at any point in the range (a session can start before or end after it)
     drawerSessions,
   }

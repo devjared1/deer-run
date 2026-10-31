@@ -3,6 +3,7 @@ import Stripe from 'stripe'
 import { Resend } from 'resend'
 import { completeCardCheckout } from '../staff/_cardCheckout.js'
 import { recordPayment } from '../admin/_houseAccounts.js'
+import { settlePaidBooking } from '../bookings/_holds.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -71,14 +72,19 @@ export async function onRequestPost({ request, env }) {
         auth: { persistSession: false },
       })
 
-      await supabase
-        .from('Booking')
-        .update({ status: 'CONFIRMED', stripePaymentId: paymentIntent.id })
-        .eq('id', bookingId)
+      // Confirms the booking, unless it no longer holds its spots (released after its 30-minute hold, or
+      // cancelled): then it's re-confirmed if there's still room, refunded, or flagged to the pro shop
+      let settled
+      try {
+        settled = await settlePaidBooking(supabase, env, paymentIntent)
+      } catch (e) {
+        // 500 makes Stripe retry the webhook later
+        return json({ error: e.message }, 500)
+      }
 
       const customerEmail = paymentIntent.receipt_email
 
-      if (env.RESEND_API_KEY && customerEmail) {
+      if (settled.action === 'confirmed' && env.RESEND_API_KEY && customerEmail) {
         const { data: booking } = await supabase
           .from('Booking')
           .select('*, teeTimeSlot:TeeTimeSlot(date, startTime)')

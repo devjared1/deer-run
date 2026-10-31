@@ -6,12 +6,20 @@ export const STATUS_CLASSES = {
   CLOSED: 'bg-gray-100 text-gray-500',
 }
 
-export const STATEMENT_STATUS_LABELS = { OPEN: 'Due', PAID: 'Paid', AUTOPAY_FAILED: 'Autopay failed' }
+import { localDate } from '@/lib/timeclock'
+
+export const STATEMENT_STATUS_LABELS = { OPEN: 'Due', PAID: 'Paid', AUTOPAY_FAILED: 'Autopay failed', OVERDUE: 'Overdue' }
 
 export const STATEMENT_STATUS_CLASSES = {
   OPEN: 'bg-amber/20 text-amber-dark',
   PAID: 'bg-pine/15 text-pine',
   AUTOPAY_FAILED: 'bg-red-100 text-red-600',
+  OVERDUE: 'bg-red-100 text-red-600',
+}
+
+/** Display status of a saved statement: an unpaid one past its due date shows as OVERDUE. */
+export function statementStatus(s) {
+  return s.status !== 'PAID' && s.dueDate && s.dueDate < localDate() ? 'OVERDUE' : s.status
 }
 
 export const ENTRY_TYPE_LABELS = { CHARGE: 'Charge', REFUND: 'Refund', PAYMENT: 'Payment', ADJUSTMENT: 'Adjustment' }

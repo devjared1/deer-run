@@ -123,6 +123,11 @@
             </tr>
           </tbody>
         </table>
+        <!-- Tips added on the card reader: charged on top of the sales, not revenue or tax (and not refunded) -->
+        <div v-if="report.cardTips?.count" class="flex justify-between text-sm font-body text-bark mt-3 pt-2 border-t border-gray-100">
+          <span>Card tips <span class="text-gray-400">({{ report.cardTips.count }}) · not in sales or tax</span></span>
+          <span class="tabular-nums font-semibold">{{ money(report.cardTips.totalCents) }}</span>
+        </div>
       </div>
     </div>
 
@@ -220,6 +225,54 @@
       </p>
     </div>
 
+    <!-- Paid in / paid out / safe drops: cash in and out of the drawers that isn't a sale -->
+    <div v-if="report.cashMovements?.rows.length" class="panel">
+      <h3 class="panel-title">
+        Paid in, paid out and safe drops
+      </h3>
+      <table class="w-full text-sm font-body">
+        <tbody class="divide-y divide-gray-50">
+          <tr v-for="m in report.cashMovements.rows" :key="m.id">
+            <td class="td whitespace-nowrap">
+              {{ movementWhen(m.createdAt) }}
+            </td>
+            <td class="td">
+              {{ MOVEMENT_LABELS[m.type] }}
+              <div v-if="m.reason || m.recipient" class="text-xs text-gray-400">
+                {{ [m.reason, m.recipient && `to ${m.recipient}`].filter(Boolean).join(' ') }}
+              </div>
+            </td>
+            <td class="td text-xs text-gray-500">
+              {{ person(m.employee) }}<template v-if="m.approval?.approver">
+                <br />approved by {{ person(m.approval.approver) }}
+              </template>
+            </td>
+            <td class="td-num">
+              {{ MOVEMENT_SIGN[m.type] }}{{ money(m.amountCents) }}
+            </td>
+          </tr>
+        </tbody>
+        <tfoot class="border-t border-gray-200">
+          <tr v-if="report.cashMovements.paidInCount">
+            <td class="td" colspan="3">Paid in ({{ report.cashMovements.paidInCount }})</td>
+            <td class="td-num">+{{ money(report.cashMovements.paidInCents) }}</td>
+          </tr>
+          <tr v-if="report.cashMovements.paidOutCount">
+            <td class="td" colspan="3">Paid out ({{ report.cashMovements.paidOutCount }})</td>
+            <td class="td-num">−{{ money(report.cashMovements.paidOutCents) }}</td>
+          </tr>
+          <tr v-if="report.cashMovements.safeDropCount">
+            <td class="td" colspan="3">Safe drops ({{ report.cashMovements.safeDropCount }})</td>
+            <td class="td-num">−{{ money(report.cashMovements.safeDropCents) }}</td>
+          </tr>
+          <tr class="font-semibold">
+            <td class="td" colspan="3">Cash left in the drawer{{ report.register ? '' : 's' }} (net cash + paid in − paid out − safe drops)</td>
+            <td class="td-num">{{ money(report.drawerCashCents) }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
     <!-- Cash drawers -->
     <div v-if="report.drawerSessions?.length" class="panel">
       <h3 class="panel-title">
@@ -230,7 +283,8 @@
 
     <p class="text-xs text-gray-400 font-body">
       Sales count on the day they were rung up; voids and refunds come off on the day they happen, so a past day's
-      report doesn't change. Net cash is cash taken minus cash refunded; each drawer's expected amount adds its starting cash.
+      report doesn't change. Net cash is cash taken minus cash refunded; each drawer's expected amount adds its starting cash
+      and its paid-ins, and takes off its paid-outs and safe drops.
     </p>
   </div>
 </template>
@@ -238,6 +292,8 @@
 <script setup>
 import { computed } from 'vue'
 import DrawerSessionsTable from './DrawerSessionsTable.vue'
+import { COURSE_TZ } from '@/lib/timeclock'
+import { MOVEMENT_LABELS, MOVEMENT_SIGN } from './salesReport'
 
 const props = defineProps({
   report: { type: Object, required: true },
@@ -248,6 +304,9 @@ const maxNet = computed(() => Math.max(1, ...props.report.categories.map(c => c.
 function barWidth(cents) {
   return Math.max(0, Math.round((cents / maxNet.value) * 100))
 }
+
+const movementWhen = (ts) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ })
+const person = (e) => (e ? `${e.firstName} ${e.lastName}` : '')
 
 const money = (cents) => `${cents < 0 ? '−' : ''}$${(Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 </script>

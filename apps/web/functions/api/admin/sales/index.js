@@ -1,14 +1,14 @@
 import { requireAdmin, json } from '../_auth.js'
 import { dollars, toCsv, csvResponse } from '../_csv.js'
 import { parseDateRange, fetchAll } from './_report.js'
-import { PAYMENT_LABELS } from '../../staff/sales/_sale.js'
+import { PAYMENT_LABELS, saleTipCents } from '../../staff/sales/_sale.js'
 import { toUtcIso, localDate, COURSE_TZ } from '../../../../src/lib/timeclock.js'
 
 const STATUSES = ['COMPLETED', 'PARTIALLY_REFUNDED', 'VOIDED', 'REFUNDED']
 const LIST_SELECT =
   'id, number, status, isMemberPricing, subtotalCents, discountCents, taxCents, totalCents, refundedCents, createdAt, ' +
   'register:Register!Sale_registerId_fkey(id, name), cashier:Employee!Sale_cashierId_fkey(firstName, lastName), ' +
-  'customer:User(name, email), payments:Payment(method, amountCents)'
+  'customer:User(name, email), payments:Payment(*)'
 
 // GET /api/admin/sales?from=&to=&registerId=&status=&number=&page=&limit=
 //   Sales rung up in a course-local date range (default today), newest first, paged.
@@ -95,7 +95,7 @@ function tenderSummary(payments) {
 export function salesCsv(sales) {
   return toCsv(
     ['Receipt', 'Date', 'Time', 'Register', 'Cashier', 'Customer', 'Member Pricing', 'Status',
-      'Discounts', 'Subtotal', 'Tax', 'Total', 'Refunded', 'Tenders'],
+      'Discounts', 'Subtotal', 'Tax', 'Total', 'Refunded', 'Tenders', 'Card Tip'],
     sales.map(s => {
       const { date, time } = localParts(s.createdAt)
       return [
@@ -104,7 +104,7 @@ export function salesCsv(sales) {
         s.customer ? (s.customer.name || s.customer.email) : '',
         s.isMemberPricing ? 'Yes' : 'No', s.status,
         dollars(s.discountCents), dollars(s.subtotalCents), dollars(s.taxCents), dollars(s.totalCents),
-        dollars(s.refundedCents), tenderSummary(s.payments),
+        dollars(s.refundedCents), tenderSummary(s.payments), dollars(saleTipCents(s)),
       ]
     }),
   )

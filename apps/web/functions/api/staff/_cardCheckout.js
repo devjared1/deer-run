@@ -20,6 +20,7 @@ function serialize(c) {
     amountCents: c.amountCents,
     lastError: c.lastError,
     saleId: c.saleId,
+    tipping: !!c.payload?.tipping,
     createdAt: toUtcIso(c.createdAt),
   }
 }
@@ -37,14 +38,72 @@ async function update(supabase, id, fields) {
   return data
 }
 
-/** Sends the PaymentIntent to the reader. Returns an error message or null. */
+// The reader's cart screen: the sale's lines (after discounts, before tax), the tax, and what's due on the card
+// (less than the sale total when part is paid in cash). Quantity goes in the description so the amount reads
+// the same whether or not the reader multiplies it out.
+function cartDisplay(checkout) {
+  const { items, sale } = checkout.payload ?? {}
+  if (!items?.length) return null
+  return {
+    type: 'cart',
+    cart: {
+      currency: 'usd',
+      line_items: items.slice(0, 50).map(line => ({
+        description: `${line.quantity > 1 ? `${line.quantity} × ` : ''}${line.description}`.slice(0, 60),
+        amount: line.subtotalCents,
+        quantity: 1,
+      })),
+      tax: sale?.taxCents ?? 0,
+      total: checkout.amountCents,
+    },
+  }
+}
+
+/**
+ * Sends the PaymentIntent to the reader. Returns an error message or null.
+ * The cart goes up first (best effort: a display failure never stops the payment). setReaderDisplay is a
+ * reader action that completes at once; processPaymentIntent is the next action and takes over the screen,
+ * and cancelAction clears either.
+ */
 async function sendToReader(stripe, checkout) {
+  const display = cartDisplay(checkout)
+  if (display) await stripe.terminal.readers.setReaderDisplay(checkout.stripeReaderId, display).catch(() => {})
+  const tipping = checkout.payload?.tipping
   try {
-    await stripe.terminal.readers.processPaymentIntent(checkout.stripeReaderId, { payment_intent: checkout.stripePaymentIntentId })
+    await stripe.terminal.readers.processPaymentIntent(checkout.stripeReaderId, {
+      payment_intent: checkout.stripePaymentIntentId,
+      process_config: tipping ? { tipping: { amount_eligible: tipping.amountEligibleCents } } : { skip_tipping: true },
+    })
     return null
   } catch (e) {
     return stripeMessage(e)
   }
+}
+
+/**
+ * On-reader tipping for a register sale, when the course has it on (Admin → Settings → Point of Sale):
+ * { amountEligibleCents } (what the tip percentages are worked out on) or null. House account payments never
+ * offer a tip. Reads the settings row with * so it still works before the tipping columns exist.
+ */
+async function tippingFor(supabase, prepared) {
+  if (prepared.kind === 'account_payment') return null
+  const { data: settings } = await supabase.from('CourseSettings').select('*').eq('id', 'singleton').maybeSingle()
+  if (!settings?.tippingEnabled) return null
+  const base = settings.tipPreTax === false ? prepared.sale.totalCents : prepared.sale.subtotalCents
+  const amountEligibleCents = Math.min(base, prepared.cardCents)
+  return amountEligibleCents > 0 ? { amountEligibleCents } : null
+}
+
+/**
+ * The tip the customer added on the reader. Stripe raises the PaymentIntent amount by the tip and reports it in
+ * amount_details.tip; anything captured over the checkout amount on a tipping checkout is also taken as a tip.
+ */
+function tipOf(intent, checkout) {
+  if (checkout.payload?.kind === 'account_payment') return 0
+  const reported = intent.amount_details?.tip?.amount ?? 0
+  if (reported > 0) return reported
+  const extra = (intent.amount_received ?? intent.amount) - checkout.amountCents
+  return checkout.payload?.tipping && extra > 0 ? extra : 0
 }
 
 /**
@@ -73,6 +132,7 @@ export async function startCardCheckout(supabase, env, prepared) {
   }
 
   const { registerId, cashierId, readerId, registerName, cardCents, ...payload } = prepared
+  const tipping = await tippingFor(supabase, prepared)
   const { data: checkout, error } = await supabase.from('CardCheckout').insert({
     id,
     registerId,
@@ -80,7 +140,7 @@ export async function startCardCheckout(supabase, env, prepared) {
     amountCents: cardCents,
     stripePaymentIntentId: intent.id,
     stripeReaderId: readerId,
-    payload,
+    payload: { ...payload, tipping },
   }).select('*').single()
   if (error) {
     await stripe.paymentIntents.cancel(intent.id).catch(() => {})
@@ -114,11 +174,14 @@ export async function completeCardCheckout(supabase, env, checkoutId, intent) {
     return { checkout: current, sale: current?.saleId ? await loadSale(supabase, current.saleId) : null, ...result }
   }
 
+  // The card is charged the checkout amount plus any tip added on the reader
   const amount = intent.amount_received ?? intent.amount
-  if (intent.status !== 'succeeded' || amount !== claimed.amountCents) {
+  const tipCents = tipOf(intent, claimed)
+  if (intent.status !== 'succeeded' || amount !== claimed.amountCents + tipCents) {
+    const expected = tipCents ? `${claimed.amountCents} plus a ${tipCents} tip` : claimed.amountCents
     const checkout = await update(supabase, claimed.id, {
       status: 'SUCCEEDED',
-      lastError: `Stripe reports ${intent.status} for ${amount} cents; expected ${claimed.amountCents}. Check the payment in Stripe.`,
+      lastError: `Stripe reports ${intent.status} for ${amount} cents; expected ${expected}. Check the payment in Stripe.`,
     })
     return { checkout }
   }
@@ -146,7 +209,8 @@ export async function completeCardCheckout(supabase, env, checkoutId, intent) {
   if (payload.createdBookingId) {
     await supabase.from('Booking').update({ status: 'CONFIRMED' }).eq('id', payload.createdBookingId)
   }
-  const payments = payload.payments.map(p => (p.method === 'CARD_TERMINAL' ? { ...p, stripePaymentIntentId: intent.id } : p))
+  // Payment.amountCents stays the sale's share; the tip is recorded beside it (Payment.tipCents)
+  const payments = payload.payments.map(p => (p.method === 'CARD_TERMINAL' ? { ...p, stripePaymentIntentId: intent.id, tipCents } : p))
   const saved = await saveSale(supabase, env, { ...payload, payments })
   if (saved.error) {
     // The customer has paid: keep it retryable rather than losing it
@@ -209,7 +273,10 @@ async function markCanceled(supabase, checkout) {
   return update(supabase, checkout.id, { status: 'CANCELED' })
 }
 
-/** Register actions on a checkout: retry | cancel | simulate | complete. Returns a Response. */
+/**
+ * Register actions on a checkout: retry | cancel | simulate | complete. Returns a Response.
+ * options: { decline, tipCents } for simulate (a simulated tip only on a tipping checkout).
+ */
 export async function cardCheckoutAction(supabase, env, checkout, action, options = {}) {
   const stripe = makeStripe(env)
   if (!stripe) return json({ error: 'Card payments aren\'t set up (STRIPE_SECRET_KEY)' }, 503)
@@ -244,7 +311,7 @@ export async function cardCheckoutAction(supabase, env, checkout, action, option
     try {
       await stripe.testHelpers.terminal.readers.presentPaymentMethod(checkout.stripeReaderId, options.decline
         ? { card_present: { number: '4000000000000002' } } // Stripe's "card declined" test card
-        : {})
+        : options.tipCents > 0 && checkout.payload?.tipping ? { amount_tip: options.tipCents } : {})
     } catch (e) {
       return json({ error: stripeMessage(e) }, 502)
     }

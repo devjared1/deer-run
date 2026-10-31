@@ -45,6 +45,14 @@
     <div v-if="report.sales.noChargeCount" class="row">
       <span>No charge ({{ report.sales.noChargeCount }})</span><span>{{ money(0) }}</span>
     </div>
+    <template v-if="report.cardTips?.count">
+      <div class="row">
+        <span>Card tips ({{ report.cardTips.count }})</span><span>{{ money(report.cardTips.totalCents) }}</span>
+      </div>
+      <div class="sub">
+        On top of sales; not taxed
+      </div>
+    </template>
     <div class="rule" />
 
     <template v-if="report.accountPayments?.rows.length">
@@ -61,6 +69,18 @@
     <div class="sub">
       Cash taken (sales and account payments) minus cash refunds
     </div>
+    <template v-if="movements && movements.rows.length">
+      <div v-if="movements.paidInCount" class="row"><span>Paid in ({{ movements.paidInCount }})</span><span>+{{ money(movements.paidInCents) }}</span></div>
+      <div v-if="movements.paidOutCount" class="row"><span>Paid out ({{ movements.paidOutCount }})</span><span>-{{ money(movements.paidOutCents) }}</span></div>
+      <div v-for="m in paidOuts" :key="m.id" class="sub">
+        {{ time(m.createdAt) }} {{ money(m.amountCents) }} {{ m.reason }}<template v-if="m.recipient"> to {{ m.recipient }}</template>
+      </div>
+      <div v-if="movements.safeDropCount" class="row"><span>Safe drops ({{ movements.safeDropCount }})</span><span>-{{ money(movements.safeDropCents) }}</span></div>
+      <div class="row strong"><span>Cash left in drawer{{ report.register ? '' : 's' }}</span><span>{{ money(report.drawerCashCents) }}</span></div>
+      <div class="sub">
+        Net cash + paid in - paid out - safe drops (before starting cash)
+      </div>
+    </template>
     <template v-if="report.drawerSessions?.length">
       <div class="rule" />
       <div class="heading">
@@ -99,6 +119,8 @@ const dateLabel = computed(() => reportDateLabel(props.report, formatLocalDate))
 const printedAt = computed(() => new Date(props.report.generatedAt).toLocaleString('en-US', {
   month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ,
 }))
+const movements = computed(() => props.report.cashMovements ?? null)
+const paidOuts  = computed(() => (movements.value?.rows ?? []).filter(m => m.type === 'PAID_OUT'))
 const preTaxVoids   = computed(() => props.report.returns.voidCents - props.report.returns.voidTaxCents)
 const preTaxRefunds = computed(() => props.report.returns.refundCents - props.report.returns.refundTaxCents)
 

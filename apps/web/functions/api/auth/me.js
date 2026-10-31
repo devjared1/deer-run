@@ -25,7 +25,8 @@ export async function onRequestGet({ request, env }) {
     return json({ error: 'Token verification failed' }, 401)
   }
 
-  // Return existing user or create on first login
+  // Return existing user or create on first login. New accounts are GUEST: membership comes from buying one
+  // (a membership product at the register) or an admin setting it in Admin → Users.
   let { data: user } = await supabase
     .from('User')
     .select('*')
@@ -35,7 +36,7 @@ export async function onRequestGet({ request, env }) {
   if (!user) {
     const { data: created, error: dbError } = await supabase
       .from('User')
-      .insert({ id: crypto.randomUUID(), supabaseId: authUser.id, email: authUser.email, role: 'MEMBER' })
+      .insert({ id: crypto.randomUUID(), supabaseId: authUser.id, email: authUser.email, role: 'GUEST' })
       .select()
       .single()
 

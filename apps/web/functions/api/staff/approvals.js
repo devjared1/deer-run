@@ -4,6 +4,7 @@ import { checkManagerPin, MANAGER_PIN_COLUMNS } from './_pin.js'
 import { APPROVAL_ACTIONS, approvalTimes } from './_approvals.js'
 
 // POST /api/staff/approvals — { action, registerId?, managerId?, pin?, reason? }
+// action: DISCOUNT | NO_SALE | VOID | REFUND | CHANGE_REGISTER | PAID_IN | PAID_OUT | SAFE_DROP
 // A manager signs off on a register action. If the signed-in cashier is a manager and no PIN is
 // given, they approve it themselves; otherwise the chosen manager's PIN is checked.
 // Returns { approvalId, approverName, expiresAt }; the action endpoint then uses approvalId.

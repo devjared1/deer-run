@@ -22,7 +22,7 @@ export async function onRequestPut({ request, env, params }) {
     .from('ProductCategory')
     .update(update)
     .eq('id', params.id)
-    .select('id, name, taxExempt, sortOrder, active')
+    .select('*')
     .maybeSingle()
   if (error) return categoryErrorResponse(error)
   if (!data) return json({ error: 'Category not found' }, 404)

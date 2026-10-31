@@ -6,6 +6,9 @@ export const TIME_OFF_TYPES = ['VACATION', 'SICK', 'PERSONAL', 'UNPAID']
 export const TIME_OFF_STATUSES = ['PENDING', 'APPROVED', 'DENIED', 'CANCELLED']
 const TYPE_LABELS = { VACATION: 'Vacation', SICK: 'Sick', PERSONAL: 'Personal', UNPAID: 'Unpaid' }
 
+// A revoked approval becomes DENIED; its review note starts with this so both portals read correctly
+export const REVOKED_PREFIX = 'Approval revoked: '
+
 // Longest single request, in days (inclusive)
 export const MAX_REQUEST_DAYS = 60
 
@@ -65,25 +68,32 @@ function dateRange(r) {
 }
 
 /**
- * Emails the employee that their request was approved or denied.
+ * Emails the employee that their request was approved or denied (or, with `revoked`, that an approval was revoked).
  * Returns an error message, or null on success (or when email isn't configured).
  */
-export async function emailDecision(env, request, employee) {
+export async function emailDecision(env, request, employee, { revoked = false } = {}) {
   if (!env.RESEND_API_KEY || !employee?.email) return null
   const approved = request.status === 'APPROVED'
+  const outcome = revoked ? 'revoked' : approved ? 'approved' : 'denied'
+  const type = TYPE_LABELS[request.type]?.toLowerCase() ?? ''
   const lines = [
     `Hi ${employee.firstName},`,
     '',
-    `Your ${TYPE_LABELS[request.type]?.toLowerCase() ?? ''} time off request for ${dateRange(request)} was ${approved ? 'approved' : 'denied'}.`,
+    revoked
+      ? `The approval of your ${type} time off for ${dateRange(request)} was revoked. Please check your schedule for those days.`
+      : `Your ${type} time off request for ${dateRange(request)} was ${outcome}.`,
   ]
-  if (request.reviewNote) lines.push('', `Note from your manager: ${request.reviewNote}`)
+  const note = revoked && request.reviewNote?.startsWith(REVOKED_PREFIX)
+    ? request.reviewNote.slice(REVOKED_PREFIX.length)
+    : request.reviewNote
+  if (note) lines.push('', `Note from your manager: ${note}`)
   lines.push('', 'You can see your requests and schedule in the staff portal: https://deerrun.golf/staff/time-off', '', 'Deer Run Golf Course')
   try {
     const resend = new Resend(env.RESEND_API_KEY)
     const { error } = await resend.emails.send({
       from: 'noreply@deerrun.golf',
       to: employee.email,
-      subject: `Time off ${approved ? 'approved' : 'denied'}: ${dateRange(request)}`,
+      subject: revoked ? `Time off approval revoked: ${dateRange(request)}` : `Time off ${outcome}: ${dateRange(request)}`,
       text: lines.join('\n'),
     })
     return error ? error.message : null

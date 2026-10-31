@@ -42,7 +42,10 @@ export async function onRequestGet({ request, env, params }) {
     return json({
       account: serializeAccount(account, balance),
       entries: (entriesRes.data || []).map(serializeEntry),
-      statements: (statementsRes.data || []).map(s => ({ ...s, emailedAt: toUtcIso(s.emailedAt), paidAt: toUtcIso(s.paidAt), createdAt: toUtcIso(s.createdAt) })),
+      statements: (statementsRes.data || []).map(s => ({
+        ...s, emailedAt: toUtcIso(s.emailedAt), paidAt: toUtcIso(s.paidAt), createdAt: toUtcIso(s.createdAt),
+        reminderSentAt: toUtcIso(s.reminderSentAt), lateFeeAt: toUtcIso(s.lateFeeAt),
+      })),
       statement,
     })
   } catch (e) {

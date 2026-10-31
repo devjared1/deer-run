@@ -95,19 +95,26 @@ export async function findOverlap(supabase, employeeId, entry, excludeId = null)
   return null
 }
 
-/** Replaces all breaks on an entry. */
-export async function replaceBreaks(supabase, timeEntryId, breaks) {
-  const { error: delError } = await supabase.from('TimeBreak').delete().eq('timeEntryId', timeEntryId)
-  if (delError) return delError.message
-  if (!breaks.length) return null
-  const { error } = await supabase
-    .from('TimeBreak')
-    .insert(breaks.map(b => ({ id: crypto.randomUUID(), timeEntryId, ...b })))
-  return error?.message ?? null
+/**
+ * Saves a manager's correction in one transaction (Postgres function save_time_entry()):
+ * inserts the entry (no `id`) or updates it (`id`), then replaces all of its breaks.
+ * `entry` and `breaks` come from parseEntryInput. Returns { id } or { error, status }.
+ */
+export async function saveTimeEntry(supabase, { id = null, employeeId = null, editedById, entry, breaks }) {
+  const { data, error } = await supabase.rpc('save_time_entry', {
+    p_entry: { id, employeeId, ...entry, editedById },
+    p_breaks: breaks,
+  })
+  if (error) {
+    const status = error.code === '23505' ? 409 : error.code === 'P0002' ? 404 : 500
+    return { error: writeErrorMessage(error), status }
+  }
+  return { id: data }
 }
 
 /** Maps the one-open-entry unique index violation to a readable message. */
-export function writeErrorMessage(error) {
+function writeErrorMessage(error) {
   if (error?.code === '23505') return 'This employee already has an open entry (still on the clock)'
+  if (error?.code === 'P0002') return 'Time entry not found'
   return error?.message
 }

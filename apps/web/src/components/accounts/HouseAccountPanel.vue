@@ -98,7 +98,7 @@
               {{ formatLocalDate(s.periodStart, { month: 'long', year: 'numeric' }) }}
             </RouterLink>
             <span class="tabular-nums text-bark/70">{{ formatCents(s.closingCents) }}</span>
-            <span :class="['text-[11px] px-1.5 py-0.5 rounded-full', STATEMENT_STATUS_CLASSES[s.status]]">{{ STATEMENT_STATUS_LABELS[s.status] }}</span>
+            <span :class="['text-[11px] px-1.5 py-0.5 rounded-full', STATEMENT_STATUS_CLASSES[statementStatus(s)]]">{{ STATEMENT_STATUS_LABELS[statementStatus(s)] }}</span>
           </li>
           <li v-if="!data.statements.length" class="px-5 py-4 text-bark/40 text-center">
             Your first statement comes on the 1st.
@@ -189,7 +189,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
 import { formatCents, dollarsToCents } from '@/lib/money'
 import { formatLocalDate, COURSE_TZ } from '@/lib/timeclock'
-import { STATEMENT_STATUS_LABELS, STATEMENT_STATUS_CLASSES, cardLabel } from './accountDisplay'
+import { STATEMENT_STATUS_LABELS, STATEMENT_STATUS_CLASSES, statementStatus, cardLabel } from './accountDisplay'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 import StripeElementModal from './StripeElementModal.vue'
 

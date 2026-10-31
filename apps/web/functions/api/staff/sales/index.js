@@ -81,11 +81,11 @@ export async function onRequestPost({ request, env }) {
   const today = localDate()
   let customer = null
   if (body.customerId) {
-    const { data } = await supabase.from('User').select('id, role, memberUntil').eq('id', body.customerId).maybeSingle()
+    const { data } = await supabase.from('User').select('id, role, memberUntil, membershipTier').eq('id', body.customerId).maybeSingle()
     if (!data) return json({ error: 'Customer not found' }, 400)
     customer = data
   }
-  // A lapsed membership doesn't get member pricing (the nightly job also moves them to GUEST)
+  // A lapsed membership doesn't get member pricing or the Pro Shop discount (the nightly job also moves them to GUEST)
   const isMember = isActiveMember(customer, today)
 
   const items = Array.isArray(body.items) ? body.items : []
@@ -99,7 +99,8 @@ export async function onRequestPost({ request, env }) {
         .from('ProductVariant')
         .select('id, size, color, priceCents, memberPriceCents, active, ' +
           'product:Product(id, name, priceCents, memberPriceCents, trackInventory, active, membershipMonths, membershipTier, ' +
-          'category:ProductCategory(name, taxExempt, active))')
+          // (*): includes memberDiscount once that column exists (isMemberDiscountCategory falls back to names)
+          'category:ProductCategory(*))')
         .in('id', variantIds)
       : Promise.resolve({ data: [] }),
     bookingIds.length
@@ -115,6 +116,7 @@ export async function onRequestPost({ request, env }) {
     items,
     variantsById,
     isMember,
+    memberTier: customer?.membershipTier ?? null,
     taxBps: settings?.salesTaxBps ?? 0,
     payments: body.payments,
     expectedTotalCents: body.expectedTotalCents,
@@ -157,9 +159,10 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'This register has no card reader. An admin can pair one in Admin → Registers.' }, 409)
   }
 
-  // Only managers can discount: a discounted sale must carry an unused DISCOUNT approval
+  // Only managers can discount: a discounted sale must carry an unused DISCOUNT approval (the member discount
+  // is automatic and doesn't need one)
   let approval = null
-  if (built.lines.some(l => l.discountCents > 0)) {
+  if (built.lines.some(l => l.managerDiscountCents > 0)) {
     approval = await consumeApproval(supabase, body.approvalId, { action: 'DISCOUNT', cashierId: employee.id })
     if (!approval) {
       return json({ error: 'Discounts need a manager\'s approval, and it may have expired. Approve the discount again.', code: 'APPROVAL_REQUIRED' }, 403)

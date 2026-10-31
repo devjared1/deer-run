@@ -1,7 +1,9 @@
 import { fetchAll } from './_db.js'
 import {
   ACCOUNT_SELECT, DUE_DAYS, buildStatement, previousMonth, recordPayment, sendStatement, accountBalance, addDays, localDate, money,
+  loadAccount, openStatementsOwed, settleStatements, sendReminder,
 } from './_houseAccounts.js'
+import { formatLocalDate } from '../../../src/lib/timeclock.js'
 import { makeStripe, stripeMessage } from '../staff/_stripe.js'
 
 /**
@@ -93,6 +95,84 @@ export async function runMonthlyStatements(supabase, env, today = localDate()) {
       }
     } catch (e) {
       summary.errors.push(`${account.user?.email ?? account.id}: ${e.message}`)
+    }
+  }
+  return summary
+}
+
+// Overdue statements whose due date passed more than this many days ago are left alone (so turning the feature on,
+// or a long email outage, doesn't send a backlog of old reminders or fees)
+export const OVERDUE_WINDOW_DAYS = 45
+
+/**
+ * Overdue statements: an OPEN / AUTOPAY_FAILED statement past its due date with something still owed on it (see
+ * openStatementsOwed) gets the course late fee (CourseSettings.lateFeeCents; 0 = off) as an ADJUSTMENT, once
+ * (Statement.lateFeeAt), and one reminder email with the statement PDF (Statement.reminderSentAt). Both are
+ * claimed with a conditional update first, so re-running (or two runs at once) never repeats them. Statements that
+ * turn out to be covered are marked PAID. Without RESEND_API_KEY reminders are skipped silently (and sent once it's
+ * set, within the window). Returns { reminded, lateFees, settled, errors }.
+ */
+export async function runOverdueStatements(supabase, env, today = localDate()) {
+  const summary = { reminded: 0, lateFees: 0, settled: 0, errors: [] }
+  const [{ data: settings, error: settingsError }, candidates] = await Promise.all([
+    supabase.from('CourseSettings').select('*').eq('id', 'singleton').maybeSingle(),
+    fetchAll(() => supabase.from('Statement').select('id, accountId').in('status', ['OPEN', 'AUTOPAY_FAILED'])
+      .lt('dueDate', today).gte('dueDate', addDays(today, -OVERDUE_WINDOW_DAYS)).is('reminderSentAt', null)
+      .order('id', { ascending: true })),
+  ])
+  if (settingsError) throw new Error(settingsError.message)
+  const lateFeeCents = Number.isInteger(settings?.lateFeeCents) && settings.lateFeeCents > 0 ? settings.lateFeeCents : 0
+  const due = new Set(candidates.map(s => s.id))
+
+  for (const accountId of new Set(candidates.map(s => s.accountId))) {
+    let account = null
+    try {
+      account = await loadAccount(supabase, { id: accountId })
+      if (!account) continue
+      const owed = await openStatementsOwed(supabase, accountId)
+      summary.settled += await settleStatements(supabase, accountId)
+
+      for (const { statement, owedCents } of owed) {
+        if (!due.has(statement.id) || owedCents <= 0) continue
+        const now = new Date().toISOString()
+        const month = formatLocalDate(statement.periodStart, { month: 'long', year: 'numeric' })
+
+        let feeAdded = 0
+        if (lateFeeCents && !statement.lateFeeAt) {
+          const { data: claimed, error } = await supabase.from('Statement').update({ lateFeeAt: now })
+            .eq('id', statement.id).is('lateFeeAt', null).select('id')
+          if (error) throw new Error(error.message)
+          if (claimed?.length) {
+            const { error: feeError } = await supabase.from('HouseAccountEntry').insert({
+              id: crypto.randomUUID(), accountId, type: 'ADJUSTMENT', amountCents: lateFeeCents,
+              description: `Late fee — ${month} statement`, createdById: null,
+            })
+            if (feeError) {
+              await supabase.from('Statement').update({ lateFeeAt: null }).eq('id', statement.id)
+              throw new Error(`late fee: ${feeError.message}`)
+            }
+            feeAdded = lateFeeCents
+            summary.lateFees++
+          }
+        }
+
+        if (!env.RESEND_API_KEY || !account.user?.email) continue
+        const { data: claimed, error } = await supabase.from('Statement').update({ reminderSentAt: now })
+          .eq('id', statement.id).is('reminderSentAt', null).select('id')
+        if (error) throw new Error(error.message)
+        if (!claimed?.length) continue // another run sent it
+        const built = await buildStatement(supabase, accountId, statement.periodStart, statement.periodEnd)
+        const emailError = await sendReminder(env, account, { ...statement, entries: built.entries },
+          { owedCents, balanceCents: await accountBalance(supabase, accountId), lateFeeCents: feeAdded })
+        if (emailError) {
+          await supabase.from('Statement').update({ reminderSentAt: null }).eq('id', statement.id)
+          summary.errors.push(`${account.user.email}: reminder: ${emailError}`)
+        } else {
+          summary.reminded++
+        }
+      }
+    } catch (e) {
+      summary.errors.push(`${account?.user?.email ?? accountId}: ${e.message}`)
     }
   }
   return summary

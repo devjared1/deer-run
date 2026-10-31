@@ -241,7 +241,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/bookings[/:id]` | GET / PUT | Bookings list, status changes |
 | `/api/admin/events[/:id]` | GET, POST / PUT, DELETE | Tournaments |
 | `/api/admin/users[/:id]` | GET / PUT | Users, role changes |
-| `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS fields) |
+| `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS, tipping, late fee); PUT returns `warning` if the tip percentages didn't reach Stripe |
 | `/api/admin/employees[/:id]` | GET, POST / PUT, DELETE | Employees (`resetManagerPin`; delete refused with clock history) |
 | `/api/admin/timeclock` | GET | Who's on the clock / on break / forgot to clock out |
 | `/api/admin/timesheets?date=` | GET | All employees' hours for a pay period |
@@ -249,8 +249,9 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/shifts?view=week\|biweek\|month&date=` (or `?from=&to=`) | GET, POST | Schedule: shifts, employees, time off |
 | `/api/admin/shifts/:id` | PUT, DELETE | Edit / delete a shift |
 | `/api/admin/shifts/copy` | POST | Copy the previous 7/14 days of shifts forward (skips duplicates, inactive) |
+| `/api/admin/shifts/email` | POST | `{ from, to }`: email each active employee their own shifts for the period (sent/skipped/failed; 503 `EMAIL_NOT_CONFIGURED`) |
 | `/api/admin/time-off?status=&from=&to=` | GET | Time off requests + shifts scheduled during each |
-| `/api/admin/time-off/:id` | PUT | `{ action: approve\|deny, note }` (pending only) + email the employee |
+| `/api/admin/time-off/:id` | PUT | `{ action: approve\|deny, note }` (pending only) or `revoke` (approved, not yet ended; note required → DENIED "Approval revoked: …") + email the employee |
 | `/api/admin/time-off/count` | GET | `{ pending }` for the sidebar badge |
 | `/api/admin/product-categories[/:id]` | GET, POST / PUT, DELETE | POS categories (`taxExempt`) |
 | `/api/admin/products[/:id]` | GET, POST / PUT, DELETE | Products with nested variants |
@@ -275,12 +276,12 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/schedule?view=&date=[&team=1]` | GET | Own shifts (or the whole team, read-only) + approved time off |
 | `/api/staff/time-off[/:id]` | GET, POST / PUT | Own requests; create; `{ action: 'cancel' }` while pending |
 | `/api/staff/pin` | GET, PUT | Register manager's own PIN |
-| `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch |
+| `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch, paid-ins/outs, safe drops |
 | `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
 | `/api/staff/register/report?registerId=&date=` | GET | Z report for one register and day (register managers only) |
-| `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session (expected only for managers); `open` with a float / `close` with a count |
+| `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session + its paid-ins/outs (expected only for managers); `open` with a float / `close` with a count / `movement` (`PAID_IN\|PAID_OUT\|SAFE_DROP`, manager approval) |
 | `/api/staff/teesheet?date=` | GET | Tee sheet: slots, bookings, check-in, receipts |
-| `/api/staff/teesheet/:bookingId` | POST | `{ action: 'check_in' \| 'undo_check_in' }` (paid bookings only) |
+| `/api/staff/teesheet/:bookingId` | POST | `{ action: 'check_in' \| 'undo_check_in' \| 'cancel' \| 'move', teeTimeSlotId? }` (check-in: paid only; cancel/move: not checked in; no money moves) |
 | `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`). With a `CARD_TERMINAL` payment it charges the card first → 202 `{ cardCheckout }`. Items can be products, custom amounts, a checked-in `booking` ($0) or a `newBooking` (walk-in/phone, created with the sale). Cash needs an open drawer (409 `DRAWER_CLOSED`); membership products need a customer |
 | `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`; `method` CARD_TERMINAL refunds through Stripe, CASH needs an open drawer) |
 | `/api/staff/account-payments` | POST | A member pays toward their house account: CASH (drawer) → 201, CARD → 202 `{ cardCheckout }` |
@@ -291,7 +292,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | Path | Methods | Description |
 |------|---------|-------------|
 | `/api/internal/memberships` | POST | Daily: renewal reminders (30/7 days, ended) + lapsed members → GUEST |
-| `/api/internal/statements` | POST | Daily: last month's house account statements (only creates missing ones) + autopay + emails |
+| `/api/internal/statements` | POST | Daily: last month's house account statements (only creates missing ones) + autopay + emails with PDF, then overdue statements: one reminder + optional late fee each |
+| `/api/internal/bookings` | POST | Daily: release unpaid online bookings past their 30-minute hold (cancel PaymentIntent → CANCELLED) |
 
 **Member** (`authenticate`: any signed-in user, their own data only)
 
@@ -353,24 +355,25 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 | Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`, `memberUntil?` (last day; null = no expiry), `membershipTier?`, `renewalReminderKey?` |
 | | `TeeTimeSlot` | `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
 | | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy) |
-| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range, pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`) |
+| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range, pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off) |
 | | `TournamentEvent`, `Inquiry`, `ContactMessage` | Events and form submissions |
 | Staff | `Employee` | `userId?` (linked by email), names, `email`, `position` (`EmployeePosition`), `hourlyRateCents`, `active`, manager PIN hash/lockout |
 | | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
 | | `Shift` | `employeeId`, `date`, `startTime`/`endTime` ("HH:MM"; end ≤ start = overnight), `position?` override, `notes?` |
 | | `TimeOffRequest` | `startDate`/`endDate` (inclusive), `type`, `reason?`, `status` (PENDING/APPROVED/DENIED/CANCELLED), `reviewedById` (User.id), `reviewedAt`, `reviewNote` |
-| POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant; `Product.membershipMonths?`/`membershipTier?` mark membership products |
+| POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant; `Product.membershipMonths?`/`membershipTier?` mark membership products; `ProductCategory.memberDiscount` gets the member Pro Shop discount |
 | | `InventoryAdjustment` | Stock change log (`InventoryReason`) |
 | | `Register` | Physical register; `stripeReaderId` |
-| | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line; `SaleItem.bookingId?` links tee time lines |
-| | `CashDrawerSession` | Drawer float, count, expected and over/short per register (one open at a time) |
+| | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line; `SaleItem.bookingId?` links tee time lines; `SaleItem.discountCents` = member + manager, `memberDiscountCents` = member part; `Payment.tipCents` (on-reader tip, on top of `amountCents`) |
+| | `CashDrawerSession` | Drawer float, count, expected and over/short per register (one open at a time); paid-in/out/safe-drop totals stored at close |
+| | `CashDrawerMovement` | Paid in / paid out / safe drop on an open session (type, amount, reason, recipient, employee, approval) |
 | | `HouseAccount`, `HouseAccountEntry`, `Statement` | Member charge accounts: ledger (balance = sum, + owed), monthly statements, PIN, autopay card |
 | | `CardCheckout` | A sale waiting on a card: PaymentIntent, reader, status (PENDING → COMPLETING → COMPLETED / SUCCEEDED / CANCELED), `payload` (create_sale args) |
 | | `ManagerApproval` | Single-use, short-lived manager sign-offs |
 | | `SaleRefund`, `SaleRefundItem` | Voids and refunds |
 
 Postgres functions (in the migrations, callable only by the service role): `adjust_inventory()`,
-`create_sale()`, `refund_sale()`. The partial unique index `TimeEntry_one_open_per_employee` allows one open
+`create_sale()`, `refund_sale()`, `save_time_entry()` (admin time entry corrections, migration 9). The partial unique index `TimeEntry_one_open_per_employee` allows one open
 time entry per employee, and `CashDrawerSession_one_open_per_register` one open drawer per register; Prisma can't
 model partial indexes, so delete any `DROP INDEX` line for them from generated migrations.
 
@@ -465,10 +468,10 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 |------|----------|
 | `timeclock.js` | `COURSE_TZ` (America/Chicago), course-local date helpers (`localDate`, `addDays`, `localDateTimeToUtc`…), worked/overtime minutes, pay periods, display formatting |
 | `schedule.js` | Shift length (overnight wrap), overlaps, `scheduleWarnings()`, week/2-week/month `schedulePeriod()` |
-| `membership.js` | `isActiveMember()`, `isLapsedMember()`, `extendMembership()` (shared: register pricing, tee times, sales) |
-| `teesheet.js` | Tee time labels (`teeTime`, `teeTimeLabel`) used on the tee sheet and on receipt lines |
+| `membership.js` | `isActiveMember()`, `isLapsedMember()`, `extendMembership()`, `shortenMembership()` (shared: register pricing, tee times, sales, refunds) |
+| `teesheet.js` | Tee time labels (`teeTime`, `teeTimeLabel`) used on the tee sheet and on receipt lines, and the unpaid-hold rule (`UNPAID_HOLD_MINUTES`, `isExpiredHold`, `holdsSpot`, `bookedPlayers`, `HOLD_COLUMNS`) used wherever slot capacity is counted |
 | `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
-| `pricing.js` | Register line/tax/total math, shared so the server recomputes exactly what the register showed |
+| `pricing.js` | Register line/tax/total math incl. the member Pro Shop discount (`memberDiscountBps`; imports `../data/membershipTiers.js`), shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
 | `api.js` | `apiFetch()` (see above) |
 | `printReceipt.js`, `print.js` | `printReceipt()` (80 mm `@page`) and `printLandscape()`; each adds its `@page` rule only while printing |
@@ -490,6 +493,11 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 Stripe then sends `payment_intent.succeeded` to `/api/webhooks/stripe`, which sets the booking `status` to
 `CONFIRMED`, stores the PaymentIntent id in `stripePaymentId`, and emails a confirmation.
 
+An unpaid booking holds its spots for 30 minutes; then it's released (`functions/api/bookings/_holds.js`: PaymentIntent
+cancelled, booking CANCELLED). The webhook re-confirms a late payment if there's room, otherwise refunds it.
+
+New accounts are `GUEST` (`/api/auth/me` and the Prisma default); membership comes from a membership sale or Admin → Users.
+
 Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS transition.
 
 ---
@@ -502,9 +510,11 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
 - **Time clock**: punches use server time; one open entry per employee; overtime over 40 h per workweek, which starts
   on the pay period anchor's weekday. Everything is displayed in `America/Chicago`.
 - **Scheduling**: admins build the schedule on `/admin/schedule`; warnings (overlaps, time off, inactive employees)
-  are shown, not enforced. Staff see theirs on `/staff/schedule`. Both print in landscape.
+  are shown, not enforced. Staff see theirs on `/staff/schedule`. Both print in landscape. **Email schedule** sends
+  each employee their shifts for the period shown.
 - **Time off**: staff request on `/staff/time-off`; admins approve/deny on `/admin/time-off` (sidebar badge shows
-  the pending count) and the employee is emailed. Approved and pending time off shows on the schedule.
+  the pending count) and the employee is emailed. Approved and pending time off shows on the schedule. An approved
+  request can be revoked (becomes Denied with the note) until it ends.
 - **POS**: see `TODO.md` → Feature 2 for the register, manager approvals, receipts, voids and refunds.
   The **tee sheet** (`/staff/teesheet`) checks paid bookings in (register opens with a $0 prepaid line) and books
   walk-ins/phone bookings that are paid at the register. **Membership products** (`Product.membershipMonths`) need a
@@ -513,7 +523,12 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
   first, save the sale on success (register poll or webhook, whichever first). Refunds go back the way they were paid.
   **House accounts**: members charge with their PIN (tender Account); `create_sale()` writes the ledger CHARGE.
   Payments: register **Account payment** (cash/card), My Account (online, autopay). Statements on the 1st via
-  `apps/cron` → `/api/internal/statements`.
+  `apps/cron` → `/api/internal/statements`, emailed with a PDF (`functions/api/admin/_statementPdf.js`, no dependency);
+  an unpaid statement still owing the day after its due date gets one reminder and the optional late fee.
+  **Member discounts**: active members get their tier's Pro Shop discount automatically in Member Discount categories
+  (not on products with a member price); manager discounts still need approval. **Tips** (setting, off by default) are
+  asked for on the reader, stored on the card payment (`Payment.tipCents`) and kept out of sales and tax; POS refunds
+  never return them. **Paid-ins, paid-outs and safe drops** need a manager and print a slip.
   Reporting lives on `/admin/sales` (sales list, receipts, CSV, end-of-day report, drawers) and the dashboard; managers print
   the end-of-day (Z) slip from the register. Sales count on the day they're rung up and voids/refunds on the day they
   happen. Supabase returns at most 1,000 rows per request, so reports and exports page through with `fetchAll()`.
@@ -601,7 +616,8 @@ Pure JS modules in `apps/web/src/data/` — no API calls needed:
 ### Scheduled jobs (`apps/cron`)
 Pages has no cron triggers, so a separate Worker runs daily (11:15 UTC) and POSTs to each `/api/internal/*` job
 with `Authorization: Bearer <CRON_SECRET>`. Today: `/api/internal/memberships` (renewal reminders, lapsed members →
-GUEST). Deploy: `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy`. Add new jobs to `JOBS` in
+GUEST), `/api/internal/statements` (monthly statements, autopay, overdue reminders and late fees) and
+`/api/internal/bookings` (release expired unpaid bookings). Deploy: `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy`. Add new jobs to `JOBS` in
 `apps/cron/src/index.js`.
 
 ### Stripe Webhook

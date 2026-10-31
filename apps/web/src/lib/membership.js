@@ -36,3 +36,12 @@ export function extendMembership(memberUntil, months, today) {
   // When the start day doesn't exist in the end month (Jan 31 → Feb), the month runs to its last day
   return end.slice(8) < start.slice(8) ? end : addDays(end, -1)
 }
+
+/**
+ * The last day of membership after `months` of it are refunded: the reverse of extendMembership, so refunding a
+ * renewal gives back the old end date (to within a day when the month-end clamp applied). Refunding a new
+ * membership lands before the day it was bought, so it has lapsed.
+ */
+export function shortenMembership(memberUntil, months) {
+  return addDays(addMonths(addDays(memberUntil, 1), -months), -1)
+}

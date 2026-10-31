@@ -26,6 +26,27 @@ export async function ensureTerminalLocation(stripe) {
   return (await stripe.terminal.locations.create(TERMINAL_LOCATION)).id
 }
 
+const TIPPING_CONFIG_NAME = 'Deer Run tipping'
+
+/**
+ * Puts the course's tip percentages on the account's default Terminal configuration, which every reader uses
+ * unless its location overrides it. Readers show the tip screen only when the course setting is on: each
+ * register payment passes process_config.skip_tipping otherwise (see _cardCheckout.js).
+ * Without an account default, a configuration is created and set on the course's Terminal location.
+ */
+export async function syncTerminalTipping(stripe, percentages) {
+  const tipping = { usd: { percentages } }
+  const { data } = await stripe.terminal.configurations.list({ limit: 100 })
+  const existing = data.find(c => c.is_account_default) ?? data.find(c => c.name === TIPPING_CONFIG_NAME)
+  if (existing) {
+    await stripe.terminal.configurations.update(existing.id, { tipping })
+    if (existing.is_account_default) return
+  }
+  const config = existing ?? await stripe.terminal.configurations.create({ name: TIPPING_CONFIG_NAME, tipping })
+  const locationId = await ensureTerminalLocation(stripe)
+  await stripe.terminal.locations.update(locationId, { configuration_overrides: config.id })
+}
+
 /** A short, cashier-friendly message for a Stripe error. */
 export function stripeMessage(e) {
   if (e?.code === 'terminal_reader_offline') return 'The card reader is offline. Check its power and Wi-Fi, then try again.'

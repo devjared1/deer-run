@@ -9,6 +9,8 @@ export function parseCategory(body, { partial = false } = {}) {
     data.name = name
   }
   if (body.taxExempt !== undefined) data.taxExempt = Boolean(body.taxExempt)
+  // Members get their Pro Shop discount in this category (src/lib/pricing.js)
+  if (body.memberDiscount !== undefined) data.memberDiscount = Boolean(body.memberDiscount)
   if (body.active !== undefined) data.active = Boolean(body.active)
   if (body.sortOrder !== undefined) {
     const n = Number(body.sortOrder)

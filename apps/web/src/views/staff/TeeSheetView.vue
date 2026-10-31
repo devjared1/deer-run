@@ -26,6 +26,12 @@
     <p v-if="actionError" class="text-red-500 text-sm font-body mb-3">
       {{ actionError }}
     </p>
+    <div v-if="notice" class="bg-pine/10 text-pine text-sm font-body rounded-lg px-4 py-2 mb-3 flex items-start gap-3">
+      <span class="flex-1">{{ notice }}</span>
+      <button class="text-pine/60 hover:text-pine" aria-label="Dismiss" @click="notice = null">
+        ✕
+      </button>
+    </div>
     <div v-if="loading && !sheet" class="text-gray-400 text-sm">
       Loading…
     </div>
@@ -58,7 +64,7 @@
           <div
             v-for="b in slot.bookings"
             :key="b.id"
-            :class="['flex flex-wrap items-center gap-x-3 gap-y-1 text-sm', inactive(b) ? 'opacity-50' : '']"
+            :class="['flex flex-wrap items-center gap-x-3 gap-y-1 text-sm', inactive(b) || b.holdExpired ? 'opacity-50' : '']"
           >
             <span class="font-semibold text-bark">{{ b.name }}</span>
             <span class="text-gray-500">{{ b.players }} player{{ b.players === 1 ? '' : 's' }}</span>
@@ -86,6 +92,20 @@
                   </button>
                 </template>
               </template>
+              <template v-if="canChange(b)">
+                <button
+                  v-if="b.status === 'CONFIRMED'"
+                  class="btn-outline-xs"
+                  :disabled="busy === b.id"
+                  title="Move the booking to another tee time"
+                  @click="openMove(b, slot)"
+                >
+                  Move
+                </button>
+                <button class="btn-outline-xs text-clay" :disabled="busy === b.id" @click="cancelling = { booking: b, slot }">
+                  Cancel
+                </button>
+              </template>
             </span>
           </div>
           <div v-if="!activeBookings(slot).length" class="text-sm text-gray-300">
@@ -107,8 +127,88 @@
     <p class="text-gray-400 text-xs font-body mt-3">
       Refreshes every 30 seconds. "Check in" opens the register with the prepaid greens fee at $0, so carts, range
       balls and drinks go on the same ticket. Walk-ins and phone bookings are paid at the register; the booking is
-      saved when the sale completes.
+      saved when the sale completes. Unfinished online payments hold their spots for {{ UNPAID_HOLD_MINUTES }} minutes.
+      Cancelling or moving a booking never moves money.
     </p>
+
+    <!-- Cancel a booking -->
+    <div v-if="cancelling" class="modal-overlay" @click.self="cancelling = null">
+      <div class="modal-box">
+        <h2 class="font-display font-bold text-bark mb-1">
+          Cancel {{ cancelling.booking.name }}?
+        </h2>
+        <p class="text-gray-500 text-sm font-body mb-4">
+          {{ teeTimeLabel(cancelling.slot.date, cancelling.slot.startTime) }} ·
+          {{ cancelling.booking.players }} player{{ cancelling.booking.players === 1 ? '' : 's' }} · {{ statusBadge(cancelling.booking).label }}
+        </p>
+        <p class="text-sm font-body text-bark bg-amber/10 rounded-lg px-3 py-2">
+          {{ moneyNote(cancelling.booking) }}
+        </p>
+        <div class="flex justify-end gap-3 mt-5">
+          <button class="btn-outline-sm" @click="cancelling = null">
+            Keep booking
+          </button>
+          <button class="btn-clay px-4 py-2 text-sm" :disabled="busy === cancelling.booking.id" @click="confirmCancel">
+            {{ busy === cancelling.booking.id ? 'Cancelling…' : 'Cancel booking' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Move a booking -->
+    <div v-if="moving" class="modal-overlay" @click.self="moving = null">
+      <div class="modal-box">
+        <h2 class="font-display font-bold text-bark mb-1">
+          Move {{ moving.booking.name }}
+        </h2>
+        <p class="text-gray-500 text-sm font-body mb-4">
+          Now {{ teeTimeLabel(moving.slot.date, moving.slot.startTime) }} ·
+          {{ moving.booking.players }} player{{ moving.booking.players === 1 ? '' : 's' }}.
+          The price doesn't change<span v-if="moving.booking.source === 'ONLINE'">; the golfer is emailed the new time</span>.
+        </p>
+        <input v-model="moving.date" type="date" :min="today" class="input-field mb-3" @change="loadMoveSlots">
+        <div v-if="moving.loading" class="text-gray-400 text-sm font-body">
+          Loading…
+        </div>
+        <div v-else-if="moving.error" class="text-red-500 text-sm font-body">
+          {{ moving.error }}
+        </div>
+        <div v-else-if="!moveOptions.length" class="text-gray-400 text-sm font-body">
+          No tee times left on this day.
+        </div>
+        <div v-else class="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto">
+          <button
+            v-for="opt in moveOptions"
+            :key="opt.slot.id"
+            type="button"
+            :disabled="!!opt.reason"
+            :title="opt.reason || ''"
+            :class="['rounded-lg border px-2 py-1.5 text-sm font-body text-left disabled:opacity-40',
+                     moving.selected === opt.slot.id ? 'bg-pine text-parch border-pine' : 'border-gray-300 text-bark hover:bg-gray-50']"
+            @click="moving.selected = opt.slot.id"
+          >
+            <div class="font-semibold">
+              {{ teeTime(opt.slot.startTime) }}
+            </div>
+            <div class="text-xs opacity-75">
+              {{ opt.reason || `${opt.slot.available} open` }}
+            </div>
+          </button>
+        </div>
+        <div class="flex justify-end gap-3 mt-5">
+          <button class="btn-outline-sm" @click="moving = null">
+            Back
+          </button>
+          <button
+            class="btn-amber px-4 py-2 text-sm"
+            :disabled="!moving.selected || busy === moving.booking.id"
+            @click="confirmMove"
+          >
+            {{ busy === moving.booking.id ? 'Moving…' : 'Move booking' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Walk-in / phone booking -->
     <div v-if="booking" class="modal-overlay" @click.self="booking = null">
@@ -173,7 +273,8 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
 import { localDate, addDays, formatLocalDate, formatClockTime, isValidYmd, localDateTimeToUtc } from '@/lib/timeclock'
-import { teeTime, teeTimeLabel } from '@/lib/teesheet'
+import { teeTime, teeTimeLabel, UNPAID_HOLD_MINUTES } from '@/lib/teesheet'
+import { formatCents } from '@/lib/money'
 import { setRegisterHandoff } from '@/lib/registerHandoff'
 
 const SOURCES = [
@@ -193,6 +294,9 @@ const actionError = ref(null)
 const busy        = ref(null)
 const booking     = ref(null)
 const refreshedAt = ref(null)
+const notice      = ref(null)
+const cancelling  = ref(null)   // { booking, slot }
+const moving      = ref(null)   // { booking, slot, date, slots, loading, error, selected }
 let timer = null
 
 const date = computed(() => (isValidYmd(route.query.date) ? route.query.date : today))
@@ -210,8 +314,108 @@ function go(d) {
   router.replace({ query: d === today ? {} : { date: d } })
 }
 
+// Bookings taking up spots (the server works this out: unfinished online payments stop after their hold)
 function activeBookings(slot) {
-  return slot.bookings.filter(b => b.status === 'PENDING' || b.status === 'CONFIRMED')
+  return slot.bookings.filter(b => b.holdsSpot)
+}
+
+// Cancel / move: not once the group is checked in (undo first). Unpaid online bookings can be cancelled
+// (releasing their spots); register bookings are only PENDING while their card is on the reader.
+function canChange(b) {
+  if (b.checkedInAt) return false
+  return b.status === 'CONFIRMED' || (b.status === 'PENDING' && b.source === 'ONLINE')
+}
+
+// Cancelling never refunds: say where the money is and how to refund it
+function moneyNote(b) {
+  if (b.status === 'PENDING') {
+    return "No money was taken. The unfinished online payment is cancelled too, so it can't go through later."
+  }
+  const receipts = b.receipts.map(r => `#${r.number}`).join(', ')
+  if (b.source === 'ONLINE' && b.totalCents > 0) {
+    return `Cancelling doesn't refund anything. The golfer paid ${formatCents(b.totalCents)} online; if it should be ` +
+      'refunded, ask an admin to refund the payment in the Stripe dashboard (and mark the booking Refunded in Admin → Bookings).' +
+      (receipts ? ` Add-ons are on receipt ${receipts} (refund those from Recent sales at the register).` : '')
+  }
+  if (receipts) {
+    return `Cancelling doesn't refund anything. The greens fees are on receipt ${receipts}; to refund them, open the receipt ` +
+      'in Recent sales at the register and refund those lines (manager approval).'
+  }
+  return 'No money is attached to this booking.'
+}
+
+async function confirmCancel() {
+  const { booking: b, slot } = cancelling.value
+  busy.value = b.id
+  actionError.value = null
+  notice.value = null
+  try {
+    await apiFetch(`/api/staff/teesheet/${b.id}`, { method: 'POST', body: { action: 'cancel' } })
+    // Keep the refund instructions on screen after the dialog closes
+    notice.value = `Cancelled ${b.name} at ${teeTimeLabel(slot.date, slot.startTime)}. ${moneyNote(b)}`
+  } catch (e) {
+    actionError.value = e.message
+  } finally {
+    busy.value = null
+    cancelling.value = null
+    load({ quiet: true })
+  }
+}
+
+// Move: tee times on the chosen day that haven't started, with a reason when one can't take the group
+const moveOptions = computed(() => {
+  const m = moving.value
+  if (!m?.slots) return []
+  const member = m.booking.customer?.isMember || m.booking.customer?.role === 'ADMIN'
+  return m.slots
+    .filter(s => s.id !== m.slot.id && !isPast(s))
+    .map(s => ({
+      slot: s,
+      reason: s.available < m.booking.players
+        ? (s.available ? `${s.available} open` : 'Full')
+        : (s.memberOnly && !member ? 'Members only' : null),
+    }))
+})
+
+function openMove(b, slot) {
+  moving.value = { booking: b, slot, date: slot.date < today ? today : slot.date, slots: null, loading: false, error: null, selected: null }
+  loadMoveSlots()
+}
+
+async function loadMoveSlots() {
+  const m = moving.value
+  if (!m || !isValidYmd(m.date)) return
+  m.loading = true
+  m.error = null
+  m.selected = null
+  try {
+    m.slots = (await apiFetch(`/api/staff/teesheet?date=${m.date}`)).slots
+  } catch (e) {
+    m.error = e.message
+  } finally {
+    m.loading = false
+  }
+}
+
+async function confirmMove() {
+  const m = moving.value
+  const target = m.slots.find(s => s.id === m.selected)
+  busy.value = m.booking.id
+  actionError.value = null
+  notice.value = null
+  try {
+    const res = await apiFetch(`/api/staff/teesheet/${m.booking.id}`, { method: 'POST', body: { action: 'move', teeTimeSlotId: m.selected } })
+    notice.value = `Moved ${m.booking.name} to ${teeTimeLabel(target.date, target.startTime)}.` +
+      (res.emailError ? ` The email to the golfer didn't send (${res.emailError}); let them know.` : '')
+    moving.value = null
+    if (target.date !== date.value) go(target.date)
+    else load({ quiet: true })
+  } catch (e) {
+    m.error = e.message
+    loadMoveSlots()
+  } finally {
+    busy.value = null
+  }
 }
 
 function inactive(b) {
@@ -228,6 +432,7 @@ function statusBadge(b) {
     if (b.source === 'ONLINE') return { label: 'Paid online', class: 'bg-pine/15 text-pine' }
     return { label: b.source === 'PHONE' ? 'Phone · paid' : 'Walk-in · paid', class: 'bg-pine/15 text-pine' }
   }
+  if (b.status === 'PENDING' && b.holdExpired) return { label: 'Payment not finished · released', class: 'bg-gray-100 text-gray-500' }
   if (b.status === 'PENDING') return { label: 'Payment not finished', class: 'bg-amber/20 text-amber-dark' }
   return { label: b.status === 'REFUNDED' ? 'Refunded' : 'Cancelled', class: 'bg-gray-100 text-gray-500' }
 }
@@ -316,6 +521,7 @@ function startBooking() {
 .input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
 .label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
 .badge          { @apply text-xs px-2 py-0.5 rounded-full whitespace-nowrap; }
+.btn-clay       { @apply bg-clay text-parch font-semibold rounded-lg font-body hover:bg-clay/90 transition-colors disabled:opacity-50; }
 .btn-pine-sm    { @apply bg-pine text-parch text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-pine/90 transition-colors disabled:opacity-50; }
 .btn-outline-xs { @apply border border-gray-300 text-gray-600 text-xs px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40; }
 .btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent; }

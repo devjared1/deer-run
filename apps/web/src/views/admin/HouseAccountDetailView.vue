@@ -124,8 +124,8 @@
                     {{ formatLocalDate(s.periodStart, { month: 'long', year: 'numeric' }) }}
                   </button>
                   <span class="tabular-nums text-gray-600">{{ formatCents(s.closingCents) }}</span>
-                  <span :class="['text-xs px-2 py-0.5 rounded-full', STATEMENT_STATUS_CLASSES[s.status]]" :title="s.autopayError || ''">
-                    {{ STATEMENT_STATUS_LABELS[s.status] }}
+                  <span :class="['text-xs px-2 py-0.5 rounded-full', STATEMENT_STATUS_CLASSES[statementStatus(s)]]" :title="statementNote(s)">
+                    {{ STATEMENT_STATUS_LABELS[statementStatus(s)] }}
                   </span>
                 </li>
                 <li v-if="!data.statements.length" class="px-4 py-4 text-gray-400 text-center">
@@ -236,7 +236,7 @@ import { apiFetch } from '@/lib/api'
 import { formatCents, dollarsToCents } from '@/lib/money'
 import { localDate, formatLocalDate, COURSE_TZ } from '@/lib/timeclock'
 import {
-  STATUS_LABELS, STATUS_CLASSES, STATEMENT_STATUS_LABELS, STATEMENT_STATUS_CLASSES, ENTRY_TYPE_LABELS, cardLabel,
+  STATUS_LABELS, STATUS_CLASSES, STATEMENT_STATUS_LABELS, STATEMENT_STATUS_CLASSES, ENTRY_TYPE_LABELS, cardLabel, statementStatus,
 } from '@/components/accounts/accountDisplay'
 import StatementDocument from '@/components/accounts/StatementDocument.vue'
 
@@ -255,6 +255,16 @@ const today     = localDate()
 const range     = ref({ from: `${today.slice(0, 7)}-01`, to: today })
 
 const account = computed(() => data.value?.account)
+
+// Tooltip on a saved statement's status: autopay error, overdue reminder and late fee
+function statementNote(s) {
+  const when = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: COURSE_TZ })
+  return [
+    s.autopayError,
+    s.reminderSentAt && `Reminder emailed ${when(s.reminderSentAt)}`,
+    s.lateFeeAt && `Late fee added ${when(s.lateFeeAt)}`,
+  ].filter(Boolean).join(' · ')
+}
 
 async function load() {
   loading.value = true

@@ -1,5 +1,6 @@
 import { toUtcIso } from '../../../src/lib/timeclock.js'
 import { fetchAll } from '../admin/_db.js'
+import { consumeApproval } from './_approvals.js'
 
 export const SESSION_SELECT =
   '*, register:Register(id, name), openedBy:Employee!CashDrawerSession_openedById_fkey(firstName, lastName), ' +
@@ -61,11 +62,111 @@ export async function cashTotals(supabase, registerId, fromIso, toIso = null) {
   }
 }
 
-/** An open session with its running totals: expected = float + cash taken − cash refunded. */
+// ─── Paid-ins, paid-outs and safe drops ─────────────────────────────────────
+
+// Each movement needs a manager's approval for the matching ApprovalAction (same name as the type)
+export const MOVEMENT_TYPES = ['PAID_IN', 'PAID_OUT', 'SAFE_DROP']
+export const MOVEMENT_LABELS = { PAID_IN: 'Paid in', PAID_OUT: 'Paid out', SAFE_DROP: 'Safe drop' }
+
+export const MOVEMENT_SELECT =
+  'id, sessionId, registerId, type, amountCents, reason, recipient, createdAt, ' +
+  'employee:Employee!CashDrawerMovement_employeeId_fkey(firstName, lastName), ' +
+  'approval:ManagerApproval!CashDrawerMovement_approvalId_fkey(approver:Employee!ManagerApproval_approverId_fkey(firstName, lastName))'
+
+export function serializeMovement(m) {
+  return { ...m, createdAt: toUtcIso(m.createdAt) }
+}
+
+/** A session's movements, oldest first. */
+export async function sessionMovements(supabase, sessionId) {
+  const { data, error } = await supabase
+    .from('CashDrawerMovement')
+    .select(MOVEMENT_SELECT)
+    .eq('sessionId', sessionId)
+    .order('createdAt', { ascending: true })
+  if (error) throw new Error(error.message)
+  return (data || []).map(serializeMovement)
+}
+
+/** Totals by type: { paidInCents, paidOutCents, safeDropCents, paidInCount, paidOutCount, safeDropCount }. */
+export function movementTotals(movements) {
+  const totals = { paidInCents: 0, paidOutCents: 0, safeDropCents: 0, paidInCount: 0, paidOutCount: 0, safeDropCount: 0 }
+  for (const m of movements) {
+    const key = { PAID_IN: 'paidIn', PAID_OUT: 'paidOut', SAFE_DROP: 'safeDrop' }[m.type]
+    if (!key) continue
+    totals[`${key}Cents`] += m.amountCents
+    totals[`${key}Count`]++
+  }
+  return totals
+}
+
+/** Expected cash = float + cash taken − cash refunded + paid in − paid out − safe drops. */
+export function expectedCash(session, totals) {
+  return session.openingFloatCents + totals.cashSalesCents - totals.cashRefundsCents +
+    (totals.paidInCents ?? 0) - (totals.paidOutCents ?? 0) - (totals.safeDropCents ?? 0)
+}
+
+/** An open session with its running totals and movements (expected so far). */
 export async function withRunningTotals(supabase, session) {
   if (!session) return null
-  const totals = await cashTotals(supabase, session.registerId, session.openedAt)
-  return { ...session, ...totals, expectedCents: session.openingFloatCents + totals.cashSalesCents - totals.cashRefundsCents }
+  const [totals, movements] = await Promise.all([
+    cashTotals(supabase, session.registerId, session.openedAt),
+    sessionMovements(supabase, session.id),
+  ])
+  const all = { ...totals, ...movementTotals(movements) }
+  return { ...session, ...all, movements, expectedCents: expectedCash(session, all) }
+}
+
+/**
+ * Records a paid-in, paid-out or safe drop on the register's open drawer, using up a manager approval for that
+ * type. Returns { movement } or { error, status, code? }.
+ */
+export async function recordMovement(supabase, { registerId, employeeId, type, amountCents, reason, recipient, approvalId }) {
+  if (!MOVEMENT_TYPES.includes(type)) return { error: 'type must be PAID_IN, PAID_OUT or SAFE_DROP', status: 400 }
+  const amount = parseCashAmount(amountCents, 'The amount')
+  if (amount.error) return { error: amount.error, status: 400 }
+  if (amount.value === 0) return { error: 'Enter an amount', status: 400 }
+  const why = note(reason)
+  const to = note(recipient)
+  if (type === 'PAID_OUT' && !why) return { error: 'Enter what the cash was paid out for', status: 400 }
+
+  const session = await openSession(supabase, registerId)
+  if (!session) return { error: 'Open the cash drawer first (count the starting cash).', status: 409, code: 'DRAWER_CLOSED' }
+
+  const approval = await consumeApproval(supabase, approvalId, { action: type, cashierId: employeeId })
+  if (!approval) {
+    return { error: 'A manager needs to approve this, and the approval may have expired. Approve it again.', status: 403, code: 'APPROVAL_REQUIRED' }
+  }
+  const release = () => supabase.from('ManagerApproval').update({ usedAt: null }).eq('id', approval.id)
+
+  const { data, error } = await supabase
+    .from('CashDrawerMovement')
+    .insert({
+      id: crypto.randomUUID(),
+      sessionId: session.id,
+      registerId,
+      type,
+      amountCents: amount.value,
+      reason: why,
+      recipient: type === 'PAID_OUT' ? to : null,
+      employeeId,
+      approvalId: approval.id,
+    })
+    .select(MOVEMENT_SELECT)
+    .single()
+  if (error) {
+    await release()
+    return { error: error.message, status: 500 }
+  }
+
+  // The drawer may have been closed in the same instant; its totals were taken without this, so undo it
+  const { data: still } = await supabase.from('CashDrawerSession').select('closedAt').eq('id', session.id).maybeSingle()
+  if (still?.closedAt) {
+    await supabase.from('CashDrawerMovement').delete().eq('id', data.id)
+    await release()
+    return { error: 'The drawer was just closed. Open it again first.', status: 409, code: 'DRAWER_CLOSED' }
+  }
+  return { movement: serializeMovement(data) }
 }
 
 export const DRAWER_REQUIRED_MESSAGE = 'Open the cash drawer first (count the starting cash), then take the cash payment.'
@@ -112,8 +213,12 @@ export async function closeDrawer(supabase, sessionId, { employeeId, countedCent
   if (session.closedAt) return { error: 'This drawer is already closed', status: 409 }
 
   const closedAt = new Date().toISOString()
-  const totals = await cashTotals(supabase, session.registerId, toUtcIso(session.openedAt), closedAt)
-  const expectedCents = session.openingFloatCents + totals.cashSalesCents - totals.cashRefundsCents
+  const [cash, movements] = await Promise.all([
+    cashTotals(supabase, session.registerId, toUtcIso(session.openedAt), closedAt),
+    sessionMovements(supabase, session.id),
+  ])
+  const totals = { ...cash, ...movementTotals(movements) }
+  const expectedCents = expectedCash(session, totals)
   const { data, error: updateError } = await supabase
     .from('CashDrawerSession')
     .update({
@@ -121,6 +226,9 @@ export async function closeDrawer(supabase, sessionId, { employeeId, countedCent
       closedById: employeeId,
       cashSalesCents: totals.cashSalesCents,
       cashRefundsCents: totals.cashRefundsCents,
+      paidInCents: totals.paidInCents,
+      paidOutCents: totals.paidOutCents,
+      safeDropCents: totals.safeDropCents,
       expectedCents,
       countedCents: amount.value,
       overShortCents: amount.value - expectedCents,
@@ -132,12 +240,22 @@ export async function closeDrawer(supabase, sessionId, { employeeId, countedCent
     .maybeSingle()
   if (updateError) return { error: updateError.message, status: 500 }
   if (!data) return { error: 'This drawer was just closed by someone else', status: 409 }
-  return { session: { ...serializeSession(data), cashSalesCount: totals.cashSalesCount, cashRefundsCount: totals.cashRefundsCount } }
+  return {
+    session: {
+      ...serializeSession(data),
+      cashSalesCount: totals.cashSalesCount,
+      cashRefundsCount: totals.cashRefundsCount,
+      paidInCount: totals.paidInCount,
+      paidOutCount: totals.paidOutCount,
+      safeDropCount: totals.safeDropCount,
+      movements,
+    },
+  }
 }
 
 /**
  * Drawer sessions open at any point in a report range ({ startUtc, endUtc }), oldest first, optionally for
- * one register. Open sessions get running totals.
+ * one register. Open sessions get running totals; every session gets `movements` (paid in/out, safe drops).
  */
 export async function loadDrawerSessions(supabase, range, registerId = null) {
   let query = supabase
@@ -151,5 +269,28 @@ export async function loadDrawerSessions(supabase, range, registerId = null) {
   const { data, error } = await query
   if (error) throw new Error(error.message)
   const sessions = (data || []).map(serializeSession)
-  return Promise.all(sessions.map(s => (s.closedAt ? s : withRunningTotals(supabase, s))))
+  // Closed sessions keep their totals from the close but still list their movements (open ones get them in
+  // withRunningTotals). Loaded by time window, not a long id list: a movement always falls inside its session.
+  const closed = sessions.filter(s => s.closedAt)
+  const bySession = new Map(closed.map(s => [s.id, []]))
+  if (closed.length) {
+    const from = closed.reduce((min, s) => (s.openedAt < min ? s.openedAt : min), closed[0].openedAt)
+    const to = closed.reduce((max, s) => (s.closedAt > max ? s.closedAt : max), closed[0].closedAt)
+    const movements = await fetchAll(() => {
+      let q = supabase
+        .from('CashDrawerMovement')
+        .select(MOVEMENT_SELECT)
+        .gte('createdAt', from)
+        .lte('createdAt', to)
+        .order('createdAt', { ascending: true })
+        .order('id', { ascending: true })
+      if (registerId) q = q.eq('registerId', registerId)
+      return q
+    })
+    for (const m of movements) {
+      if (!bySession.has(m.sessionId)) continue
+      bySession.get(m.sessionId).push(serializeMovement(m))
+    }
+  }
+  return Promise.all(sessions.map(s => (s.closedAt ? { ...s, movements: bySession.get(s.id) ?? [] } : withRunningTotals(supabase, s))))
 }

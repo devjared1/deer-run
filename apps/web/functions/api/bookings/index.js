@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
+import { bookedPlayers, HOLD_COLUMNS } from '../../../src/lib/teesheet.js'
+import { releaseInBackground, slotsWithExpiredHolds } from './_holds.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -14,7 +16,8 @@ async function getOptionalUser(request, supabase) {
   return dbUser
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost(context) {
+  const { request, env } = context
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false },
   })
@@ -49,16 +52,16 @@ export async function onRequestPost({ request, env }) {
   // Check slot availability
   const { data: slot } = await supabase
     .from('TeeTimeSlot')
-    .select('*, Booking(players, status)')
+    .select(`*, Booking(${HOLD_COLUMNS})`)
     .eq('id', teeTimeSlotId)
     .maybeSingle()
 
   if (!slot) return json({ error: 'Tee time slot not found' }, 404)
   if (slot.memberOnly && !dbUser) return json({ error: 'This slot is for members only' }, 403)
 
-  const booked = (slot.Booking || [])
-    .filter(b => b.status === 'PENDING' || b.status === 'CONFIRMED')
-    .reduce((sum, b) => sum + b.players, 0)
+  // Unpaid online bookings past their hold don't count (and are released in the background)
+  releaseInBackground(context, supabase, slotsWithExpiredHolds([slot], 'Booking'))
+  const booked = bookedPlayers(slot.Booking)
 
   if (booked + players > slot.maxPlayers) {
     return json({ error: 'Not enough spots available' }, 409)

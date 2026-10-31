@@ -100,6 +100,56 @@
             </div>
           </div>
         </div>
+        <div v-if="hasTipping" class="mt-4">
+          <label class="flex items-center gap-2 text-sm font-body text-bark cursor-pointer">
+            <input v-model="tipping.enabled" type="checkbox" class="rounded" />
+            Ask for a tip on the card reader
+          </label>
+          <p class="text-gray-400 text-xs mt-1 font-body">
+            Card sales at the register show these tip choices on the reader. Tips are charged on top of the sale,
+            aren't sales or taxed, and show on the receipt and as "Card tips" on the reports. Refunds don't return the tip.
+          </p>
+          <div v-if="tipping.enabled" class="flex flex-wrap items-end gap-4 mt-2">
+            <div>
+              <label class="label-sm">Tip choices (%)</label>
+              <div class="flex gap-2">
+                <input
+                  v-for="i in 3"
+                  :key="i"
+                  v-model.number="tipping.percentages[i - 1]"
+                  type="number"
+                  min="1"
+                  max="50"
+                  step="1"
+                  class="input-field w-20"
+                />
+              </div>
+            </div>
+            <label class="flex items-center gap-2 text-sm font-body text-bark cursor-pointer pb-2">
+              <input v-model="tipping.preTax" type="checkbox" class="rounded" />
+              Work out tips before tax
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="hasLateFee" class="border-t border-gray-100 pt-5">
+        <h2 class="font-display font-bold text-bark text-sm mb-3">House Accounts</h2>
+        <div>
+          <label class="label-sm">Late Fee ($)</label>
+          <input
+            v-model="form.lateFeeDollars"
+            type="number"
+            min="0"
+            max="500"
+            step="0.01"
+            class="input-field w-40"
+          />
+          <p class="text-gray-400 text-xs mt-1 font-body">
+            0 = off. Added once to a monthly statement that's still unpaid the day after its due date, when the member
+            is emailed a reminder.
+          </p>
+        </div>
       </div>
 
       <div class="pt-2 flex items-center gap-4">
@@ -108,6 +158,7 @@
         </button>
         <span v-if="saved" class="text-green-600 text-sm font-body">✓ Saved</span>
         <span v-if="saveError" class="text-red-500 text-sm font-body">{{ saveError }}</span>
+        <span v-if="saveWarning" class="text-clay text-sm font-body">{{ saveWarning }}</span>
       </div>
     </form>
 
@@ -150,7 +201,14 @@ const form = ref({
   salesTaxPercent: '0.00',
   registerPositions: [],
   managerPositions: [],
+  lateFeeDollars: '0.00',
 })
+// Only shown (and saved) once the database has CourseSettings.lateFeeCents
+const hasLateFee = ref(false)
+// On-reader tipping: only shown (and saved) once the database has CourseSettings.tippingEnabled
+const hasTipping  = ref(false)
+const tipping     = ref({ enabled: false, percentages: [15, 18, 20], preTax: true })
+const saveWarning = ref(null)
 
 const periodPreview = computed(() => {
   const { payPeriodAnchor: anchor, payPeriodDays: lengthDays } = form.value
@@ -183,7 +241,12 @@ async function load() {
       salesTaxPercent:     ((data.salesTaxBps ?? 0) / 100).toFixed(2),
       registerPositions:   data.registerPositions ?? [],
       managerPositions:    data.managerPositions ?? [],
+      lateFeeDollars:      ((data.lateFeeCents ?? 0) / 100).toFixed(2),
     }
+    hasLateFee.value = data.lateFeeCents !== undefined
+    hasTipping.value = data.tippingEnabled !== undefined
+    const percentages = [...(data.tipPercentages?.length ? data.tipPercentages : [15, 18, 20])]
+    tipping.value = { enabled: !!data.tippingEnabled, percentages, preTax: data.tipPreTax !== false }
   } catch (e) {
     error.value = e.message
   } finally {
@@ -191,23 +254,41 @@ async function load() {
   }
 }
 
-// The form edits tax as a percentage; the API stores basis points (9.25% = 925)
+// The form edits tax as a percentage; the API stores basis points (9.25% = 925). The late fee is edited in dollars.
 function settingsPayload() {
-  const { salesTaxPercent, ...rest } = form.value
-  return { ...rest, salesTaxBps: Math.round(Number(salesTaxPercent || 0) * 100) }
+  const { salesTaxPercent, lateFeeDollars, ...rest } = form.value
+  return {
+    ...rest,
+    salesTaxBps: Math.round(Number(salesTaxPercent || 0) * 100),
+    ...(hasLateFee.value ? { lateFeeCents: Math.round(Number(lateFeeDollars || 0) * 100) } : {}),
+    ...(hasTipping.value ? tippingPayload() : {}),
+  }
+}
+
+// Empty tip boxes are dropped, so the course can offer one, two or three choices
+function tippingPayload() {
+  const { enabled, percentages, preTax } = tipping.value
+  return {
+    tippingEnabled: enabled,
+    tipPreTax: preTax,
+    ...(enabled ? { tipPercentages: percentages.filter(p => p !== '' && p != null).map(Number) } : {}),
+  }
 }
 
 async function save() {
   saving.value   = true
   saved.value    = false
   saveError.value = null
+  saveWarning.value = null
   try {
     const res = await fetch('/api/admin/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.getToken()}` },
       body: JSON.stringify(settingsPayload()),
     })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || res.statusText)
+    saveWarning.value = data.warning ?? null
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)
   } catch (e) {

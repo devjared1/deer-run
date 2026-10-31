@@ -18,3 +18,7 @@ export const SALE_STATUS_CLASSES = {
   REFUNDED: 'bg-gray-100 text-gray-600',
   VOIDED: 'bg-red-100 text-red-600',
 }
+
+// Cash drawer movements (paid in / paid out / safe drop): label and which way the cash went
+export const MOVEMENT_LABELS = { PAID_IN: 'Paid in', PAID_OUT: 'Paid out', SAFE_DROP: 'Safe drop' }
+export const MOVEMENT_SIGN = { PAID_IN: '+', PAID_OUT: '−', SAFE_DROP: '−' }

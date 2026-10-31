@@ -21,6 +21,9 @@
           <th class="th text-right">
             Cash out
           </th>
+          <th class="th text-right" title="Paid in, paid out and safe drops">
+            Paid in / out
+          </th>
           <th class="th text-right">
             Expected
           </th>
@@ -62,6 +65,20 @@
           <td class="td-num">
             {{ d.cashRefundsCents ? `−${money(d.cashRefundsCents)}` : money(0) }}
           </td>
+          <td class="td-num whitespace-nowrap" :title="movementTitle(d)">
+            <template v-if="d.paidInCents || d.paidOutCents || d.safeDropCents">
+              <div v-if="d.paidInCents">
+                +{{ money(d.paidInCents) }} <span class="text-xs text-gray-400">in</span>
+              </div>
+              <div v-if="d.paidOutCents">
+                −{{ money(d.paidOutCents) }} <span class="text-xs text-gray-400">out</span>
+              </div>
+              <div v-if="d.safeDropCents">
+                −{{ money(d.safeDropCents) }} <span class="text-xs text-gray-400">to safe</span>
+              </div>
+            </template>
+            <span v-else class="text-gray-400">—</span>
+          </td>
           <td class="td-num font-semibold">
             {{ money(d.expectedCents) }}<span v-if="!d.closedAt" class="text-xs text-gray-400 font-normal"> so far</span>
           </td>
@@ -92,6 +109,7 @@
 
 <script setup>
 import { COURSE_TZ } from '@/lib/timeclock'
+import { MOVEMENT_LABELS, MOVEMENT_SIGN } from './salesReport'
 
 defineProps({
   sessions:     { type: Array, required: true },
@@ -105,6 +123,16 @@ function overShortClass(d) {
   return 'text-clay'
 }
 
+// Hover text: each paid in / paid out / safe drop with its time, reason and who did it
+function movementTitle(d) {
+  if (!d.movements?.length) return null
+  return d.movements.map(m => [
+    `${time(m.createdAt)} ${MOVEMENT_LABELS[m.type]} ${MOVEMENT_SIGN[m.type]}${money(m.amountCents)}`,
+    m.reason, m.recipient && `to ${m.recipient}`, person(m.employee) && `by ${person(m.employee)}`,
+  ].filter(Boolean).join(' · ')).join('\n')
+}
+
+const time = (ts) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ })
 const when = (ts) => new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ })
 const person = (e) => (e ? `${e.firstName} ${e.lastName}` : '')
 const money = (cents) => `$${((cents ?? 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

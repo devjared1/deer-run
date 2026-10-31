@@ -2,6 +2,7 @@ import { Resend } from 'resend'
 import { fetchAll } from './_db.js'
 import { PIN_PATTERN, verifyPinHash } from '../staff/_pin.js'
 import { toUtcIso, localDate, addDays, startOfLocalDay, formatLocalDate, COURSE_TZ } from '../../../src/lib/timeclock.js'
+import { statementPdfBase64, statementPdfFilename } from './_statementPdf.js'
 
 // Member house accounts (POS Phase 4). The balance is the sum of HouseAccountEntry.amountCents
 // (positive = the member owes the course). Charges and refunds are written by create_sale() / refund_sale();
@@ -86,11 +87,35 @@ export async function checkAccountPin(supabase, account, pin) {
     : { error: `Wrong PIN (${PIN_MAX_ATTEMPTS - attempts} ${PIN_MAX_ATTEMPTS - attempts === 1 ? 'try' : 'tries'} left)`, status: 403, code: 'ACCOUNT_PIN' }
 }
 
-/** When the balance is paid off, open statements are marked PAID. */
+/**
+ * What's still owed on each of the account's unpaid (OPEN / AUTOPAY_FAILED) statements: its closing balance less
+ * the payments and credits recorded since its period ended (the oldest debt is paid first; later charges belong to
+ * later statements), never more than the current balance. Returns [{ statement, owedCents }], oldest first.
+ */
+export async function openStatementsOwed(supabase, accountId) {
+  const { data: statements, error } = await supabase.from('Statement').select('*').eq('accountId', accountId)
+    .in('status', ['OPEN', 'AUTOPAY_FAILED']).order('periodStart', { ascending: true })
+  if (error) throw new Error(error.message)
+  if (!statements?.length) return []
+  const firstEnd = startOfLocalDay(addDays(statements[0].periodEnd, 1)).toISOString()
+  const [balance, credits] = await Promise.all([
+    accountBalance(supabase, accountId),
+    fetchAll(() => supabase.from('HouseAccountEntry').select('id, amountCents, createdAt').eq('accountId', accountId)
+      .lt('amountCents', 0).gte('createdAt', firstEnd).order('createdAt', { ascending: true })),
+  ])
+  return statements.map(statement => {
+    const endMs = startOfLocalDay(addDays(statement.periodEnd, 1)).getTime()
+    const since = credits.filter(c => new Date(toUtcIso(c.createdAt)).getTime() >= endMs).reduce((s, c) => s + c.amountCents, 0)
+    return { statement, owedCents: Math.max(0, Math.min(balance, statement.closingCents + since)) }
+  })
+}
+
+/** Unpaid statements that payments and credits have covered (or the balance is paid off) are marked PAID. */
 export async function settleStatements(supabase, accountId) {
-  if (await accountBalance(supabase, accountId) > 0) return
-  await supabase.from('Statement').update({ status: 'PAID', paidAt: new Date().toISOString() })
-    .eq('accountId', accountId).in('status', ['OPEN', 'AUTOPAY_FAILED'])
+  const covered = (await openStatementsOwed(supabase, accountId)).filter(o => o.owedCents <= 0).map(o => o.statement.id)
+  if (!covered.length) return 0
+  await supabase.from('Statement').update({ status: 'PAID', paidAt: new Date().toISOString() }).in('id', covered)
+  return covered.length
 }
 
 /**
@@ -191,17 +216,70 @@ export function statementEmail(account, statement, { autopay = null } = {}) {
   }
 }
 
-/** Emails a statement to the member. Returns an error message, or null. */
-export async function sendStatement(env, account, statement, options) {
+/**
+ * Plain-text reminder for an overdue statement.
+ *   { owedCents: still owed on it, balanceCents: current balance, lateFeeCents: fee added now (0 = none) }
+ */
+export function reminderEmail(account, statement, { owedCents, balanceCents, lateFeeCents = 0 }) {
+  const name = account.user?.name?.split(' ')[0] || 'there'
+  const month = formatLocalDate(statement.periodStart, { month: 'long', year: 'numeric' })
+  const due = formatLocalDate(statement.dueDate, { month: 'long', day: 'numeric', year: 'numeric' })
+  const lines = [`Hi ${name},`, '',
+    `This is a reminder that your Deer Run house account statement for ${month} was due ${due}, and ${money(owedCents)} of it is still unpaid.`]
+  if (lateFeeCents > 0) lines.push('', `A late fee of ${money(lateFeeCents)} has been added to your account.`)
+  lines.push('', `Current balance: ${money(balanceCents)}`, `Pay online: ${SITE}/account`, 'or pay at the pro shop.', '',
+    'The statement is attached. If you\'ve already paid, thank you, and please disregard this reminder.', '',
+    'Deer Run Golf Course', '(256) 974-7384')
+  return { subject: `Reminder: Deer Run statement past due (${money(owedCents)})`, text: lines.join('\n') }
+}
+
+/** The statement PDF as a Resend attachment list, or undefined if it couldn't be made (the email goes without it). */
+function statementAttachments(account, statement, notice) {
+  try {
+    return [{
+      filename: statementPdfFilename(statement),
+      content: statementPdfBase64(statement, { name: account.user?.name, email: account.user?.email }, { notice }),
+    }]
+  } catch (e) {
+    console.error('Statement PDF failed:', e)
+    return undefined
+  }
+}
+
+async function sendMemberEmail(env, account, { subject, text, attachments }) {
   if (!env.RESEND_API_KEY) return 'Email is not configured'
   if (!account.user?.email) return 'The member has no email address'
   try {
-    const { subject, text } = statementEmail(account, statement, options)
-    const { error } = await new Resend(env.RESEND_API_KEY).emails.send({ from: 'noreply@deerrun.golf', to: account.user.email, subject, text })
+    const { error } = await new Resend(env.RESEND_API_KEY).emails.send({
+      from: 'noreply@deerrun.golf', to: account.user.email, subject, text, ...(attachments ? { attachments } : {}),
+    })
     return error ? error.message : null
   } catch (e) {
     return e.message
   }
+}
+
+/** Emails a statement to the member, with the statement PDF attached. Returns an error message, or null. */
+export async function sendStatement(env, account, statement, options) {
+  if (!env.RESEND_API_KEY) return 'Email is not configured'
+  let email
+  try {
+    email = statementEmail(account, statement, options)
+  } catch (e) {
+    return e.message
+  }
+  return sendMemberEmail(env, account, { ...email, attachments: statementAttachments(account, statement) })
+}
+
+/**
+ * Emails an overdue reminder (see reminderEmail for the options) with the statement PDF attached.
+ * statement needs its entries. Returns an error message, or null.
+ */
+export async function sendReminder(env, account, statement, options) {
+  if (!env.RESEND_API_KEY) return 'Email is not configured'
+  const notice = `Past due: ${money(options.owedCents)} of this statement is unpaid (due ${
+    formatLocalDate(statement.dueDate, { month: 'short', day: 'numeric', year: 'numeric' })}).`
+  return sendMemberEmail(env, account, { ...reminderEmail(account, statement, options), attachments: statementAttachments(account, statement, notice) })
 }
 
 export { localDate, addDays }

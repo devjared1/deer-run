@@ -2,6 +2,7 @@ import { requireAdmin, json } from '../_auth.js'
 import { parseCategory, categoryErrorResponse } from './_validate.js'
 
 // GET /api/admin/product-categories — all categories with product counts
+// (*): memberDiscount is only there once its migration has run; the admin page hides the column until then
 export async function onRequestGet({ request, env }) {
   const result = await requireAdmin(request, env)
   if (result instanceof Response) return result
@@ -9,7 +10,7 @@ export async function onRequestGet({ request, env }) {
 
   const { data, error } = await supabase
     .from('ProductCategory')
-    .select('id, name, taxExempt, sortOrder, active, products:Product(count)')
+    .select('*, products:Product(count)')
     .order('sortOrder', { ascending: true })
     .order('name', { ascending: true })
   if (error) return json({ error: error.message }, 500)
@@ -36,7 +37,7 @@ export async function onRequestPost({ request, env }) {
   const { data, error } = await supabase
     .from('ProductCategory')
     .insert({ id: crypto.randomUUID(), ...fields })
-    .select('id, name, taxExempt, sortOrder, active')
+    .select('*')
     .single()
   if (error) return categoryErrorResponse(error)
 

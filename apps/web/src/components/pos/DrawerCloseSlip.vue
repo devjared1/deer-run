@@ -14,12 +14,29 @@
     <div class="row"><span>Starting cash</span><span>{{ money(session.openingFloatCents) }}</span></div>
     <div class="row"><span>Cash taken<template v-if="session.cashSalesCount !== undefined"> ({{ session.cashSalesCount }})</template></span><span>+{{ money(session.cashSalesCents) }}</span></div>
     <div class="row"><span>Cash refunds<template v-if="session.cashRefundsCount !== undefined"> ({{ session.cashRefundsCount }})</template></span><span>-{{ money(session.cashRefundsCents) }}</span></div>
+    <div v-if="session.paidInCents" class="row"><span>Paid in<template v-if="session.paidInCount !== undefined"> ({{ session.paidInCount }})</template></span><span>+{{ money(session.paidInCents) }}</span></div>
+    <div v-if="session.paidOutCents" class="row"><span>Paid out<template v-if="session.paidOutCount !== undefined"> ({{ session.paidOutCount }})</template></span><span>-{{ money(session.paidOutCents) }}</span></div>
+    <div v-if="session.safeDropCents" class="row"><span>Safe drops<template v-if="session.safeDropCount !== undefined"> ({{ session.safeDropCount }})</template></span><span>-{{ money(session.safeDropCents) }}</span></div>
     <div class="row strong"><span>Expected in drawer</span><span>{{ money(session.expectedCents) }}</span></div>
     <div class="row strong"><span>Counted</span><span>{{ money(session.countedCents) }}</span></div>
     <div class="row strong"><span>{{ overShortLabel }}</span><span>{{ money(Math.abs(session.overShortCents)) }}</span></div>
     <div v-if="session.closeNote" class="sub">
       Note: {{ session.closeNote }}
     </div>
+    <template v-if="session.movements?.length">
+      <div class="rule" />
+      <div class="strong">
+        Paid in / out, safe drops
+      </div>
+      <div v-for="m in session.movements" :key="m.id" class="movement">
+        <div class="row">
+          <span>{{ time(m.createdAt) }} {{ MOVEMENT_LABELS[m.type] }}</span><span>{{ m.type === 'PAID_IN' ? '+' : '-' }}{{ money(m.amountCents) }}</span>
+        </div>
+        <div v-if="m.reason || m.recipient" class="sub">
+          {{ [m.reason, m.recipient && `to ${m.recipient}`].filter(Boolean).join(' ') }}
+        </div>
+      </div>
+    </template>
     <div class="rule" />
     <div class="sig">
       Counted by: ______________
@@ -33,6 +50,7 @@
 <script setup>
 import { computed } from 'vue'
 import { COURSE_TZ } from '@/lib/timeclock'
+import { MOVEMENT_LABELS } from './salesReport'
 
 const props = defineProps({
   session: { type: Object, required: true },
@@ -46,6 +64,7 @@ const overShortLabel = computed(() => {
 const when = (ts) => new Date(ts).toLocaleString('en-US', {
   month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ,
 })
+const time = (ts) => new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ })
 const name = (e) => (e ? `${e.firstName} ${e.lastName.charAt(0)}.` : '—')
 const money = (cents) => `$${(cents / 100).toFixed(2)}`
 </script>
@@ -60,4 +79,5 @@ const money = (cents) => `$${(cents / 100).toFixed(2)}`
 .strong  { font-weight: bold; }
 .sub     { font-size: 10px; margin-top: 2px; }
 .sig     { margin-top: 10px; }
+.movement { margin-top: 2px; }
 </style>

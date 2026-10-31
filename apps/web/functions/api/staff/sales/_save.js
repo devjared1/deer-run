@@ -1,22 +1,25 @@
 import { loadSale, emailReceipt } from './_sale.js'
-import { extendMembership } from '../../../../src/lib/membership.js'
+import { extendMembership, shortenMembership } from '../../../../src/lib/membership.js'
+import { downgradeIfLapsed } from '../../admin/_membership.js'
 import { localDate } from '../../../../src/lib/timeclock.js'
+import { bookedPlayers, HOLD_COLUMNS } from '../../../../src/lib/teesheet.js'
 
 // Saving a sale and the steps around it, shared by cash sales (POST /api/staff/sales) and card sales
 // (saved once the card is charged: _cardCheckout.js).
 
-/** Slots with the players already booked (pending and paid bookings hold spots). Returns { data } or { error }. */
+/**
+ * Slots with the players already booked (paid bookings, and pending ones still holding their spots: see
+ * holdsSpot in src/lib/teesheet.js). Returns { data } or { error }.
+ */
 export async function loadSlots(supabase, ids) {
   const { data, error } = await supabase
     .from('TeeTimeSlot')
-    .select('id, date, startTime, maxPlayers, memberOnly, bookings:Booking(players, status)')
+    .select(`id, date, startTime, maxPlayers, memberOnly, bookings:Booking(source, ${HOLD_COLUMNS})`)
     .in('id', ids)
   if (error) return { error }
+  const now = new Date()
   return {
-    data: data.map(({ bookings, ...slot }) => ({
-      ...slot,
-      bookedPlayers: (bookings || []).filter(b => b.status === 'PENDING' || b.status === 'CONFIRMED').reduce((sum, b) => sum + b.players, 0),
-    })),
+    data: data.map(({ bookings, ...slot }) => ({ ...slot, bookedPlayers: bookedPlayers(bookings, now) })),
   }
 }
 
@@ -64,6 +67,34 @@ async function linkBookings(supabase, sale, lines) {
   return null
 }
 
+// A tip added on the card reader (card sales only) goes on the card Payment row next to the sale's share,
+// so it never counts as sales revenue or tax. Runs right after create_sale (which doesn't know about tips).
+// Returns an error message, or null.
+async function recordTips(supabase, saleId, payments) {
+  for (const p of payments) {
+    if (!(p.tipCents > 0) || !p.stripePaymentIntentId) continue
+    const { error } = await supabase.from('Payment').update({ tipCents: p.tipCents })
+      .eq('saleId', saleId).eq('stripePaymentIntentId', p.stripePaymentIntentId)
+    if (error) return error.message
+  }
+  return null
+}
+
+// Stores each line's member discount (SaleItem.memberDiscountCents) so receipts show it apart from manager
+// discounts; create_sale doesn't write that column. Skipped while the column doesn't exist yet (receipts then
+// show the two as one discount). Returns an error message, or null.
+async function recordMemberDiscounts(supabase, sale, lines) {
+  for (const [i, line] of lines.entries()) {
+    if (!line.memberDiscountCents) continue
+    const item = sale.items[i]
+    if (!item || item.description !== line.description) return 'receipt lines are out of order'
+    if (!('memberDiscountCents' in item) || item.memberDiscountCents === line.memberDiscountCents) continue
+    const { error } = await supabase.from('SaleItem').update({ memberDiscountCents: line.memberDiscountCents }).eq('id', item.id)
+    if (error) return error.message
+  }
+  return null
+}
+
 /** { months, tier } bought in this sale, or null. Several membership lines add up; the last tier named wins. */
 export function membershipPurchase(items, variantsById) {
   let months = 0
@@ -94,6 +125,44 @@ async function applyMembership(supabase, userId, { months, tier }, today) {
 }
 
 /**
+ * Takes refunded membership months (quantity × the product's membershipMonths) back off the sale's customer, after
+ * refund_sale. If the end date is now before today, a member drops to GUEST (admins keep their role) and the
+ * "membership ended" email is skipped, since they asked for the refund.
+ *   items: the refunded lines, [{ saleItemId, quantity }]
+ * Returns null (no membership lines), { memberUntil } or { error }.
+ */
+export async function refundMembership(supabase, sale, items, today) {
+  const lines = Object.fromEntries(sale.items.map(i => [i.id, i]))
+  const variantIds = [...new Set(items.map(i => lines[i.saleItemId]?.variantId).filter(Boolean))]
+  if (!variantIds.length || !sale.customerId) return null
+
+  const { data: variants, error } = await supabase.from('ProductVariant').select('id, product:Product(membershipMonths)').in('id', variantIds)
+  if (error) return { error: error.message }
+  const monthsByVariant = Object.fromEntries(variants.map(v => [v.id, v.product?.membershipMonths ?? 0]))
+  const months = items.reduce((sum, i) => sum + (monthsByVariant[lines[i.saleItemId]?.variantId] ?? 0) * i.quantity, 0)
+  if (!months) return null
+
+  const { data: user, error: userError } = await supabase.from('User').select('id, role, memberUntil').eq('id', sale.customerId).single()
+  if (userError) return { error: userError.message }
+  if (!user.memberUntil) return { error: 'the customer\'s membership has no end date' }
+
+  const memberUntil = shortenMembership(user.memberUntil, months)
+  const lapsed = memberUntil < today
+  const { error: updateError } = await supabase
+    .from('User')
+    // Reminders start over for the new end date (renewalReminderKey is "<memberUntil>:<stage>")
+    .update({ memberUntil, renewalReminderKey: lapsed ? `${memberUntil}:expired` : null })
+    .eq('id', user.id)
+  if (updateError) return { error: updateError.message }
+  try {
+    await downgradeIfLapsed(supabase, { ...user, memberUntil }, today)
+  } catch (e) {
+    return { error: e.message }
+  }
+  return { memberUntil }
+}
+
+/**
  * Saves a priced sale with create_sale and runs the follow-ups. Everything after create_sale reports a
  * warning instead of failing, because the sale (and the money) is already in.
  *   prepared: { sale (p_sale), items (p_items, with bookingId on tee time lines), payments (p_payments),
@@ -109,6 +178,8 @@ export async function saveSale(supabase, env, prepared) {
   if (error) return { error: error.message, code: error.code }
 
   const warnings = []
+  const tipError = await recordTips(supabase, created.id, prepared.payments)
+  if (tipError) warnings.push(`The card tip wasn't recorded on this receipt: ${tipError}`)
   if (prepared.approvalId) {
     await supabase.from('ManagerApproval').update({ saleId: created.id }).eq('id', prepared.approvalId)
   }
@@ -116,6 +187,11 @@ export async function saveSale(supabase, env, prepared) {
   if (prepared.items.some(l => l.bookingId)) {
     const linkError = await linkBookings(supabase, sale, prepared.items)
     if (linkError) warnings.push(`The tee time wasn't linked to this receipt: ${linkError}`)
+    else sale = await loadSale(supabase, created.id)
+  }
+  if (prepared.items.some(l => l.memberDiscountCents)) {
+    const discountError = await recordMemberDiscounts(supabase, sale, prepared.items)
+    if (discountError) warnings.push(`The member discount shows as a plain discount on this receipt: ${discountError}`)
     else sale = await loadSale(supabase, created.id)
   }
   if (prepared.membership && prepared.customerId) {

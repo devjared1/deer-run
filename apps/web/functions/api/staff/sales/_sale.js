@@ -34,6 +34,11 @@ export async function loadSale(supabase, id) {
 
 const money = (cents) => `$${(cents / 100).toFixed(2)}`
 
+/** Tips added on the card reader (Payment.tipCents): charged on top of the sale total, not part of it. */
+export function saleTipCents(sale) {
+  return (sale.payments || []).reduce((sum, p) => sum + (p.tipCents ?? 0), 0)
+}
+
 /** Plain-text receipt for email. */
 export function receiptText(sale) {
   const when = new Date(sale.createdAt).toLocaleString('en-US', {
@@ -49,13 +54,18 @@ export function receiptText(sale) {
   ]
   for (const item of sale.items) {
     lines.push(`${item.quantity} × ${item.description}  ${money(item.unitPriceCents * item.quantity)}`)
-    if (item.discountCents) lines.push(`    Discount  -${money(item.discountCents)}`)
+    // discountCents is the member and manager discounts together (memberDiscountCents: the member part)
+    const member = item.memberDiscountCents ?? 0
+    if (member) lines.push(`    Member discount  -${money(member)}`)
+    if (item.discountCents - member) lines.push(`    Discount  -${money(item.discountCents - member)}`)
   }
   lines.push('', `Subtotal  ${money(sale.subtotalCents)}`, `Tax  ${money(sale.taxCents)}`, `Total  ${money(sale.totalCents)}`, '')
   for (const p of sale.payments) {
     lines.push(`${PAYMENT_LABELS[p.method] ?? p.method}  ${money(p.tenderedCents ?? p.amountCents)}`)
   }
   if (sale.changeCents) lines.push(`Change  ${money(sale.changeCents)}`)
+  const tip = saleTipCents(sale)
+  if (tip) lines.push(`Tip  ${money(tip)}`, `Total with tip  ${money(sale.totalCents + tip)}`)
   lines.push('', 'Thank you for visiting Deer Run!')
   return lines.join('\n')
 }

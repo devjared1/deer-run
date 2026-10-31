@@ -1,6 +1,7 @@
 import { json } from '../../admin/_auth.js'
 import { requireRegister } from '../_auth.js'
 import { loadSale, emailReceipt } from './_sale.js'
+import { refundMembership } from './_save.js'
 import { consumeApproval } from '../_approvals.js'
 import { localDate } from '../../../../src/lib/timeclock.js'
 import { openSession } from '../_drawer.js'
@@ -30,6 +31,8 @@ export async function onRequestGet({ request, env, params }) {
 //   Card refunds go back through Stripe, account refunds credit the account (refund_sale writes the entry), each up
 //   to what was paid that way; cash needs the drawer open.
 // Voids and refunds need a manager approval (POST /api/staff/approvals) for that action.
+// Returns { refund, sale, warnings, memberUntil? }. Refunded membership lines take their months back off the
+// customer (memberUntil: the new last day); if that fails the refund still stands and warnings says so.
 export async function onRequestPost({ request, env, params }) {
   const result = await requireRegister(request, env)
   if (result instanceof Response) return result
@@ -59,7 +62,11 @@ async function sendReceipt({ supabase }, env, saleId, body) {
 
 const money = (cents) => `$${(cents / 100).toFixed(2)}`
 
-/** The sale's card payment and how much of it can still be refunded to the card. */
+/**
+ * The sale's card payment and how much of it can still be refunded to the card. Only the sale's share
+ * (amountCents): a tip added on the reader (tipCents) is never refunded here, even on a void; refund it in the
+ * Stripe Dashboard if it really has to go back (the reports will still count it).
+ */
 export function cardRefundable(sale) {
   const payment = sale.payments.find(p => p.method === 'CARD_TERMINAL') ?? null
   const refunded = (sale.refunds || []).filter(r => r.method === 'CARD_TERMINAL').reduce((sum, r) => sum + r.amountCents, 0)
@@ -219,5 +226,15 @@ async function refund({ supabase, dbUser, employee }, env, saleId, body) {
     return json({ error: error.message }, error.code === 'P0001' ? 409 : 500)
   }
 
-  return json({ refund: refunded, sale: await loadSale(supabase, sale.id) })
+  // Like the purchase, the membership change is a follow-up: the refund (and the money) is already done
+  const warnings = []
+  const membership = await refundMembership(supabase, sale, items, localDate())
+  if (membership?.error) warnings.push(`The membership wasn't shortened: ${membership.error}. Update the customer in Admin → Users.`)
+
+  return json({
+    refund: refunded,
+    sale: await loadSale(supabase, sale.id),
+    warnings,
+    ...(membership?.memberUntil ? { memberUntil: membership.memberUntil } : {}),
+  })
 }

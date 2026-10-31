@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { stopPendingPayment } from './_holds.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -60,12 +61,21 @@ export async function onRequestDelete({ request, env, params }) {
     return json({ error: 'Bookings must be cancelled at least 24 hours in advance' }, 400)
   }
 
-  const { error: updateError } = await supabase
+  // An unfinished online payment is cancelled first, so it can't go through after the booking is gone
+  if (booking.status === 'PENDING' && booking.stripePaymentId) {
+    const stopped = await stopPendingPayment(env, booking, supabase)
+    if (stopped) return stopped
+  }
+
+  const { data: updated, error: updateError } = await supabase
     .from('Booking')
     .update({ status: 'CANCELLED' })
     .eq('id', params.id)
+    .eq('status', booking.status)
+    .select('id')
 
   if (updateError) return json({ error: updateError.message }, 500)
+  if (!updated?.length) return json({ error: 'This booking just changed. Refresh and try again.' }, 409)
 
   return json({ success: true })
 }

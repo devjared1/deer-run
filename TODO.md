@@ -75,9 +75,8 @@ employee and the register lives in the staff portal.
 - [x] Flag entries still open after 14 h (dashboard, timesheet totals, per entry)
 - [x] CSV export for payroll: summary (regular/overtime/total hours, rate, estimated gross with
       overtime at 1.5×) and one row per entry
-- [ ] Correcting a time entry isn't one database transaction: the entry is saved, then its breaks are
-      replaced. A failure in between leaves the new times with no breaks. Move to a Postgres function
-      (`supabase.rpc`) if it ever happens; same pattern as the POS `create_sale`
+- [x] Admin time entry corrections are one database transaction: Postgres function `save_time_entry()` (entry + replace
+      its breaks, called with `supabase.rpc`) after the same JS validation. Migration 9
 
 ### Phase 3: Scheduling
 - [x] Shared schedule helpers `src/lib/schedule.js` (used by both the app and Functions): shift length
@@ -99,7 +98,10 @@ employee and the register lives in the staff portal.
 - [x] Printable schedule: **weekly, bi-weekly and monthly** views with previous/next (future and past)
       period navigation, a print stylesheet (`@media print`, landscape `@page` added only while printing),
       and a "Print" button on both the admin and staff pages
-- [ ] Optional: email employees their schedule when it's published (Resend)
+- [x] Email the schedule: **Email schedule** on `/admin/schedule` (`POST /api/admin/shifts/email { from, to }`) emails each
+      active employee with shifts in the period shown their own shifts, hours and approved time off (Resend, plain text),
+      after a confirmation. Reports sent / skipped (no email, inactive) / failed; one failure doesn't stop the rest.
+      There's no "published" state and nothing records when it was last sent
 
 ### Phase 4: Time off
 - [x] Staff API: create, list and cancel own requests (cancel only while pending)
@@ -116,7 +118,9 @@ employee and the register lives in the staff portal.
       in amber, on the admin schedule)
 - [x] Email the employee when a request is approved or denied (Resend; the decision is saved even if the email fails,
       and the admin sees the email error)
-- [ ] Optional: let a manager revoke an approved request (today: deny only works on pending requests)
+- [x] Revoke an approved request that hasn't ended yet: `PUT /api/admin/time-off/:id { action: 'revoke', note }` (note
+      required). It becomes DENIED with the note "Approval revoked: …", records who and when, comes off the schedule,
+      and the employee is emailed
 
 ---
 
@@ -176,9 +180,12 @@ Membership Dues, Concessions (food & drink), Apparel, Golf Equipment & Balls, Re
 - [x] Seed (`prisma/seed-pos.sql`): 12 categories, the "Pro Shop" register, and products. Greens fees,
       range, rentals and membership dues use the site's real prices; concessions, apparel and golf supplies
       are **placeholder prices to review**
-- [ ] Member Pro Shop discounts (10% Individual, 15% Premier/Family per `membershipTiers.js`). `User.membershipTier`
-      is now stored (set when a membership is sold, editable in Admin → Users); what's left is applying the discount
-      to eligible categories in `pricing.js` (register and server)
+- [x] Member Pro Shop discounts (10% Individual, 15% Premier/Family: `proShopDiscountBps` in `membershipTiers.js`; no
+      tier on file = 10%) for active members, in categories marked **Member Discount** (`ProductCategory.memberDiscount`,
+      set on Apparel and Golf Equipment & Balls by migration 9). Products with a member price get that price instead.
+      Applied in `pricing.js` (register and server); no manager approval. `SaleItem.discountCents` holds member +
+      manager discounts and `SaleItem.memberDiscountCents` the member part (written after `create_sale`), so receipts
+      show "Member discount" on its own line
 
 ### Phase 2: Register (cash and no-charge sales)
 - [x] Schema, migration `4_pos_sales`: `Sale` (receipt number, status, register, cashier, customer,
@@ -255,7 +262,13 @@ Membership Dues, Concessions (food & drink), Apparel, Golf Equipment & Balls, Re
       then `refund_sale` records it with `SaleRefund.stripeRefundId`. Split sales are refunded in two passes, not voided
 - [x] Test with Stripe's simulated reader before hardware arrives: with test keys the card dialog shows **Simulate card**
       and **Simulate decline** (`testHelpers.terminal.readers.presentPaymentMethod`)
-- [ ] Optional: tips on the reader, and a reader "cart" display of the items while the customer pays
+- [x] Reader cart display and on-reader tips: before each card payment the reader shows the sale's lines, tax and the
+      amount due (`setReaderDisplay`, best effort; the payment screen takes over). Tipping is a course setting, **off by
+      default** (Admin → Settings → Point of Sale: 1–3 percentages, pre-tax or not; saving pushes them to the Stripe
+      Terminal configuration). The tip is charged on top of the sale and stored as `Payment.tipCents` (`amountCents`
+      stays the sale's share), so it isn't sales or tax; it shows on the receipt and email, as "Card tips" on the Z and
+      sales reports, and in the sales CSV. POS refunds return at most the sale's share (tips only through the Stripe
+      Dashboard). House account card payments never ask for a tip. Test mode: **Card + $5 tip**
 
 ### Phase 4: Member house accounts
 Decisions: members are **invoiced** by default and can **opt in to autopay** themselves; charging to an
@@ -293,7 +306,12 @@ manager can print a statement for any member **on demand**.
       on the Stripe webhook**
 - [x] Member **My Account**: balance and available credit, billing (autopay card or invoice), recent activity, past
       statements (printable page `/account/statements/:id`), pay balance online (Stripe Payment Element), PIN, autopay
-- [ ] Optional: late fees / reminders for overdue statements; statement PDFs attached to the email
+- [x] Overdue statements: the daily statements job emails one reminder the day after the due date for each unpaid
+      statement still owing (its closing balance less payments/credits since it closed), and adds the optional late fee
+      (Admin → Settings, $0 = off) once as an ADJUSTMENT "Late fee — <month> statement" (`Statement.reminderSentAt` /
+      `lateFeeAt`; only statements due in the last 45 days). Every statement email attaches a letter-size PDF
+      (`functions/api/admin/_statementPdf.js`, no dependency; sent without it if it fails). Statements covered by later
+      payments are marked PAID even while newer charges are owed
 
 ### Phase 5: Tee sheet integration (online bookings flow into the POS)
 - [x] Schema: `Booking.source` (ONLINE / POS / PHONE), `Booking.checkedInAt`, `SaleItem.bookingId`
@@ -310,9 +328,19 @@ manager can print a statement for any member **on demand**.
       right before `create_sale` (space re-checked), and deleted again if the sale fails. Members-only slots need an
       active member attached. Like online booking, two bookings in the same instant could still overfill a slot
 - [x] Keep the tee sheet current (polls every 30 s while the tab is visible)
-- [ ] Optional: cancel or move a booking from the tee sheet (today: Admin → Bookings)
-- [ ] Optional: unpaid online bookings ("Payment not finished") hold their spots indefinitely; release them after
-      e.g. 30 minutes
+- [x] Cancel or move a booking from the tee sheet (register staff): **Move** (paid, not checked in) to any tee time that
+      hasn't started, any day, re-checking space and members-only; online golfers are emailed the new time. **Cancel**
+      frees the spots; checked-in groups need **Undo** first; an unpaid online booking's PaymentIntent is cancelled first.
+      Cancelling never refunds: the dialog says where the money is (online payment → an admin refunds it in Stripe;
+      greens fees on receipt #N → refund it from Recent sales with manager approval)
+      (`POST /api/staff/teesheet/:bookingId { action: 'cancel' | 'move', teeTimeSlotId }`)
+- [x] Unpaid online bookings ("Payment not finished") hold their spots for 30 minutes (`isExpiredHold`/`holdsSpot` in
+      `src/lib/teesheet.js`, used everywhere capacity is counted; register card holds never expire). Then they're
+      released (PaymentIntent cancelled, booking CANCELLED) in the background when tee times / the tee sheet are viewed
+      or a booking is made, and daily (`POST /api/internal/bookings`). A payment that beat the release is kept; one that
+      finishes after its hold is confirmed if there's still room, otherwise refunded and the golfer emailed; a payment on
+      a cancelled booking is flagged to `CONTACT_EMAIL_TO`. Customer and admin cancels of unpaid bookings also cancel the
+      PaymentIntent
 
 ### Phase 6: Memberships through the POS
 - [x] Selling a membership product requires a linked customer, sets role `MEMBER`, and records
@@ -327,7 +355,9 @@ manager can print a statement for any member **on demand**.
 - [x] Renewal reminder emails: 30 and 7 days before the last day, and once when it has passed (each once per end
       date, `User.renewalReminderKey`). Daily job `POST /api/internal/memberships` (Bearer `CRON_SECRET`), called by
       the scheduled Worker in `apps/cron` (Pages has no cron triggers)
-- [ ] Optional: refunding a membership sale doesn't shorten the membership; adjust it in Admin → Users
+- [x] Refunding/voiding a membership line takes the refunded months (quantity × months) back off `memberUntil`
+      (`shortenMembership()`), as a follow-up after `refund_sale` (warning at the register if it fails). If it ends before
+      today the member drops to GUEST (admins keep their role), without the "membership ended" email
 
 ### Phase 7: Cash management and reporting
 - [x] Cash drawer sessions: open with a float, close with a count, over/short (`CashDrawerSession`, one open per
@@ -337,7 +367,12 @@ manager can print a statement for any member **on demand**.
       Cashiers count blind (managers see the running expected amount); closing prints a close slip with signature lines.
       Drawers show on the end-of-day report and on **Sales → Drawers**, where an admin can close a stuck drawer
       (`GET/POST /api/staff/register/drawer`, `GET /api/admin/drawer-sessions`, `POST /api/admin/drawer-sessions/:id`)
-- [ ] Optional: paid-ins / paid-outs and safe drops during a session (today: note them when closing)
+- [x] Paid-ins, paid-outs and safe drops during a session (`CashDrawerMovement`, migration 9): each needs a manager (approval
+      actions PAID_IN / PAID_OUT / SAFE_DROP; a manager at the register approves without a prompt) and prints an 80 mm slip
+      that opens the drawer (paid-outs have a reason, optional "paid to" and signature lines). Expected = float + cash
+      taken − cash refunds + paid in − paid out − safe drops; the totals are stored at close. They show on the close slip,
+      Sales → Drawers and the end-of-day report ("Cash left in drawers"). Cashiers still count blind
+      (`POST /api/staff/register/drawer { action: 'movement' }`). A wrong movement can't be undone in the app yet
 - [x] End-of-day (Z) report: sales by category and tender, tax collected, discounts, voids/refunds, cash expected
       (cash in − cash out; the opening float comes with drawer sessions), No Sale count. Sales count on the day
       they're rung up and returns on the day they happen, so a past day's report never changes. Shared builder in
@@ -354,26 +389,21 @@ manager can print a statement for any member **on demand**.
 ## Housekeeping
 - [x] Run in the Supabase SQL Editor, in order: `migrations/0_init`, `prisma/seed.sql`,
       `migrations/1_employee_time_management`
-- [ ] Run in the Supabase SQL Editor, in order: `migrations/2_timeclock_admin`, `migrations/3_pos_catalog`,
-      `prisma/seed-pos.sql`, `migrations/4_pos_sales`, `migrations/5_pos_approvals_refunds`. The admin
-      Settings page saves the new pay period and POS fields, so saving settings fails until the migrations
-      are applied
+- [x] Run in the Supabase SQL Editor, in order: `migrations/2_timeclock_admin`, `migrations/3_pos_catalog`,
+      `prisma/seed-pos.sql`, `migrations/4_pos_sales`, `migrations/5_pos_approvals_refunds`
 - [x] Reference copies of migrations 4 and 5 (`create_sale`, `refund_sale`) are now in `apps/api/prisma/sql/`
-- [ ] Then run `apps/api/prisma/sql/6_pos_teesheet_memberships_drawers.sql` (tee sheet, memberships, cash
-      drawers). Until it runs, the tee sheet, drawer and membership features fail, **and cash sales are refused**
-      because no drawer can be opened. Deploy the code and run the SQL together
-- [ ] Run `apps/api/prisma/sql/7_pos_card_payments.sql` (card checkouts; `create_sale`/`refund_sale` store Stripe IDs).
-      Card payments fail until it runs; cash sales keep working
-- [ ] Run `apps/api/prisma/sql/8_pos_house_accounts.sql` (house accounts) after 7
-- [ ] Stripe webhook: also enable `payment_intent.payment_failed` (house account autopay); `payment_intent.succeeded`
-      covers bookings, register card sales and house account payments
-- [ ] Set `CRON_SECRET` in the Pages project (Production), then deploy the cron Worker:
-      `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy` (same secret value)
-- [ ] Later, from a network that can reach the database:
-      `npx prisma migrate resolve --applied <name>` for each migration (copy files from `prisma/sql/` into
-      `prisma/migrations/<name>/migration.sql` first)
-- [ ] ❓ New sign-ups get `role: MEMBER` (`/api/auth/me` and the Prisma default), so every account gets member
-      pricing and members-only tee times. Should new accounts be `GUEST` until they buy a membership?
+- [x] Run `apps/api/prisma/sql/6_pos_teesheet_memberships_drawers.sql`, `7_pos_card_payments.sql` and
+      `8_pos_house_accounts.sql`
+- [x] Stripe webhook: `payment_intent.succeeded` and `payment_intent.payment_failed` enabled
+- [x] `CRON_SECRET` set in the Pages project and the cron Worker deployed
+- [x] `npx prisma migrate resolve --applied <name>` for each migration
+- [ ] Run `apps/api/prisma/sql/9_guest_default_discounts_tips_drawers.sql` together with the deploy that needs it (the
+      drawer, drawer close, admin drawer list, sales report and time entry corrections fail until it runs), then
+      `prisma migrate resolve --applied 9_guest_default_discounts_tips_drawers`
+- [ ] Redeploy the cron Worker (`cd apps/cron && npm run deploy`): it now also calls `/api/internal/bookings`
+- [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
+      Membership comes from buying a membership product or an admin setting it in Admin → Users. Accounts created
+      before this as MEMBER stay members: review them in Admin → Users
 - [x] Fix `npm run lint` in `apps/web`: now uses the root `.gitignore` and no longer runs `--fix`
       (use `npm run lint:fix --workspace=apps/web` to auto-format). Lint passes with 0 errors; the ~2,700
       warnings are template formatting rules that `lint:fix` would rewrite

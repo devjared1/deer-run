@@ -1,6 +1,7 @@
 // How long an approval stays usable. NO_SALE and CHANGE_REGISTER happen immediately, so those
-// approvals are recorded as used when they're given.
-const TTL_MINUTES = { DISCOUNT: 30, VOID: 10, REFUND: 10, NO_SALE: 0, CHANGE_REGISTER: 0 }
+// approvals are recorded as used when they're given. Drawer movements (paid in/out, safe drop) are used
+// by POST /api/staff/register/drawer right after the approval.
+const TTL_MINUTES = { DISCOUNT: 30, VOID: 10, REFUND: 10, NO_SALE: 0, CHANGE_REGISTER: 0, PAID_IN: 10, PAID_OUT: 10, SAFE_DROP: 10 }
 
 export const APPROVAL_ACTIONS = Object.keys(TTL_MINUTES)
 

@@ -51,6 +51,14 @@
         <button class="btn-outline-sm" :disabled="!data" @click="printLandscape">
           🖨 Print
         </button>
+        <button
+          class="btn-outline-sm"
+          :disabled="!data || saving"
+          title="Email each employee their own shifts for this period"
+          @click="emailing = true; emailResult = null; formError = null"
+        >
+          ✉ Email schedule
+        </button>
         <button class="btn-amber px-4 py-2 text-sm" :disabled="!data" @click="openCreate({ employeeId: null, date: defaultDate })">
           + Add Shift
         </button>
@@ -225,6 +233,59 @@
         </p>
       </div>
     </div>
+
+    <!-- Email the schedule -->
+    <div v-if="emailing" class="modal-overlay print:hidden" @click.self="!saving && (emailing = false)">
+      <div class="modal-box">
+        <h2 class="font-display font-bold text-bark mb-2">
+          Email the schedule?
+        </h2>
+        <template v-if="!emailResult">
+          <p class="text-gray-500 text-sm font-body mb-5">
+            <template v-if="emailRecipients">
+              Each of the {{ emailRecipients }} active employee{{ emailRecipients === 1 ? '' : 's' }} with shifts during
+              {{ formatRange(data.period.start, data.period.end) }} will get an email with their own shifts and approved
+              time off for that period (all departments). Employees without an email address are skipped.
+            </template>
+            <template v-else>
+              No active employees have shifts during {{ formatRange(data.period.start, data.period.end) }}.
+            </template>
+          </p>
+          <div class="flex justify-end gap-3">
+            <button class="btn-outline-sm" :disabled="saving" @click="emailing = false">
+              Cancel
+            </button>
+            <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="saving || !emailRecipients" @click="emailSchedule">
+              {{ saving ? 'Sending…' : 'Send Emails' }}
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <p class="text-bark text-sm font-body mb-1">
+            Sent {{ emailResult.sent }} email{{ emailResult.sent === 1 ? '' : 's' }}.
+          </p>
+          <p v-if="emailResult.skippedNoEmail || emailResult.skippedInactive" class="text-gray-500 text-xs font-body mb-1">
+            Skipped {{ emailResult.skippedNoEmail }} without an email address and {{ emailResult.skippedInactive }} inactive.
+          </p>
+          <div v-if="emailResult.failed.length" class="text-red-600 text-xs font-body mb-1">
+            Failed for {{ emailResult.failed.length }}:
+            <ul class="list-disc ml-4">
+              <li v-for="f in emailResult.failed" :key="f.employeeId">
+                {{ f.name }}: {{ f.error }}
+              </li>
+            </ul>
+          </div>
+          <div class="flex justify-end mt-4">
+            <button class="btn-amber px-4 py-2 text-sm" @click="emailing = false">
+              Done
+            </button>
+          </div>
+        </template>
+        <p v-if="formError" class="text-red-500 text-xs mt-2">
+          {{ formError }}
+        </p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -251,6 +312,8 @@ const formError  = ref(null)
 const form       = ref(null)
 const copying    = ref(false)
 const copyResult = ref(null)
+const emailing    = ref(false)
+const emailResult = ref(null)
 const department = ref('')
 const printedAt  = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Chicago' })
 
@@ -411,6 +474,27 @@ async function deleteShift() {
     await apiFetch(`/api/admin/shifts/${form.value.id}`, { method: 'DELETE' })
     data.value.shifts = data.value.shifts.filter(s => s.id !== form.value.id)
     form.value = null
+  } catch (e) {
+    formError.value = e.message
+  } finally {
+    saving.value = false
+  }
+}
+
+// Active employees with shifts in the period itself (a month's padding days aren't emailed)
+const emailRecipients = computed(() => {
+  if (!data.value) return 0
+  const { start, end } = data.value.period
+  const active = new Set(data.value.employees.filter(e => e.active).map(e => e.id))
+  return new Set(data.value.shifts.filter(s => s.date >= start && s.date <= end && active.has(s.employeeId)).map(s => s.employeeId)).size
+})
+
+async function emailSchedule() {
+  saving.value    = true
+  formError.value = null
+  try {
+    const { start, end } = data.value.period
+    emailResult.value = await apiFetch('/api/admin/shifts/email', { method: 'POST', body: { from: start, to: end } })
   } catch (e) {
     formError.value = e.message
   } finally {

@@ -21,7 +21,11 @@
         <span>{{ money(item.unitPriceCents * item.quantity) }}</span>
       </div>
       <div v-if="item.quantity > 1" class="sub">@ {{ money(item.unitPriceCents) }} each</div>
-      <div v-if="item.discountCents" class="row sub"><span>Discount</span><span>−{{ money(item.discountCents) }}</span></div>
+      <!-- discountCents is the member and manager discounts together; memberDiscountCents is the member part -->
+      <div v-if="item.memberDiscountCents" class="row sub"><span>Member discount</span><span>−{{ money(item.memberDiscountCents) }}</span></div>
+      <div v-if="item.discountCents - (item.memberDiscountCents ?? 0)" class="row sub">
+        <span>Discount</span><span>−{{ money(item.discountCents - (item.memberDiscountCents ?? 0)) }}</span>
+      </div>
       <div v-if="item.taxRateBps === 0" class="sub">Not taxed</div>
     </div>
     <div class="rule" />
@@ -36,6 +40,10 @@
       <span>{{ money(p.tenderedCents ?? p.amountCents) }}</span>
     </div>
     <div v-if="sale.changeCents" class="row"><span>Change</span><span>{{ money(sale.changeCents) }}</span></div>
+    <template v-if="tipCents">
+      <div class="row"><span>Tip</span><span>{{ money(tipCents) }}</span></div>
+      <div class="row total"><span>Total with tip</span><span>{{ money(sale.totalCents + tipCents) }}</span></div>
+    </template>
     <div v-if="!sale.payments.length" class="center sub">No payment due</div>
 
     <div class="rule" />
@@ -62,6 +70,9 @@ const PAYMENT_LABELS = {
 const when = computed(() => new Date(props.sale.createdAt).toLocaleString('en-US', {
   month: 'numeric', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ,
 }))
+
+// Tips added on the card reader are on the card payment (tipCents), on top of the sale total
+const tipCents = computed(() => props.sale.payments.reduce((sum, p) => sum + (p.tipCents ?? 0), 0))
 
 const money = (cents) => `$${(cents / 100).toFixed(2)}`
 const paymentLabel = (method) => PAYMENT_LABELS[method] ?? method

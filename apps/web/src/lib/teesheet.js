@@ -1,6 +1,37 @@
 // Tee sheet labels, shared by the Vue app and the Pages Functions (no '@/' imports).
 
-import { formatLocalDate } from './timeclock.js'
+import { formatLocalDate, toUtcIso } from './timeclock.js'
+
+// An online booking whose payment wasn't finished holds its players' spots for this long after it was made.
+// After that it no longer counts toward the slot (everywhere capacity is worked out) and is released:
+// its PaymentIntent is cancelled and the booking marked CANCELLED (functions/api/bookings/_holds.js).
+export const UNPAID_HOLD_MINUTES = 30
+
+/**
+ * True for a PENDING online booking (has a PaymentIntent) older than UNPAID_HOLD_MINUTES. Register bookings
+ * (source POS / PHONE) are held PENDING while a card is on the reader and never expire here; they have no
+ * stripePaymentId. Needs `status`, `stripePaymentId` and `createdAt` (and `source` when selected); without
+ * `createdAt` the booking keeps holding its spot.
+ */
+export function isExpiredHold(b, now = new Date()) {
+  if (b?.status !== 'PENDING' || !b.stripePaymentId || !b.createdAt) return false
+  if (b.source && b.source !== 'ONLINE') return false
+  return new Date(toUtcIso(b.createdAt)).getTime() < now.getTime() - UNPAID_HOLD_MINUTES * 60_000
+}
+
+/** Whether a booking takes up spots in its tee time: paid ones, and unpaid ones still inside their hold. */
+export function holdsSpot(b, now = new Date()) {
+  if (b?.status === 'CONFIRMED') return true
+  return b?.status === 'PENDING' && !isExpiredHold(b, now)
+}
+
+/** Players booked in a slot (bookings that hold spots). */
+export function bookedPlayers(bookings, now = new Date()) {
+  return (bookings || []).filter(b => holdsSpot(b, now)).reduce((sum, b) => sum + b.players, 0)
+}
+
+/** The columns holdsSpot() needs, for Booking selects that work out capacity. */
+export const HOLD_COLUMNS = 'players, status, stripePaymentId, createdAt'
 
 /** "07:30" → "7:30 AM" */
 export function teeTime(hhmm) {

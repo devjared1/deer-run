@@ -1,4 +1,4 @@
-import { unitPriceCents, priceLine, saleTotals, variantDescription } from '../../../../src/lib/pricing.js'
+import { unitPriceCents, memberDiscountBps, memberDiscountCents, priceLine, saleTotals, variantDescription } from '../../../../src/lib/pricing.js'
 import { teeTimeLabel } from '../../../../src/lib/teesheet.js'
 
 // Tenders the register accepts
@@ -15,7 +15,7 @@ const MAX_BOOKING_NAME = 80
 
 /**
  * Prices a sale on the server from the request and the current catalog. Pure: no database access.
- *   items:          [{ variantId, quantity, discountCents }
+ *   items:          [{ variantId, quantity, discountCents }                 discountCents: the manager's discount
  *                   | { custom: { description, priceCents }, quantity, discountCents }
  *                   | { booking: { bookingId } }                         prepaid greens fee for a checked-in booking ($0)
  *                   | { newBooking: { teeTimeSlotId, players, name, source: 'POS' | 'PHONE' } }   walk-in/phone ($0 line;
@@ -26,17 +26,20 @@ const MAX_BOOKING_NAME = 80
  *   hasCustomer:    a customer account is attached (a walk-in without one needs a name)
  *   today:          course-local date (no bookings in the past)
  *   isMember:       member pricing applies
+ *   memberTier:     the customer's User.membershipTier (sets the member Pro Shop discount rate)
  *   taxBps:         course sales tax rate
  *   payments:       [{ method: 'CASH', tenderedCents } | { method: 'CARD_TERMINAL', amountCents }]
  *                   or [{ method: 'HOUSE_ACCOUNT' }] alone (the whole sale goes on the member's account)
  *                   A card pays an exact amount (at most one card per sale); cash covers the rest and is the
  *                   only tender that can be over-tendered (the difference is change)
  *   expectedTotalCents: the total the register showed; must match so the customer pays what they saw
- * Returns { lines, totals, payments, changeCents, newBooking } or { error, status }. Lines for tee times carry
+ * Returns { lines, totals, payments, changeCents, newBooking } or { error, status }. Each line's discountCents is
+ * the member and manager discounts together, also given apart (memberDiscountCents, managerDiscountCents; see
+ * priceLine). Lines for tee times carry
  * `bookingId` (existing booking) or `newBooking: true`; `newBooking` is the validated booking to create.
  */
 export function buildSale({
-  items, variantsById, isMember, taxBps, payments, expectedTotalCents,
+  items, variantsById, isMember, memberTier = null, taxBps, payments, expectedTotalCents,
   bookingsById = {}, slotsById = {}, hasCustomer = false, today = null,
 }) {
   if (!Array.isArray(items) || !items.length) return { error: 'The cart is empty', status: 400 }
@@ -70,7 +73,7 @@ export function buildSale({
       const price = Number(item.custom.priceCents)
       if (!description) return { error: `${label}: a custom item needs a description`, status: 400 }
       if (!isWholeNumber(price, 1, MAX_CUSTOM_CENTS)) return { error: `${label}: custom price must be $0.01–$10,000`, status: 400 }
-      line = { variantId: null, trackInventory: false, description, categoryName: null, unitPriceCents: price, taxRateBps: taxBps }
+      line = { variantId: null, trackInventory: false, description, categoryName: null, unitPriceCents: price, taxRateBps: taxBps, memberDiscountBps: 0 }
     } else {
       const variant = variantsById[item.variantId]
       if (!variant || !variant.active || !variant.product?.active || !variant.product.category?.active) {
@@ -84,15 +87,18 @@ export function buildSale({
         categoryName: product.category.name,
         unitPriceCents: unitPriceCents(product, variant, isMember),
         taxRateBps: product.category.taxExempt ? 0 : taxBps,
+        memberDiscountBps: memberDiscountBps({ product, variant, category: product.category, isMember, tier: memberTier }),
       }
     }
 
+    // The manager's discount comes off what's left after the member discount
     const discountCents = Number(item.discountCents ?? 0)
-    if (!isWholeNumber(discountCents, 0, line.unitPriceCents * quantity)) {
+    const maxDiscount = line.unitPriceCents * quantity - memberDiscountCents(line.unitPriceCents, quantity, line.memberDiscountBps)
+    if (!isWholeNumber(discountCents, 0, maxDiscount)) {
       return { error: `${label}: discount can't be more than the line amount`, status: 400 }
     }
 
-    lines.push({ ...line, quantity, discountCents, ...priceLine({ ...line, quantity, discountCents }) })
+    lines.push({ ...line, quantity, ...priceLine({ ...line, quantity, discountCents }) })
   }
 
   const totals = saleTotals(lines)

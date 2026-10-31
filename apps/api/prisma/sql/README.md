@@ -9,8 +9,8 @@ wrapped in a transaction and says how to record it with `prisma migrate resolve`
 | `4_pos_sales.sql`, `5_pos_approvals_refunds.sql` | **Reference copies** of migrations that were already run (source of `create_sale()` and `refund_sale()`). Don't run them again |
 | `6_pos_teesheet_memberships_drawers.sql` | Booking source + check-in, SaleItem → Booking link, membership fields on User/Product, cash drawer sessions |
 | `7_pos_card_payments.sql` | `CardCheckout` (Stripe Terminal sales), `SaleRefund.stripeRefundId`; `create_sale()` stores `Payment.stripePaymentIntentId` and `SaleItem.bookingId`, `refund_sale()` stores the Stripe refund |
-
 | `8_pos_house_accounts.sql` | `HouseAccount`, `HouseAccountEntry`, `Statement`; `create_sale()` charges house accounts (locked, limit-checked) and `refund_sale()` credits them |
+| `9_guest_default_discounts_tips_drawers.sql` | `User.role` defaults to GUEST; `ProductCategory.memberDiscount`, `SaleItem.memberDiscountCents`; card tips (`CourseSettings.tipping*`, `Payment.tipCents`); late fees (`CourseSettings.lateFeeCents`, `Statement.reminderSentAt/lateFeeAt`); `CashDrawerMovement` + approval actions; `save_time_entry()` |
 
 When changing `create_sale()` or `refund_sale()`, start from the latest copy in this folder (currently `8_…`) and
 `CREATE OR REPLACE` the whole function.

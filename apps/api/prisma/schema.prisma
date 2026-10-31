@@ -11,7 +11,7 @@ model User {
   id           String        @id @default(cuid())
   email        String        @unique
   name         String?
-  role         Role          @default(MEMBER)
+  role         Role          @default(GUEST)
   supabaseId   String?       @unique
   bookings     Booking[]
   employee     Employee?
@@ -95,6 +95,13 @@ model CourseSettings {
   // Positions allowed to ring sales, and positions that can approve No Sale / voids / refunds
   registerPositions EmployeePosition[] @default([GENERAL_MANAGER, HEAD_GOLF_PROFESSIONAL, ASSISTANT_GOLF_PROFESSIONAL, PRO_SHOP_ATTENDANT, STARTER, FOOD_BEVERAGE_MANAGER, SERVER])
   managerPositions  EmployeePosition[] @default([GENERAL_MANAGER, HEAD_GOLF_PROFESSIONAL, SUPERINTENDENT, FOOD_BEVERAGE_MANAGER])
+  // On-reader card tips (off by default): 1–3 suggested percentages, of the amount before or after tax
+  tippingEnabled    Boolean            @default(false)
+  tipPercentages    Int[]              @default([15, 18, 20])
+  tipPreTax         Boolean            @default(true)
+
+  // House accounts: fee added once to each overdue statement still owing (0 = no late fees)
+  lateFeeCents Int @default(0)
 }
 
 model TournamentEvent {
@@ -191,12 +198,13 @@ model Employee {
 
   // Register manager PIN (PBKDF2 hash, never returned by the API) and lockout after wrong tries
   managerPinHash           String?
-  managerPinFailedAttempts Int                 @default(0)
+  managerPinFailedAttempts Int                  @default(0)
   managerPinLockedUntil    DateTime?
-  approvalsGiven           ManagerApproval[]   @relation("ApprovalApprover")
-  approvalsReceived        ManagerApproval[]   @relation("ApprovalCashier")
-  drawersOpened            CashDrawerSession[] @relation("DrawerOpenedBy")
-  drawersClosed            CashDrawerSession[] @relation("DrawerClosedBy")
+  approvalsGiven           ManagerApproval[]    @relation("ApprovalApprover")
+  approvalsReceived        ManagerApproval[]    @relation("ApprovalCashier")
+  drawersOpened            CashDrawerSession[]  @relation("DrawerOpenedBy")
+  drawersClosed            CashDrawerSession[]  @relation("DrawerClosedBy")
+  drawerMovements          CashDrawerMovement[] @relation("DrawerMovementBy")
   cardCheckouts            CardCheckout[]
 }
 
@@ -261,13 +269,15 @@ model TimeOffRequest {
 
 // A table rather than an enum so admins can add categories and mark them tax-exempt
 model ProductCategory {
-  id        String    @id @default(cuid())
-  name      String    @unique
-  taxExempt Boolean   @default(false)
-  sortOrder Int       @default(0)
-  active    Boolean   @default(true)
-  products  Product[]
-  createdAt DateTime  @default(now())
+  id             String    @id @default(cuid())
+  name           String    @unique
+  taxExempt      Boolean   @default(false)
+  // Active members get their tier's Pro Shop discount on products in this category
+  memberDiscount Boolean   @default(false)
+  sortOrder      Int       @default(0)
+  active         Boolean   @default(true)
+  products       Product[]
+  createdAt      DateTime  @default(now())
 }
 
 model Product {
@@ -340,17 +350,18 @@ model InventoryAdjustment {
 
 // A checkout station (PC + printer + card reader). More can be added from the admin panel.
 model Register {
-  id             String              @id @default(cuid())
-  name           String              @unique
-  stripeReaderId String?             @unique
-  active         Boolean             @default(true)
-  sales          Sale[]
-  refunds        SaleRefund[]
-  approvals      ManagerApproval[]
-  drawerSessions CashDrawerSession[]
-  cardCheckouts  CardCheckout[]
-  accountEntries HouseAccountEntry[]
-  createdAt      DateTime            @default(now())
+  id              String               @id @default(cuid())
+  name            String               @unique
+  stripeReaderId  String?              @unique
+  active          Boolean              @default(true)
+  sales           Sale[]
+  refunds         SaleRefund[]
+  approvals       ManagerApproval[]
+  drawerSessions  CashDrawerSession[]
+  cardCheckouts   CardCheckout[]
+  accountEntries  HouseAccountEntry[]
+  drawerMovements CashDrawerMovement[]
+  createdAt       DateTime             @default(now())
 }
 
 // ─── Point of sale: sales ────────────────────────────────────────────────────
@@ -405,23 +416,24 @@ model Sale {
 }
 
 model SaleItem {
-  id             String          @id @default(cuid())
-  sale           Sale            @relation(fields: [saleId], references: [id])
-  saleId         String
-  variant        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
-  variantId      String? // null for a custom-amount item
-  booking        Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  bookingId      String? // tee time this line is for (prepaid greens fee or walk-in/phone booking)
-  description    String // product name + size/color at the time of sale
-  categoryName   String?
-  quantity       Int
-  unitPriceCents Int
-  discountCents  Int             @default(0)
-  taxRateBps     Int // 0 for tax-exempt categories
-  subtotalCents  Int // quantity × unit price − discount
-  taxCents       Int
-  totalCents     Int
-  sortOrder      Int             @default(0)
+  id                  String          @id @default(cuid())
+  sale                Sale            @relation(fields: [saleId], references: [id])
+  saleId              String
+  variant             ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variantId           String? // null for a custom-amount item
+  booking             Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  bookingId           String? // tee time this line is for (prepaid greens fee or walk-in/phone booking)
+  description         String // product name + size/color at the time of sale
+  categoryName        String?
+  quantity            Int
+  unitPriceCents      Int
+  discountCents       Int             @default(0) // member + manager discounts
+  memberDiscountCents Int             @default(0) // the member Pro Shop part of discountCents (written after create_sale)
+  taxRateBps          Int // 0 for tax-exempt categories
+  subtotalCents       Int // quantity × unit price − discount
+  taxCents            Int
+  totalCents          Int
+  sortOrder           Int             @default(0)
 
   // Running totals of what has been refunded from this line
   refundedQuantity Int              @default(0)
@@ -441,6 +453,7 @@ model Payment {
   method                PaymentMethod
   amountCents           Int // applied to the sale
   tenderedCents         Int? // cash handed over (amount + change)
+  tipCents              Int           @default(0) // on-reader card tip, on top of amountCents (not sales or tax)
   stripePaymentIntentId String?       @unique
   createdAt             DateTime      @default(now())
 
@@ -455,26 +468,30 @@ enum ApprovalAction {
   VOID
   REFUND
   CHANGE_REGISTER
+  PAID_IN
+  PAID_OUT
+  SAFE_DROP
 }
 
 // A manager's sign-off on a register action. Each approval is single-use and short-lived:
 // the action that needs it marks it used (usedAt), linking the sale when there is one.
 model ManagerApproval {
-  id         String         @id @default(cuid())
-  action     ApprovalAction
-  approver   Employee       @relation("ApprovalApprover", fields: [approverId], references: [id])
-  approverId String
-  cashier    Employee       @relation("ApprovalCashier", fields: [cashierId], references: [id])
-  cashierId  String
-  register   Register?      @relation(fields: [registerId], references: [id])
-  registerId String?
-  sale       Sale?          @relation(fields: [saleId], references: [id])
-  saleId     String?
-  reason     String?
-  expiresAt  DateTime
-  usedAt     DateTime?
-  refund     SaleRefund?
-  createdAt  DateTime       @default(now())
+  id             String              @id @default(cuid())
+  action         ApprovalAction
+  approver       Employee            @relation("ApprovalApprover", fields: [approverId], references: [id])
+  approverId     String
+  cashier        Employee            @relation("ApprovalCashier", fields: [cashierId], references: [id])
+  cashierId      String
+  register       Register?           @relation(fields: [registerId], references: [id])
+  registerId     String?
+  sale           Sale?               @relation(fields: [saleId], references: [id])
+  saleId         String?
+  reason         String?
+  expiresAt      DateTime
+  usedAt         DateTime?
+  refund         SaleRefund?
+  drawerMovement CashDrawerMovement?
+  createdAt      DateTime            @default(now())
 
   @@index([createdAt])
 }
@@ -530,15 +547,15 @@ model SaleRefundItem {
 // from Payment and SaleRefund, so sales don't need a session column). One open session per register
 // (partial unique index CashDrawerSession_one_open_per_register, which Prisma can't model).
 model CashDrawerSession {
-  id                String    @id @default(cuid())
-  register          Register  @relation(fields: [registerId], references: [id])
+  id                String               @id @default(cuid())
+  register          Register             @relation(fields: [registerId], references: [id])
   registerId        String
-  openedBy          Employee  @relation("DrawerOpenedBy", fields: [openedById], references: [id])
+  openedBy          Employee             @relation("DrawerOpenedBy", fields: [openedById], references: [id])
   openedById        String
-  openedAt          DateTime  @default(now())
+  openedAt          DateTime             @default(now())
   openingFloatCents Int
   openNote          String?
-  closedBy          Employee? @relation("DrawerClosedBy", fields: [closedById], references: [id])
+  closedBy          Employee?            @relation("DrawerClosedBy", fields: [closedById], references: [id])
   closedById        String?
   closedAt          DateTime?
   cashSalesCents    Int? // snapshots taken at close
@@ -546,9 +563,41 @@ model CashDrawerSession {
   expectedCents     Int?
   countedCents      Int?
   overShortCents    Int? // counted − expected (negative = short)
+  paidInCents       Int? // movement totals, also snapshots taken at close
+  paidOutCents      Int?
+  safeDropCents     Int?
   closeNote         String?
+  movements         CashDrawerMovement[]
 
   @@index([registerId, openedAt])
+}
+
+enum CashMovementType {
+  PAID_IN // cash added to the drawer (e.g. more change from the safe)
+  PAID_OUT // cash taken out to pay for something (reason + who it was paid to)
+  SAFE_DROP // excess cash moved from the drawer to the safe
+}
+
+// Cash in or out of an open drawer session other than sales and refunds. Every movement needs a manager
+// approval. amountCents is always positive (CHECK in the migration); the type says which way it went.
+model CashDrawerMovement {
+  id          String            @id @default(cuid())
+  session     CashDrawerSession @relation(fields: [sessionId], references: [id])
+  sessionId   String
+  register    Register          @relation(fields: [registerId], references: [id])
+  registerId  String
+  type        CashMovementType
+  amountCents Int
+  reason      String?
+  recipient   String? // paid-outs: who the cash went to
+  employee    Employee          @relation("DrawerMovementBy", fields: [employeeId], references: [id])
+  employeeId  String
+  approval    ManagerApproval?  @relation(fields: [approvalId], references: [id])
+  approvalId  String?           @unique
+  createdAt   DateTime          @default(now())
+
+  @@index([sessionId])
+  @@index([registerId, createdAt])
 }
 
 // ─── Point of sale: card payments (Stripe Terminal) ──────────────────────────
@@ -668,6 +717,8 @@ model Statement {
   autopayPaymentIntentId String?         @unique
   autopayError           String?
   paidAt                 DateTime?
+  reminderSentAt         DateTime? // overdue reminder emailed (once)
+  lateFeeAt              DateTime? // late fee added (once)
   createdAt              DateTime        @default(now())
 
   @@unique([accountId, periodStart])

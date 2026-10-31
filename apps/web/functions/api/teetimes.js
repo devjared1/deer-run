@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { isActiveMember } from '../../src/lib/membership.js'
 import { localDate } from '../../src/lib/timeclock.js'
+import { bookedPlayers, HOLD_COLUMNS } from '../../src/lib/teesheet.js'
+import { releaseInBackground, slotsWithExpiredHolds } from './bookings/_holds.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -15,7 +17,8 @@ async function getOptionalUser(request, supabase) {
   return dbUser
 }
 
-export async function onRequestGet({ request, env }) {
+export async function onRequestGet(context) {
+  const { request, env } = context
   const { searchParams } = new URL(request.url)
   const date = searchParams.get('date') // expected: YYYY-MM-DD
 
@@ -33,18 +36,20 @@ export async function onRequestGet({ request, env }) {
 
   const { data: slots, error } = await supabase
     .from('TeeTimeSlot')
-    .select('*, Booking(players, status)')
+    .select(`*, Booking(${HOLD_COLUMNS})`)
     .eq('date', date)
     .order('startTime')
 
   if (error) return json({ error: error.message }, 500)
 
+  // Unpaid online bookings past their hold don't count; release them (cancel the payment) in the background
+  releaseInBackground(context, supabase, slotsWithExpiredHolds(slots, 'Booking'))
+
+  const now = new Date()
   const result = slots
     .filter(slot => !slot.memberOnly || isMember)
     .map(slot => {
-      const booked = (slot.Booking || [])
-        .filter(b => b.status === 'PENDING' || b.status === 'CONFIRMED')
-        .reduce((sum, b) => sum + b.players, 0)
+      const booked = bookedPlayers(slot.Booking, now)
       const { Booking: _, ...slotData } = slot
       const available = Math.max(0, slot.maxPlayers - booked)
     return { ...slotData, bookedPlayers: booked, available, full: available === 0 }

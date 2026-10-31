@@ -12,9 +12,10 @@ export async function onRequestGet({ request, env }) {
 
   const [settings, categories, products, registers] = await Promise.all([
     supabase.from('CourseSettings').select('salesTaxBps').eq('id', 'singleton').maybeSingle(),
+    // (*): includes memberDiscount once that column exists (isMemberDiscountCategory falls back to names)
     supabase
       .from('ProductCategory')
-      .select('id, name, taxExempt, sortOrder')
+      .select('*')
       .eq('active', true)
       .order('sortOrder', { ascending: true })
       .order('name', { ascending: true }),
