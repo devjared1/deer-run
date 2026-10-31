@@ -22,8 +22,31 @@
             title="Part card, part cash"
             @click="setMethod('split')"
           >Split</button>
-          <button class="method-btn border-gray-200 text-gray-400 cursor-not-allowed" disabled title="House accounts come in a later phase">Account</button>
+          <button
+            :class="['method-btn', method === 'account' ? 'border-pine bg-pine text-parch' : accountBlocked ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300 text-bark hover:bg-gray-50']"
+            :disabled="!!accountBlocked"
+            :title="accountBlocked || 'Charge to the member\'s house account'"
+            @click="setMethod('account')"
+          >Account</button>
         </div>
+
+        <template v-if="method === 'account'">
+          <p class="text-center text-gray-600 text-sm font-body">
+            Charge to {{ accountName }}'s house account.
+            <span class="block text-xs text-gray-400">{{ formatCents(account.availableCents) }} available</span>
+          </p>
+          <label class="label-sm mt-3">Member's PIN (the member types it)</label>
+          <input
+            ref="pinInput"
+            v-model="accountPin"
+            type="password"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="off"
+            class="input-field w-full text-lg text-center tracking-[0.5em]"
+            @keyup.enter="canComplete && complete()"
+          />
+        </template>
 
         <template v-if="method === 'card'">
           <p class="text-center text-gray-500 text-sm font-body">
@@ -40,7 +63,7 @@
           </p>
         </template>
 
-        <template v-if="method !== 'card'">
+        <template v-if="method !== 'card' && method !== 'account'">
         <label class="label-sm" :class="method === 'split' ? 'mt-3' : ''">Cash Received ($)</label>
         <input
           ref="tenderInput"
@@ -88,7 +111,7 @@
       <div class="flex justify-end gap-3 mt-5">
         <button class="btn-outline-sm" :disabled="busy" @click="$emit('close')">Back</button>
         <button :disabled="!canComplete || busy" class="btn-amber px-5 py-2 text-sm disabled:opacity-50" @click="complete">
-          {{ busy ? 'Completing…' : method === 'cash' || totalCents === 0 ? 'Complete Sale' : 'Charge Card' }}
+          {{ busy ? 'Completing…' : method === 'cash' || totalCents === 0 ? 'Complete Sale' : method === 'account' ? 'Charge Account' : 'Charge Card' }}
         </button>
       </div>
       <p v-if="error" class="text-red-500 text-sm mt-3 font-body">{{ error }}</p>
@@ -107,10 +130,26 @@ const props = defineProps({
   error: { type: String, default: null },
   // Why card payments aren't available on this register (null = they are)
   cardBlocked: { type: String, default: 'This register has no card reader' },
+  // The attached customer's house account summary (from the customer search), or null
+  account: { type: Object, default: null },
+  accountName: { type: String, default: '' },
 })
 const emit = defineEmits(['complete', 'close'])
 
-const method      = ref('cash') // cash | card | split
+const method      = ref('cash') // cash | card | split | account
+const accountPin  = ref('')
+const pinInput    = ref(null)
+
+// Why the house account can't take this sale (null = it can)
+const accountBlocked = computed(() => {
+  const a = props.account
+  if (!a) return 'Attach a member with a house account'
+  if (a.status !== 'ACTIVE') return `The house account is ${a.status.toLowerCase()}`
+  if (a.pinLocked) return 'The account PIN is locked (Admin → House Accounts)'
+  if (!a.hasPin) return 'The member hasn\'t set an account PIN yet (My Account)'
+  if (a.availableCents < props.totalCents) return `Only ${formatCents(a.availableCents)} available on the account`
+  return null
+})
 const cardAmount  = ref('')
 const tendered    = ref('')
 const print       = ref(true)
@@ -120,14 +159,16 @@ const tenderInput = ref(null)
 
 const tenderedCents = computed(() => dollarsToCents(tendered.value) || 0)
 const cardCents     = computed(() => (method.value === 'card' ? props.totalCents : method.value === 'split' ? dollarsToCents(cardAmount.value) || 0 : 0))
-const cashDueCents  = computed(() => props.totalCents - cardCents.value)
+const cashDueCents  = computed(() => (method.value === 'account' ? 0 : props.totalCents - cardCents.value))
 const splitCardValid = computed(() => cardCents.value >= 50 && cardCents.value < props.totalCents)
 
 function setMethod(m) {
   method.value = m
   tendered.value = ''
   if (m === 'split' && !cardAmount.value) cardAmount.value = (Math.floor(props.totalCents / 2) / 100).toFixed(2)
-  if (m !== 'card') setTimeout(() => tenderInput.value?.focus())
+  accountPin.value = ''
+  if (m === 'account') setTimeout(() => pinInput.value?.focus())
+  else if (m !== 'card') setTimeout(() => tenderInput.value?.focus())
 }
 
 // Exact, then the next round amounts customers usually hand over
@@ -145,12 +186,14 @@ const canComplete = computed(() => {
   if (sendEmail.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) return false
   if (props.totalCents === 0) return true
   if (method.value === 'card') return props.totalCents >= 50
+  if (method.value === 'account') return !accountBlocked.value && /^\d{4,6}$/.test(accountPin.value)
   if (method.value === 'split') return splitCardValid.value && tenderedCents.value >= cashDueCents.value
   return tenderedCents.value >= props.totalCents
 })
 
 function payments() {
   if (props.totalCents === 0) return []
+  if (method.value === 'account') return [{ method: 'HOUSE_ACCOUNT' }]
   const list = []
   if (cardCents.value > 0) list.push({ method: 'CARD_TERMINAL', amountCents: cardCents.value })
   if (cashDueCents.value > 0) list.push({ method: 'CASH', tenderedCents: tenderedCents.value })
@@ -160,6 +203,7 @@ function payments() {
 function complete() {
   emit('complete', {
     payments: payments(),
+    accountPin: method.value === 'account' ? accountPin.value : null,
     print: print.value,
     receiptEmail: sendEmail.value ? email.value.trim() : null,
   })

@@ -38,7 +38,9 @@ const UNCATEGORIZED = 'Custom / Misc'
  * Sales count in full on the day they were rung up; voids and refunds come off on the day they happen,
  * so a day's report never changes after the day ends. All amounts are in cents.
  */
-export function buildReport({ sales, refunds, noSales = 0 }) {
+const ACCOUNT_PAYMENT_LABELS = { CASH: 'Cash', CARD: 'Card', ONLINE: 'Online', AUTOPAY: 'Autopay' }
+
+export function buildReport({ sales, refunds, noSales = 0, accountPayments = [] }) {
   const categories = new Map()
   const category = name => {
     const key = name || UNCATEGORIZED
@@ -101,6 +103,17 @@ export function buildReport({ sales, refunds, noSales = 0 }) {
     .map(t => ({ ...t, netCents: t.collectedCents - t.refundedCents }))
     .sort((a, b) => b.netCents - a.netCents)
 
+  // House account payments received (settling balances, not sales): by method; cash ones went into the drawer
+  const byMethod = new Map()
+  for (const e of accountPayments) {
+    const m = byMethod.get(e.method) ?? { method: e.method, label: ACCOUNT_PAYMENT_LABELS[e.method] ?? e.method, count: 0, amountCents: 0 }
+    m.count++
+    m.amountCents -= e.amountCents // payments are negative ledger entries
+    byMethod.set(e.method, m)
+  }
+  const accountPaymentRows = [...byMethod.values()].sort((a, b) => b.amountCents - a.amountCents)
+  const cashAccountPayments = byMethod.get('CASH')?.amountCents ?? 0
+
   const cash = tenders.get('CASH')
   return {
     sales: totals,
@@ -109,7 +122,8 @@ export function buildReport({ sales, refunds, noSales = 0 }) {
     categories: categoryRows,
     tenders: tenderRows,
     // No opening float yet (cash drawer sessions are a later phase): this is cash in minus cash out
-    cashExpectedCents: cash ? cash.collectedCents - cash.refundedCents : 0,
+    cashExpectedCents: (cash ? cash.collectedCents - cash.refundedCents : 0) + cashAccountPayments,
+    accountPayments: { rows: accountPaymentRows, totalCents: accountPaymentRows.reduce((sum, r) => sum + r.amountCents, 0) },
     noSaleCount: noSales,
   }
 }
@@ -118,7 +132,7 @@ export function buildReport({ sales, refunds, noSales = 0 }) {
 export async function loadReport(supabase, range, registerId = null) {
   const scoped = q => (registerId ? q.eq('registerId', registerId) : q)
 
-  const [sales, refunds, noSaleRes, registerRes, drawerSessions] = await Promise.all([
+  const [sales, refunds, noSaleRes, registerRes, drawerSessions, accountPayments] = await Promise.all([
     fetchAll(() => scoped(supabase
       .from('Sale')
       .select('id, subtotalCents, discountCents, taxCents, totalCents, ' +
@@ -140,6 +154,14 @@ export async function loadReport(supabase, range, registerId = null) {
       .lt('createdAt', range.endUtc)),
     registerId ? supabase.from('Register').select('id, name').eq('id', registerId).maybeSingle() : Promise.resolve({ data: null }),
     loadDrawerSessions(supabase, range, registerId),
+    // Online and autopay payments have no register, so a single register's report only has its own
+    fetchAll(() => scoped(supabase
+      .from('HouseAccountEntry')
+      .select('id, amountCents, method')
+      .eq('type', 'PAYMENT')
+      .gte('createdAt', range.startUtc)
+      .lt('createdAt', range.endUtc)
+      .order('createdAt', { ascending: true }))),
   ])
   if (noSaleRes.error) throw new Error(noSaleRes.error.message)
 
@@ -148,7 +170,7 @@ export async function loadReport(supabase, range, registerId = null) {
     to: range.to,
     register: registerRes.data ?? null,
     generatedAt: new Date().toISOString(),
-    ...buildReport({ sales, refunds, noSales: noSaleRes.count ?? 0 }),
+    ...buildReport({ sales, refunds, noSales: noSaleRes.count ?? 0, accountPayments }),
     // Drawer sessions open at any point in the range (a session can start before or end after it)
     drawerSessions,
   }

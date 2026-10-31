@@ -17,7 +17,7 @@
           {{ checkout.lastError || 'The card was charged. Saving the sale…' }}
         </p>
         <button class="btn-amber w-full py-3 text-base mt-4 disabled:opacity-50" :disabled="busy" @click="act('complete')">
-          {{ busy ? 'Saving…' : 'Save sale' }}
+          {{ busy ? 'Saving…' : 'Save' }}
         </button>
       </template>
 
@@ -97,9 +97,12 @@ let polling = false
 // Shared by polling and the buttons: anything that returns the checkout (and the sale once it's saved)
 function apply(result) {
   if (result.cardCheckout) checkout.value = { ...checkout.value, ...result.cardCheckout }
-  if (checkout.value.status === 'COMPLETED' && result.sale) {
+  if (checkout.value.status === 'COMPLETED' && (result.sale || result.accountPayment)) {
     stop()
-    emit('done', { sale: result.sale, warnings: result.warnings ?? [], emailError: result.emailError ?? null, notice: result.notice })
+    emit('done', {
+      sale: result.sale ?? null, accountPayment: result.accountPayment ?? null,
+      warnings: result.warnings ?? [], emailError: result.emailError ?? null, notice: result.notice,
+    })
   }
 }
 

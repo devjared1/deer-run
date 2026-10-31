@@ -122,8 +122,8 @@ const STATUS = {
 const statusLabel = (s) => STATUS[s]?.[0] ?? s
 const statusClass = (s) => STATUS[s]?.[1] ?? ''
 
-// The register refunds cash and card payments (house accounts etc. go through the admin panel)
-const refundable = computed(() => !!selected.value?.payments.every(p => p.method === 'CASH' || p.method === 'CARD_TERMINAL'))
+// The register refunds cash, card and house account payments
+const refundable = computed(() => !!selected.value?.payments.every(p => ['CASH', 'CARD_TERMINAL', 'HOUSE_ACCOUNT'].includes(p.method)))
 // A split (cash + card) sale is refunded in two passes instead of voided, so each part goes back its own way
 const isSplit = computed(() => new Set((selected.value?.payments ?? []).map(p => p.method)).size > 1)
 const canRefund = computed(() => refundable.value && !['VOIDED', 'REFUNDED'].includes(selected.value.status))

@@ -43,7 +43,7 @@
           {{ money(report.cashExpectedCents) }}
         </div>
         <div class="stat-sub">
-          cash sales − cash refunds
+          cash in − cash refunds
         </div>
       </div>
     </div>
@@ -188,6 +188,36 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <!-- House account payments: settling balances, so they're not in sales -->
+    <div v-if="report.accountPayments?.rows.length" class="panel">
+      <h3 class="panel-title">
+        House account payments received
+      </h3>
+      <table class="w-full text-sm font-body">
+        <tbody>
+          <tr v-for="a in report.accountPayments.rows" :key="a.method">
+            <td class="td">
+              {{ a.label }} <span class="text-gray-400">({{ a.count }})</span>
+            </td>
+            <td class="td-num">
+              {{ money(a.amountCents) }}
+            </td>
+          </tr>
+          <tr class="font-semibold border-t border-gray-200">
+            <td class="td">
+              Total
+            </td>
+            <td class="td-num">
+              {{ money(report.accountPayments.totalCents) }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="text-xs text-gray-400 font-body mt-2">
+        Members paying down their accounts. Not counted in sales (the charges were); cash payments are in net cash.
+      </p>
     </div>
 
     <!-- Cash drawers -->

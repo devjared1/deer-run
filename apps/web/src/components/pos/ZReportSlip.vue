@@ -47,9 +47,19 @@
     </div>
     <div class="rule" />
 
+    <template v-if="report.accountPayments?.rows.length">
+      <div class="heading">
+        ACCOUNT PAYMENTS RECEIVED
+      </div>
+      <div v-for="a in report.accountPayments.rows" :key="a.method" class="row">
+        <span>{{ a.label }} ({{ a.count }})</span><span>{{ money(a.amountCents) }}</span>
+      </div>
+      <div class="rule" />
+    </template>
+
     <div class="row strong"><span>Net cash</span><span>{{ money(report.cashExpectedCents) }}</span></div>
     <div class="sub">
-      Cash sales minus cash refunds
+      Cash taken (sales and account payments) minus cash refunds
     </div>
     <template v-if="report.drawerSessions?.length">
       <div class="rule" />

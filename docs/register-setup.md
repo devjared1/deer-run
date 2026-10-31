@@ -91,6 +91,14 @@ reader, and the card dialog shows **Simulate card** / **Simulate decline** butto
 Card refunds go back to the card from the register's Refund screen (no drawer needed). Cash refunds can't hand out more
 than was paid in cash.
 
+## 6. House accounts at the register
+
+- **Charging:** attach the member, then choose **Account** in the payment dialog and turn the screen so the member can
+  type their 4–6 digit PIN (they set it in My Account on the website). Five wrong tries lock it until an admin resets
+  it in Admin → House Accounts.
+- **Payments:** **Account payment** in the register header takes cash (into the drawer, with change and a receipt)
+  or a card on the reader toward a member's balance.
+
 ## Troubleshooting
 
 | Symptom | Fix |

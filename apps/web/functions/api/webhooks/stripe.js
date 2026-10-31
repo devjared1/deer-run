@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 import { Resend } from 'resend'
 import { completeCardCheckout } from '../staff/_cardCheckout.js'
+import { recordPayment } from '../admin/_houseAccounts.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -30,6 +31,32 @@ export async function onRequestPost({ request, env }) {
     } catch (e) {
       // 500 makes Stripe retry the webhook later
       return json({ error: e.message }, 500)
+    }
+    return json({ received: true })
+  }
+
+  // House accounts: online payments from My Account, and autopay charges on statements. Recording is idempotent
+  // per PaymentIntent, so it's fine that the page (and the statements job) may have recorded it already.
+  const meta = event.data.object.metadata ?? {}
+  if (meta.houseAccountId && (meta.kind === 'account_payment' || meta.kind === 'autopay')) {
+    const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+    const intent = event.data.object
+    if (event.type === 'payment_intent.succeeded') {
+      const paid = await recordPayment(supabase, {
+        accountId: meta.houseAccountId,
+        amountCents: intent.amount_received ?? intent.amount,
+        method: meta.kind === 'autopay' ? 'AUTOPAY' : 'ONLINE',
+        stripePaymentIntentId: intent.id,
+      })
+      if (paid.error) return json({ error: paid.error }, 500)
+      if (meta.statementId) {
+        await supabase.from('Statement').update({ status: 'PAID', paidAt: new Date().toISOString(), autopayError: null })
+          .eq('id', meta.statementId)
+      }
+    } else if (event.type === 'payment_intent.payment_failed' && meta.statementId) {
+      await supabase.from('Statement')
+        .update({ status: 'AUTOPAY_FAILED', autopayError: intent.last_payment_error?.message ?? 'The card was declined' })
+        .eq('id', meta.statementId).neq('status', 'PAID')
     }
     return json({ received: true })
   }

@@ -77,6 +77,7 @@
             <span class="font-semibold text-bark mr-auto">{{ register.name }}</span>
             <button class="text-lake hover:text-pine" @click="showRecentSales = true">Recent sales</button>
             <button class="text-lake hover:text-pine" @click="noSale">No sale</button>
+            <button class="text-lake hover:text-pine" @click="showAccountPayment = true">Account payment</button>
             <button
               v-if="authStore.isRegisterManager"
               class="text-lake hover:text-pine"
@@ -205,7 +206,12 @@
         <div class="text-gray-400 text-xs font-body uppercase tracking-wider">
           Sale #{{ refundResult.sale.number }} {{ refundResult.refund.kind === 'VOID' ? 'voided' : 'refunded' }}
         </div>
-        <template v-if="refundResult.refund.method === 'CARD_TERMINAL'">
+        <template v-if="refundResult.refund.method === 'HOUSE_ACCOUNT'">
+          <div class="text-gray-500 text-sm font-body mt-4">Credited to the house account</div>
+          <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
+          <div class="text-gray-400 text-xs font-body">It shows on the member's next statement</div>
+        </template>
+        <template v-else-if="refundResult.refund.method === 'CARD_TERMINAL'">
           <div class="text-gray-500 text-sm font-body mt-4">Refunded to the card</div>
           <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
           <div class="text-gray-400 text-xs font-body">It shows on the customer's statement in 5–10 days</div>
@@ -275,7 +281,7 @@
             <div class="text-sm font-body text-gray-500 mt-3 space-y-0.5">
               <div>Expected {{ formatCents(drawerForm.result.expectedCents) }} · counted {{ formatCents(drawerForm.result.countedCents) }}</div>
               <div class="text-xs text-gray-400">
-                Start {{ formatCents(drawerForm.result.openingFloatCents) }} + cash sales {{ formatCents(drawerForm.result.cashSalesCents) }}
+                Start {{ formatCents(drawerForm.result.openingFloatCents) }} + cash taken {{ formatCents(drawerForm.result.cashSalesCents) }}
                 − cash refunds {{ formatCents(drawerForm.result.cashRefundsCents) }}
               </div>
             </div>
@@ -295,6 +301,13 @@
       <NoSaleSlip v-else-if="printDoc.type === 'noSale'" :at="printDoc.at" :register-name="register?.name" :approver-name="printDoc.approverName" />
       <ZReportSlip v-else-if="printDoc.type === 'z'" :report="printDoc.report" />
       <DrawerCloseSlip v-else-if="printDoc.type === 'drawer'" :session="printDoc.session" />
+      <AccountPaymentSlip
+        v-else-if="printDoc.type === 'accountPayment'"
+        :payment="printDoc.payment"
+        :member-name="printDoc.memberName"
+        :register-name="register?.name"
+        :change-cents="printDoc.changeCents"
+      />
     </div>
 
     <RecentSalesModal
@@ -344,9 +357,39 @@
       :busy="submitting"
       :error="submitError"
       :card-blocked="cardBlocked"
+      :account="customer?.houseAccount ?? null"
+      :account-name="customer?.name || customer?.email || ''"
       @complete="completeSale"
       @close="tendering = false; focusSearch()"
     />
+
+    <AccountPaymentModal
+      v-if="showAccountPayment"
+      :register-id="registerId"
+      :customer="customer?.houseAccount ? customer : null"
+      :card-blocked="cardBlocked"
+      @done="onAccountPaymentDone"
+      @card="onAccountPaymentCard"
+      @close="onAccountPaymentClose"
+    />
+
+    <!-- Account payment taken -->
+    <div v-if="accountPaymentResult" class="modal-overlay print:hidden">
+      <div class="modal-box max-w-sm text-center">
+        <div class="text-gray-400 text-xs font-body uppercase tracking-wider">Account payment received</div>
+        <div class="font-body text-bark mt-2">{{ accountPaymentResult.memberName }}</div>
+        <template v-if="accountPaymentResult.changeCents">
+          <div class="text-gray-500 text-sm font-body mt-4">Change due</div>
+          <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(accountPaymentResult.changeCents) }}</div>
+        </template>
+        <div v-else class="font-display font-bold text-bark text-3xl mt-3 tabular-nums">{{ formatCents(-accountPaymentResult.payment.amountCents) }}</div>
+        <div class="text-gray-500 text-sm font-body mt-2">New balance {{ formatCents(accountPaymentResult.payment.balanceCents) }}</div>
+        <div class="mt-5 space-y-2">
+          <button class="btn-outline-sm w-full" @click="printAccountSlip">Print Receipt</button>
+          <button class="btn-amber w-full py-3 text-base" @click="accountPaymentResult = null; focusSearch()">Done</button>
+        </div>
+      </div>
+    </div>
 
     <CardPaymentModal
       v-if="cardPayment"
@@ -421,6 +464,8 @@ import VariantPickerModal from '@/components/pos/VariantPickerModal.vue'
 import CustomerPickerModal from '@/components/pos/CustomerPickerModal.vue'
 import TenderModal from '@/components/pos/TenderModal.vue'
 import CardPaymentModal from '@/components/pos/CardPaymentModal.vue'
+import AccountPaymentModal from '@/components/pos/AccountPaymentModal.vue'
+import AccountPaymentSlip from '@/components/pos/AccountPaymentSlip.vue'
 import ApprovalModal from '@/components/pos/ApprovalModal.vue'
 import RecentSalesModal from '@/components/pos/RecentSalesModal.vue'
 import RefundModal from '@/components/pos/RefundModal.vue'
@@ -729,6 +774,7 @@ async function completeSale(tender, { retried = false } = {}) {
         expectedTotalCents: totals.value.totalCents,
         receiptEmail,
         approvalId: discountApprovalId.value,
+        accountPin: tender.accountPin ?? undefined,
       },
     })
     tendering.value = false
@@ -792,15 +838,63 @@ async function finishSale({ sale, emailError = null, warnings = [], notice = nul
 }
 
 async function onCardDone(result) {
-  const { tender } = cardPayment.value
+  const { tender, member } = cardPayment.value
   cardPayment.value = null
+  if (result.accountPayment) {
+    await showAccountPaymentResult({ accountPayment: result.accountPayment, changeCents: 0, member })
+    return
+  }
   await finishSale(result, tender)
 }
 
 // Cancelled before the card was charged: back to the payment screen with the cart as it was
 function onCardCanceled() {
+  const wasAccountPayment = cardPayment.value?.kind === 'account'
   cardPayment.value = null
-  openTender()
+  if (wasAccountPayment) showAccountPayment.value = true
+  else openTender()
+}
+
+// ─── House account payments (a member paying down their balance) ───────────
+
+const showAccountPayment   = ref(false)
+const accountPaymentResult = ref(null) // { payment, changeCents, memberName }
+
+async function showAccountPaymentResult({ accountPayment, changeCents, member }) {
+  showAccountPayment.value = false
+  accountPaymentResult.value = { payment: accountPayment, changeCents, memberName: member?.name || member?.email || '' }
+  // Cash goes in the drawer: print the receipt now (it opens the drawer); card receipts print from the button
+  if (accountPayment.method === 'CASH') {
+    await printAccountSlip()
+    loadDrawer()
+  }
+  if (customer.value?.houseAccount?.id === accountPayment.accountId) {
+    customer.value = { ...customer.value, houseAccount: { ...customer.value.houseAccount, balanceCents: accountPayment.balanceCents } }
+  }
+}
+
+function onAccountPaymentDone(result) {
+  showAccountPaymentResult(result)
+}
+
+function onAccountPaymentCard({ cardCheckout, member }) {
+  showAccountPayment.value = false
+  cardPayment.value = { checkout: cardCheckout, tender: null, cashCents: 0, kind: 'account', member }
+}
+
+async function onAccountPaymentClose(info) {
+  showAccountPayment.value = false
+  if (info?.drawerClosed) {
+    await loadDrawer()
+    openDrawerForm()
+  } else {
+    focusSearch()
+  }
+}
+
+function printAccountSlip() {
+  const r = accountPaymentResult.value
+  return printDocument({ type: 'accountPayment', payment: r.payment, memberName: r.memberName, changeCents: r.changeCents })
 }
 
 // What the API expects for each cart line (see buildSale)
@@ -848,7 +942,7 @@ async function submitRefund({ items, restock, reason, totalCents, method }) {
   const verb = mode === 'void' ? 'Void' : 'Refund'
   const approval = await requestApproval(
     mode === 'void' ? 'VOID' : 'REFUND',
-    `${verb} sale #${sale.number}: ${formatCents(totalCents)} back ${method === 'CARD_TERMINAL' ? 'to the card' : 'in cash'}. Reason: ${reason}`,
+    `${verb} sale #${sale.number}: ${formatCents(totalCents)} back ${{ CARD_TERMINAL: 'to the card', HOUSE_ACCOUNT: 'to the house account' }[method] ?? 'in cash'}. Reason: ${reason}`,
     reason,
   )
   if (!approval) return

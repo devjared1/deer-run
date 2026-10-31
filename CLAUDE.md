@@ -22,7 +22,9 @@ deer-run/
 │   │   │   ├── teetimes.js, events.js, bookings/, inquiries/   # public site
 │   │   │   ├── webhooks/stripe.js
 │   │   │   ├── admin/         # Admin panel APIs (requireAdmin); _auth.js holds the shared auth helpers,
-│   │   │   │                  #   _db.js (fetchAll), _csv.js, _membership.js (expiry + reminder emails)
+│   │   │   │                  #   _db.js (fetchAll), _csv.js, _membership.js (expiry + reminder emails),
+│   │   │   │                  #   _houseAccounts.js / _statements.js (house accounts)
+│   │   │   ├── account/       # The signed-in member's own data (house account, statements)
 │   │   │   ├── staff/         # Staff portal APIs (requireStaff / requireRegister); _auth.js, _timesheet.js,
 │   │   │   │                  #   _timeoff.js, _approvals.js, _pin.js, _drawer.js; register/, sales/, teesheet/ for the POS
 │   │   │   └── internal/      # Scheduled jobs (Bearer CRON_SECRET), called by apps/cron
@@ -228,7 +230,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
 | POST | `/api/inquiries/membership`, `/api/inquiries/contact` | Public | Save inquiry/message + email `CONTACT_EMAIL_TO` |
-| POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email (`metadata.bookingId`), or saves a register card sale (`metadata.cardCheckoutId`) |
+| POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email (`metadata.bookingId`), saves a register card sale (`metadata.cardCheckoutId`), or records a house account payment (`metadata.houseAccountId`); `payment_intent.payment_failed` → autopay failed |
 
 **Admin panel** (all `requireAdmin`, i.e. `User.role = ADMIN`)
 
@@ -261,6 +263,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/drawer-sessions?from=&to=&registerId=` | GET | Cash drawer sessions in a range (open ones with running totals) |
 | `/api/admin/drawer-sessions/:id` | POST | `{ action: 'close', countedCents, note }` — close a stuck drawer |
 | `/api/admin/users/:id` | PUT | `{ role?, memberUntil?, membershipTier? }` |
+| `/api/admin/house-accounts` | GET, POST | Accounts with balances; open one `{ userId, creditLimitCents }` |
+| `/api/admin/house-accounts/:id[?from=&to=]` | GET, PUT, POST | Account, entries, statements (+ on-demand statement); PUT `{ status, creditLimitCents, resetPin }`; POST `adjust` / `email_statement` |
 
 **Staff portal** (`requireStaff`: an active `Employee` linked to the login; register endpoints use `requireRegister`)
 
@@ -279,6 +283,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/teesheet/:bookingId` | POST | `{ action: 'check_in' \| 'undo_check_in' }` (paid bookings only) |
 | `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`). With a `CARD_TERMINAL` payment it charges the card first → 202 `{ cardCheckout }`. Items can be products, custom amounts, a checked-in `booking` ($0) or a `newBooking` (walk-in/phone, created with the sale). Cash needs an open drawer (409 `DRAWER_CLOSED`); membership products need a customer |
 | `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`; `method` CARD_TERMINAL refunds through Stripe, CASH needs an open drawer) |
+| `/api/staff/account-payments` | POST | A member pays toward their house account: CASH (drawer) → 201, CARD → 202 `{ cardCheckout }` |
 | `/api/staff/card-checkouts/:id` | GET, POST | Poll a card payment (saves the sale once Stripe confirms); `retry` / `cancel` / `simulate` (test mode) / `complete` |
 
 **Internal** (`Authorization: Bearer <CRON_SECRET>`)
@@ -286,6 +291,14 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | Path | Methods | Description |
 |------|---------|-------------|
 | `/api/internal/memberships` | POST | Daily: renewal reminders (30/7 days, ended) + lapsed members → GUEST |
+| `/api/internal/statements` | POST | Daily: last month's house account statements (only creates missing ones) + autopay + emails |
+
+**Member** (`authenticate`: any signed-in user, their own data only)
+
+| Path | Methods | Description |
+|------|---------|-------------|
+| `/api/account/house-account` | GET, POST | Own account, activity, statements; `set_pin`, `pay` / `confirm_payment`, `autopay_setup` / `autopay_confirm` / `autopay_disable` |
+| `/api/account/statements/:id` | GET | One own statement with its entries (printable) |
 
 ### Auth helpers in Functions
 `functions/api/admin/_auth.js` and `functions/api/staff/_auth.js` hold the helpers. Each returns either a
@@ -351,6 +364,7 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 | | `Register` | Physical register; `stripeReaderId` |
 | | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line; `SaleItem.bookingId?` links tee time lines |
 | | `CashDrawerSession` | Drawer float, count, expected and over/short per register (one open at a time) |
+| | `HouseAccount`, `HouseAccountEntry`, `Statement` | Member charge accounts: ledger (balance = sum, + owed), monthly statements, PIN, autopay card |
 | | `CardCheckout` | A sale waiting on a card: PaymentIntent, reader, status (PENDING → COMPLETING → COMPLETED / SUCCEEDED / CANCELED), `payload` (create_sale args) |
 | | `ManagerApproval` | Single-use, short-lived manager sign-offs |
 | | `SaleRefund`, `SaleRefundItem` | Voids and refunds |
@@ -361,7 +375,7 @@ time entry per employee, and `CashDrawerSession_one_open_per_register` one open 
 model partial indexes, so delete any `DROP INDEX` line for them from generated migrations.
 
 The source of `create_sale()` / `refund_sale()` is in `apps/api/prisma/sql/` (reference copies of 4 and 5; the latest
-versions are in `7_pos_card_payments.sql`). To change one, copy the latest and `CREATE OR REPLACE` it in a new
+versions are in `8_pos_house_accounts.sql`). To change one, copy the latest and `CREATE OR REPLACE` it in a new
 migration. Follow-up writes after a sale (membership dates, links) run in `saveSale()` (`staff/sales/_save.js`) and
 report a warning instead of failing a sale that's already saved.
 
@@ -395,8 +409,9 @@ reach the database. `TODO.md` → Housekeeping tracks which migrations still nee
 | `/book`         | `BookView.vue`        | — |
 | `/confirmation` | `ConfirmationView.vue` (`?booking_id=`) | — |
 | `/login`        | `LoginView.vue`       | — |
-| `/account`      | `AccountView.vue`     | `requiresAuth` |
-| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `registers` | `requiresAdmin` |
+| `/account`      | `AccountView.vue` (+ `HouseAccountPanel`) | `requiresAuth` |
+| `/account/statements/:id` | `StatementView.vue` (printable) | `requiresAuth` |
+| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `house-accounts` (+ `/:id`), `registers` | `requiresAdmin` |
 | `/staff`        | `staff/StaffLayout.vue` + `TimeClockView` | `requiresStaff` |
 | `/staff/timesheet`, `/staff/schedule`, `/staff/time-off` | `MyTimesheetView`, `MyScheduleView`, `TimeOffView` | `requiresStaff` |
 | `/staff/register`, `/staff/teesheet` | `RegisterView.vue`, `TeeSheetView.vue` | `requiresStaff` + `requiresRegister` |
@@ -496,6 +511,9 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
   customer and extend `User.memberUntil`. **Cash drawers** must be open (counted float) before cash moves; closing
   records the count and over/short. **Card payments** run through `staff/_cardCheckout.js`: charge on the reader
   first, save the sale on success (register poll or webhook, whichever first). Refunds go back the way they were paid.
+  **House accounts**: members charge with their PIN (tender Account); `create_sale()` writes the ledger CHARGE.
+  Payments: register **Account payment** (cash/card), My Account (online, autopay). Statements on the 1st via
+  `apps/cron` → `/api/internal/statements`.
   Reporting lives on `/admin/sales` (sales list, receipts, CSV, end-of-day report, drawers) and the dashboard; managers print
   the end-of-day (Z) slip from the register. Sales count on the day they're rung up and voids/refunds on the day they
   happen. Supabase returns at most 1,000 rows per request, so reports and exports page through with `fetchAll()`.
@@ -588,7 +606,7 @@ GUEST). Deploy: `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run 
 
 ### Stripe Webhook
 - Register endpoint: `https://deerrun.golf/api/webhooks/stripe`
-- Event to enable: `payment_intent.succeeded`
+- Events to enable: `payment_intent.succeeded`, `payment_intent.payment_failed`
 - Paste the signing secret into `STRIPE_WEBHOOK_SECRET`.
 
 ### Database Migrations (CI/CD)

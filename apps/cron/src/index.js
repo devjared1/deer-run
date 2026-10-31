@@ -3,6 +3,7 @@
 
 const JOBS = [
   '/api/internal/memberships', // renewal reminders + move lapsed members to GUEST
+  '/api/internal/statements', // house account statements for last month (only creates what's missing) + autopay
 ]
 
 async function runJobs(env) {
