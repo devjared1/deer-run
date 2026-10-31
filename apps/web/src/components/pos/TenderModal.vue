@@ -8,13 +8,40 @@
 
       <template v-if="totalCents > 0">
         <!-- Method -->
-        <div class="grid grid-cols-3 gap-2 mb-4">
-          <button class="method-btn border-pine bg-pine text-parch">Cash</button>
-          <button class="method-btn border-gray-200 text-gray-400 cursor-not-allowed" disabled title="Card reader setup comes in a later phase">Card</button>
+        <div class="grid grid-cols-4 gap-2 mb-4">
+          <button :class="['method-btn', method === 'cash' ? 'border-pine bg-pine text-parch' : 'border-gray-300 text-bark hover:bg-gray-50']" @click="setMethod('cash')">Cash</button>
+          <button
+            :class="['method-btn', method === 'card' ? 'border-pine bg-pine text-parch' : cardBlocked ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300 text-bark hover:bg-gray-50']"
+            :disabled="!!cardBlocked"
+            :title="cardBlocked || ''"
+            @click="setMethod('card')"
+          >Card</button>
+          <button
+            :class="['method-btn', method === 'split' ? 'border-pine bg-pine text-parch' : cardBlocked || totalCents < 100 ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300 text-bark hover:bg-gray-50']"
+            :disabled="!!cardBlocked || totalCents < 100"
+            title="Part card, part cash"
+            @click="setMethod('split')"
+          >Split</button>
           <button class="method-btn border-gray-200 text-gray-400 cursor-not-allowed" disabled title="House accounts come in a later phase">Account</button>
         </div>
 
-        <label class="label-sm">Cash Received ($)</label>
+        <template v-if="method === 'card'">
+          <p class="text-center text-gray-500 text-sm font-body">
+            The full amount goes to the card reader. The customer taps, inserts or swipes there.
+          </p>
+        </template>
+
+        <template v-if="method === 'split'">
+          <label class="label-sm">On the card ($)</label>
+          <input v-model="cardAmount" type="number" min="0.50" step="0.01" class="input-field w-full text-lg tabular-nums" />
+          <p class="text-xs font-body mt-1" :class="splitCardValid ? 'text-gray-500' : 'text-clay'">
+            <template v-if="splitCardValid">{{ formatCents(cashDueCents) }} in cash</template>
+            <template v-else>The card amount must be at least $0.50 and leave some for cash</template>
+          </p>
+        </template>
+
+        <template v-if="method !== 'card'">
+        <label class="label-sm" :class="method === 'split' ? 'mt-3' : ''">Cash Received ($)</label>
         <input
           ref="tenderInput"
           v-model="tendered"
@@ -30,13 +57,14 @@
           </button>
         </div>
         <div class="mt-3 text-center font-body">
-          <span v-if="tenderedCents >= totalCents" class="text-pine text-lg">
-            Change: <strong class="tabular-nums">{{ formatCents(tenderedCents - totalCents) }}</strong>
+          <span v-if="tendered !== '' && tenderedCents >= cashDueCents" class="text-pine text-lg">
+            Change: <strong class="tabular-nums">{{ formatCents(tenderedCents - cashDueCents) }}</strong>
           </span>
           <span v-else-if="tendered !== ''" class="text-clay text-sm">
-            {{ formatCents(totalCents - tenderedCents) }} short
+            {{ formatCents(cashDueCents - tenderedCents) }} short
           </span>
         </div>
+        </template>
       </template>
       <p v-else class="text-center text-gray-500 text-sm font-body mb-2">No payment needed.</p>
 
@@ -60,7 +88,7 @@
       <div class="flex justify-end gap-3 mt-5">
         <button class="btn-outline-sm" :disabled="busy" @click="$emit('close')">Back</button>
         <button :disabled="!canComplete || busy" class="btn-amber px-5 py-2 text-sm disabled:opacity-50" @click="complete">
-          {{ busy ? 'Completing…' : 'Complete Sale' }}
+          {{ busy ? 'Completing…' : method === 'cash' || totalCents === 0 ? 'Complete Sale' : 'Charge Card' }}
         </button>
       </div>
       <p v-if="error" class="text-red-500 text-sm mt-3 font-body">{{ error }}</p>
@@ -77,9 +105,13 @@ const props = defineProps({
   defaultEmail: { type: String, default: '' },
   busy: { type: Boolean, default: false },
   error: { type: String, default: null },
+  // Why card payments aren't available on this register (null = they are)
+  cardBlocked: { type: String, default: 'This register has no card reader' },
 })
 const emit = defineEmits(['complete', 'close'])
 
+const method      = ref('cash') // cash | card | split
+const cardAmount  = ref('')
 const tendered    = ref('')
 const print       = ref(true)
 const sendEmail   = ref(false)
@@ -87,10 +119,20 @@ const email       = ref(props.defaultEmail)
 const tenderInput = ref(null)
 
 const tenderedCents = computed(() => dollarsToCents(tendered.value) || 0)
+const cardCents     = computed(() => (method.value === 'card' ? props.totalCents : method.value === 'split' ? dollarsToCents(cardAmount.value) || 0 : 0))
+const cashDueCents  = computed(() => props.totalCents - cardCents.value)
+const splitCardValid = computed(() => cardCents.value >= 50 && cardCents.value < props.totalCents)
+
+function setMethod(m) {
+  method.value = m
+  tendered.value = ''
+  if (m === 'split' && !cardAmount.value) cardAmount.value = (Math.floor(props.totalCents / 2) / 100).toFixed(2)
+  if (m !== 'card') setTimeout(() => tenderInput.value?.focus())
+}
 
 // Exact, then the next round amounts customers usually hand over
 const quickAmounts = computed(() => {
-  const t = props.totalCents
+  const t = cashDueCents.value
   const amounts = [t]
   for (const step of [500, 1000, 2000, 5000, 10000]) {
     const next = Math.ceil(t / step) * step
@@ -101,12 +143,23 @@ const quickAmounts = computed(() => {
 
 const canComplete = computed(() => {
   if (sendEmail.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value.trim())) return false
-  return props.totalCents === 0 || tenderedCents.value >= props.totalCents
+  if (props.totalCents === 0) return true
+  if (method.value === 'card') return props.totalCents >= 50
+  if (method.value === 'split') return splitCardValid.value && tenderedCents.value >= cashDueCents.value
+  return tenderedCents.value >= props.totalCents
 })
+
+function payments() {
+  if (props.totalCents === 0) return []
+  const list = []
+  if (cardCents.value > 0) list.push({ method: 'CARD_TERMINAL', amountCents: cardCents.value })
+  if (cashDueCents.value > 0) list.push({ method: 'CASH', tenderedCents: tenderedCents.value })
+  return list
+}
 
 function complete() {
   emit('complete', {
-    payments: props.totalCents > 0 ? [{ method: 'CASH', tenderedCents: tenderedCents.value }] : [],
+    payments: payments(),
     print: print.value,
     receiptEmail: sendEmail.value ? email.value.trim() : null,
   })

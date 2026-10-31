@@ -196,6 +196,7 @@ model Employee {
   approvalsReceived        ManagerApproval[]   @relation("ApprovalCashier")
   drawersOpened            CashDrawerSession[] @relation("DrawerOpenedBy")
   drawersClosed            CashDrawerSession[] @relation("DrawerClosedBy")
+  cardCheckouts            CardCheckout[]
 }
 
 // One clock-in/clock-out pair. clockOut is null while the employee is on the clock;
@@ -346,6 +347,7 @@ model Register {
   refunds        SaleRefund[]
   approvals      ManagerApproval[]
   drawerSessions CashDrawerSession[]
+  cardCheckouts  CardCheckout[]
   createdAt      DateTime            @default(now())
 }
 
@@ -391,6 +393,7 @@ model Sale {
   payments        Payment[]
   refunds         SaleRefund[]
   approvals       ManagerApproval[]
+  cardCheckout    CardCheckout?
   createdAt       DateTime          @default(now())
 
   @@index([createdAt])
@@ -480,23 +483,24 @@ enum RefundKind {
 
 // Money returned on a sale. Written only by the refund_sale() Postgres function.
 model SaleRefund {
-  id          String           @id @default(cuid())
-  sale        Sale             @relation(fields: [saleId], references: [id])
-  saleId      String
-  kind        RefundKind
-  method      PaymentMethod // how the money went back
-  amountCents Int // including tax
-  taxCents    Int
-  restocked   Boolean
-  reason      String
-  approval    ManagerApproval  @relation(fields: [approvalId], references: [id])
-  approvalId  String           @unique
-  cashier     Employee         @relation(fields: [cashierId], references: [id])
-  cashierId   String
-  register    Register         @relation(fields: [registerId], references: [id])
-  registerId  String
-  items       SaleRefundItem[]
-  createdAt   DateTime         @default(now())
+  id             String           @id @default(cuid())
+  sale           Sale             @relation(fields: [saleId], references: [id])
+  saleId         String
+  kind           RefundKind
+  method         PaymentMethod // how the money went back
+  amountCents    Int // including tax
+  taxCents       Int
+  restocked      Boolean
+  reason         String
+  stripeRefundId String?          @unique // card refunds: the Stripe refund (re_…)
+  approval       ManagerApproval  @relation(fields: [approvalId], references: [id])
+  approvalId     String           @unique
+  cashier        Employee         @relation(fields: [cashierId], references: [id])
+  cashierId      String
+  register       Register         @relation(fields: [registerId], references: [id])
+  registerId     String
+  items          SaleRefundItem[]
+  createdAt      DateTime         @default(now())
 
   @@index([saleId])
   @@index([createdAt])
@@ -541,4 +545,37 @@ model CashDrawerSession {
   closeNote         String?
 
   @@index([registerId, openedAt])
+}
+
+// ─── Point of sale: card payments (Stripe Terminal) ──────────────────────────
+
+enum CardCheckoutStatus {
+  PENDING // waiting for the card on the reader (a decline leaves it PENDING with lastError)
+  SUCCEEDED // card charged, sale not saved yet (or saving failed: lastError; retried)
+  COMPLETING // a request is saving the sale right now (claimed so the register and webhook can't both save it)
+  COMPLETED // sale saved (saleId)
+  CANCELED // cancelled before the card was charged
+}
+
+// A sale waiting on a card payment. The register charges the card first (a card_present PaymentIntent
+// processed on the register's reader); the sale is saved from `payload` once Stripe says it succeeded,
+// by whichever comes first: the register polling or the payment_intent.succeeded webhook.
+model CardCheckout {
+  id                    String             @id @default(cuid())
+  register              Register           @relation(fields: [registerId], references: [id])
+  registerId            String
+  cashier               Employee           @relation(fields: [cashierId], references: [id])
+  cashierId             String
+  status                CardCheckoutStatus @default(PENDING)
+  amountCents           Int // charged to the card (the rest of a split sale is cash)
+  stripePaymentIntentId String             @unique
+  stripeReaderId        String
+  payload               Json // create_sale arguments and follow-ups, built and validated before charging
+  sale                  Sale?              @relation(fields: [saleId], references: [id])
+  saleId                String?            @unique
+  lastError             String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @default(now())
+
+  @@index([registerId, createdAt])
 }

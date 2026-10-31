@@ -204,7 +204,8 @@ Membership Dues, Concessions (food & drink), Apparel, Golf Equipment & Balls, Re
       differs from what the register showed
 - [x] Cash tender: quick amounts (exact, next $5/$10/$20…), change due shown large after the sale.
       $0 sales (e.g. member greens fees) complete with no payment
-- [ ] Split tender UI: the API already accepts several payments; add the UI with card payments in Phase 3
+- [x] Split tender UI: **Split** in the payment dialog puts part on the card and the rest in cash (with change).
+      One card per sale; the card part is an exact amount and cash covers the rest
 - [x] Receipt: 80 mm receipt printed automatically when the sale completes (`@page` size applied only while
       printing), "Email receipt" at checkout (prefilled from the customer) or afterwards, reprint from the
       completion screen (`GET /api/staff/sales/:id`, `POST /api/staff/sales/:id { action: 'email' }`)
@@ -232,15 +233,29 @@ Membership Dues, Concessions (food & drink), Apparel, Golf Equipment & Balls, Re
       receipt printer as default, paper size, drawer kick, scanner test, reader pairing
 
 ### Phase 3: Card payments (Stripe Terminal)
-- [ ] Stripe setup: a Terminal Location for the course; register the reader(s) to it
-- [ ] Card reader status on the admin **Registers** page (online/offline, from Stripe)
-- [ ] Server-driven flow: create the PaymentIntent (`card_present`, metadata `saleId`) →
-      `terminal.readers.processPaymentIntent` → poll reader status / handle the webhook → mark the payment
-      succeeded and complete the sale. Works from any browser; no reader SDK in the page
-- [ ] Register UI: "Waiting for card…" state, cancel on the reader, decline/retry handling
-- [ ] Webhook: route POS PaymentIntents (metadata `saleId`) separately from booking PaymentIntents
-- [ ] Refunds through Stripe for card sales (full and partial)
-- [ ] Test with Stripe's simulated reader before hardware arrives
+- [x] Stripe setup: **Admin → Registers → Pair a reader** takes the pairing code from the reader, creates the course's
+      Terminal Location the first time, registers the reader to it and assigns it to the register
+      (`POST /api/admin/registers/readers`). Test mode: code `simulated-wpe` makes a simulated reader
+- [x] Card reader status on the admin **Registers** page (online/offline, simulated, from Stripe;
+      `GET /api/admin/registers/readers`)
+- [x] Server-driven flow (SQL `apps/api/prisma/sql/7_pos_card_payments.sql`): the sale is priced and validated as usual,
+      then saved as a `CardCheckout` with everything `create_sale` needs; a `card_present` PaymentIntent (metadata
+      `cardCheckoutId`) goes to the register's reader with `terminal.readers.processPaymentIntent`. The register polls
+      `GET /api/staff/card-checkouts/:id`; when Stripe says it succeeded, the sale is saved (claimed with a conditional
+      status update so the register and the webhook can't both save it). If saving fails after the charge it stays
+      retryable ("Save sale"). `create_sale` now stores `Payment.stripePaymentIntentId` (and `SaleItem.bookingId`).
+      Walk-in bookings are held PENDING while the card is on the reader. No reader SDK in the page
+- [x] Register UI: "Tap, insert or swipe" state, cancel (cancels on the reader and in Stripe; completes instead if the
+      card was already charged), decline message with **Try again**, reader offline/busy messages
+- [x] Webhook: `payment_intent.succeeded` with `metadata.cardCheckoutId` saves the register sale (if the register hasn't);
+      booking PaymentIntents (`metadata.bookingId`) are handled as before
+- [x] Refunds through Stripe for card sales (full and partial, voids too): money goes back the way it was paid. Card
+      refunds are capped at what's left of the card payment, cash refunds at what was paid in cash (so a card sale can't
+      be refunded from the drawer). Stripe first (idempotent per manager approval; a failure releases the approval),
+      then `refund_sale` records it with `SaleRefund.stripeRefundId`. Split sales are refunded in two passes, not voided
+- [x] Test with Stripe's simulated reader before hardware arrives: with test keys the card dialog shows **Simulate card**
+      and **Simulate decline** (`testHelpers.terminal.readers.presentPaymentMethod`)
+- [ ] Optional: tips on the reader, and a reader "cart" display of the items while the customer pays
 
 ### Phase 4: Member house accounts
 Decisions: members are **invoiced** by default and can **opt in to autopay** themselves; charging to an
@@ -336,9 +351,13 @@ manager can print a statement for any member **on demand**.
       `prisma/seed-pos.sql`, `migrations/4_pos_sales`, `migrations/5_pos_approvals_refunds`. The admin
       Settings page saves the new pay period and POS fields, so saving settings fails until the migrations
       are applied
+- [x] Reference copies of migrations 4 and 5 (`create_sale`, `refund_sale`) are now in `apps/api/prisma/sql/`
 - [ ] Then run `apps/api/prisma/sql/6_pos_teesheet_memberships_drawers.sql` (tee sheet, memberships, cash
       drawers). Until it runs, the tee sheet, drawer and membership features fail, **and cash sales are refused**
       because no drawer can be opened. Deploy the code and run the SQL together
+- [ ] Run `apps/api/prisma/sql/7_pos_card_payments.sql` (card checkouts; `create_sale`/`refund_sale` store Stripe IDs).
+      Card payments fail until it runs; cash sales keep working
+- [ ] Stripe webhook: no new events needed (`payment_intent.succeeded` covers register card sales too)
 - [ ] Set `CRON_SECRET` in the Pages project (Production), then deploy the cron Worker:
       `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy` (same secret value)
 - [ ] Later, from a network that can reach the database:

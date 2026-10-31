@@ -5,8 +5,8 @@ How to set up a Deer Run point-of-sale register PC. Each register is a Windows P
 - an **80 mm thermal receipt printer** (e.g. Epson TM-m30 or Star TSP100 series), installed as a normal Windows printer
 - a **cash drawer** plugged into the printer's drawer (DK) port
 - a **USB barcode scanner** in keyboard mode
-- a **Stripe Reader S700** or BBPOS WisePOS E (internet-connected smart reader) for cards. Card payments arrive in
-  POS Phase 3; you can set the reader up now. Bluetooth/USB readers (M2, WisePad 3) won't work with the web register.
+- a **Stripe Reader S700** or BBPOS WisePOS E (internet-connected smart reader) for cards. Bluetooth/USB readers
+  (M2, WisePad 3) won't work with the web register.
 
 Time needed: about 30–45 minutes per register.
 
@@ -77,17 +77,19 @@ different `--user-data-dir`) also clears the choice.
 
 ## 5. Card reader (Stripe Terminal)
 
-Card payments at the register are POS Phase 3 (see `TODO.md`). To get the reader ready:
+1. Power on the reader and connect it to the clubhouse Wi-Fi (or Ethernet with the S700 dock).
+2. On the reader open **Settings → Generate pairing code**.
+3. In **Admin → Registers**, click **+ Pair a reader** next to the register, enter the code, and keep or change the
+   reader name. This creates the course's Stripe Terminal location the first time and assigns the reader to the
+   register. The page then shows the reader as **Online**.
+4. At the register, **Card** and **Split** are now enabled in the payment dialog. The customer taps, inserts or
+   swipes on the reader; the sale completes by itself when the payment is approved.
 
-1. In the Stripe Dashboard → **Terminal → Locations**, create a location for the course (address: the clubhouse).
-2. Power on the reader, connect it to the clubhouse Wi-Fi (or Ethernet with the S700 dock), and on the reader open
-   **Settings → Generate pairing code**.
-3. In Stripe → Terminal → **Readers → Register reader**, enter the pairing code, pick the location and give it the
-   register's name (e.g. "Pro Shop").
-4. Copy the reader's ID (starts with `tmr_`) into **Admin → Registers → Edit → Stripe reader ID**.
-5. Until Phase 3 ships, the register takes cash and $0 sales only. Card refunds also come with Phase 3.
+To try it before the hardware arrives, use Stripe **test keys** and pair code `simulated-wpe`: that creates a simulated
+reader, and the card dialog shows **Simulate card** / **Simulate decline** buttons.
 
-Use Stripe **test mode** and its simulated reader to try the flow before going live.
+Card refunds go back to the card from the register's Refund screen (no drawer needed). Cash refunds can't hand out more
+than was paid in cash.
 
 ## Troubleshooting
 
@@ -98,4 +100,7 @@ Use Stripe **test mode** and its simulated reader to try the flow before going l
 | Drawer doesn't open | Check the drawer cable is in the printer's DK port (not a phone jack), and the driver's "open drawer before printing" setting. |
 | Long blank tail after the receipt | Set the driver's paper cut to "end of document" and leave the length on "Receipt" (not a fixed page length). |
 | Scanner types into the wrong place | Click the register's search box once. If codes run together, enable the scanner's Enter suffix. |
+| Card dialog says the reader is offline | Check the reader's power and Wi-Fi; **Admin → Registers** shows its status. Then press **Try again**. |
+| Card dialog says the reader is busy | Another payment is on the reader. Cancel it on the reader screen, then **Try again**. |
+| "Card" is greyed out in the payment dialog | The register has no reader paired (Admin → Registers), or Stripe isn't configured. |
 | "Your position is not set up to use the register" | Admin → Settings → Point of Sale: add the employee's position to the register positions. |
