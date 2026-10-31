@@ -46,6 +46,7 @@ const routes = [
       { path: 'schedule',  component: () => import('@/views/staff/MyScheduleView.vue') },
       { path: 'time-off',  component: () => import('@/views/staff/TimeOffView.vue') },
       { path: 'register',  component: () => import('@/views/staff/RegisterView.vue'), meta: { requiresRegister: true } },
+      { path: 'teesheet',  component: () => import('@/views/staff/TeeSheetView.vue'), meta: { requiresRegister: true } },
       { path: 'pin',       component: () => import('@/views/staff/ManagerPinView.vue'), meta: { requiresRegisterManager: true } },
     ],
   },

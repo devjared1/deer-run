@@ -2,12 +2,16 @@ import { json } from '../_auth.js'
 
 export const PRODUCT_SELECT =
   'id, categoryId, name, description, priceCents, memberPriceCents, trackInventory, active, sortOrder, createdAt, ' +
+  'membershipMonths, membershipTier, ' +
   'category:ProductCategory(id, name, taxExempt), ' +
   'variants:ProductVariant(id, size, color, sku, barcode, priceCents, memberPriceCents, stockQty, active, sortOrder)'
 
 // SKUs and barcodes: letters, digits, dot, dash, underscore (what scanners and labels produce)
 const CODE_PATTERN = /^[A-Za-z0-9._-]{1,64}$/
 const MAX_CENTS = 10_000_000 // $100,000
+
+// Must match the tier names in src/data/membershipTiers.js
+export const MEMBERSHIP_TIERS = ['Individual', 'Premier', 'Family']
 
 export function serializeProduct(product) {
   const variants = [...(product.variants || [])].sort((a, b) => a.sortOrder - b.sortOrder)
@@ -53,6 +57,21 @@ export function parseProduct(body, { partial = false } = {}) {
     if (r.error) return r
     data.memberPriceCents = r.value
   }
+  if (has('membershipMonths')) {
+    const v = body.membershipMonths
+    if (v === null || v === '' || v === 0) data.membershipMonths = null
+    else {
+      const n = Number(v)
+      if (!Number.isInteger(n) || n < 1 || n > 60) return { error: 'Membership length must be 1–60 months' }
+      data.membershipMonths = n
+    }
+  }
+  if (has('membershipTier')) {
+    const tier = optionalText(body.membershipTier)
+    if (tier && !MEMBERSHIP_TIERS.includes(tier)) return { error: `Membership tier must be one of ${MEMBERSHIP_TIERS.join(', ')}` }
+    data.membershipTier = tier
+  }
+  if (data.membershipMonths === null) data.membershipTier = null
   if (has('trackInventory')) data.trackInventory = Boolean(body.trackInventory)
   if (has('active')) data.active = Boolean(body.active)
   if (has('sortOrder')) {

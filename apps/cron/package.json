@@ -1,0 +1,11 @@
+{
+  "name": "@deer-run/cron",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev --test-scheduled",
+    "lint": "echo 'No lint configured for the cron Worker'"
+  }
+}

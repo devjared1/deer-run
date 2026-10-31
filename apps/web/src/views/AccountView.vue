@@ -101,6 +101,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter }    from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { formatLocalDate } from '@/lib/timeclock'
 import PageHero         from '@/components/layout/PageHero.vue'
 import SectionLabel     from '@/components/ui/SectionLabel.vue'
 
@@ -113,9 +114,16 @@ const cancelling = ref(null)
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
-const roleLabel = computed(() =>
-  authStore.profile?.role === 'ADMIN' ? 'Admin' : 'Member'
-)
+// "Premier member through Nov 30, 2027", "Member", "Guest" or "Admin"
+const roleLabel = computed(() => {
+  const p = authStore.profile
+  if (p?.role === 'ADMIN') return 'Admin'
+  if (p?.role !== 'MEMBER') return 'Guest'
+  const tier = p.membershipTier ? `${p.membershipTier} member` : 'Member'
+  return p.memberUntil
+    ? `${tier} through ${formatLocalDate(p.memberUntil, { month: 'short', day: 'numeric', year: 'numeric' })}`
+    : tier
+})
 
 const now = new Date()
 now.setHours(0, 0, 0, 0)

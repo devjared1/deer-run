@@ -21,9 +21,11 @@ deer-run/
 │   │   │   ├── auth/me.js     # Profile + linked employee + register access
 │   │   │   ├── teetimes.js, events.js, bookings/, inquiries/   # public site
 │   │   │   ├── webhooks/stripe.js
-│   │   │   ├── admin/         # Admin panel APIs (requireAdmin); _auth.js holds the shared auth helpers
-│   │   │   └── staff/         # Staff portal APIs (requireStaff / requireRegister); _auth.js, _timesheet.js,
-│   │   │                      #   _timeoff.js, _approvals.js, _pin.js; register/ and sales/ for the POS
+│   │   │   ├── admin/         # Admin panel APIs (requireAdmin); _auth.js holds the shared auth helpers,
+│   │   │   │                  #   _db.js (fetchAll), _csv.js, _membership.js (expiry + reminder emails)
+│   │   │   ├── staff/         # Staff portal APIs (requireStaff / requireRegister); _auth.js, _timesheet.js,
+│   │   │   │                  #   _timeoff.js, _approvals.js, _pin.js, _drawer.js; register/, sales/, teesheet/ for the POS
+│   │   │   └── internal/      # Scheduled jobs (Bearer CRON_SECRET), called by apps/cron
 │   │   ├── public/_redirects  # SPA fallback: /* → /index.html 200
 │   │   ├── scripts/dev-pages.mjs  # `npm run dev:pages` (wrangler + vite together)
 │   │   ├── src/
@@ -49,13 +51,15 @@ deer-run/
 │   │   ├── index.html, vite.config.js, wrangler.toml, tailwind.config.js, postcss.config.js
 │   │   ├── .eslintrc.cjs
 │   │   └── .env.example       # Both VITE_* (build-time) and server-side vars
+│   ├── cron/                  # Cloudflare Worker with a cron trigger: calls /api/internal/* daily (wrangler.toml)
 │   └── api/                   # DB management only — no running server
 │       ├── prisma/
 │       │   ├── schema.prisma  # DB schema (source of truth for the data model)
 │       │   ├── seed.js        # Prisma seed: course settings, tee time slots, events
 │       │   ├── seed.sql       # Same base seed as SQL, for the Supabase SQL Editor
 │       │   ├── seed-pos.sql   # POS seed: categories, "Pro Shop" register, products
-│       │   └── migrations/    # Gitignored — kept locally (see "Database migrations")
+│       │   ├── migrations/    # Gitignored — kept locally (see "Database migrations")
+│       │   └── sql/           # Committed SQL for the Supabase SQL Editor (6_… and later)
 │       ├── package.json       # Prisma devDep only
 │       └── .env.example       # DATABASE_URL only
 ├── docs/register-setup.md     # How to set up a POS register PC (printer, kiosk Chrome, scanner, reader)
@@ -173,6 +177,7 @@ Accessed in Functions via `context.env.<NAME>`.
 | `STRIPE_WEBHOOK_SECRET`   | Stripe webhook signing secret (`whsec_...`)       |
 | `RESEND_API_KEY`          | Resend API key                                    |
 | `CONTACT_EMAIL_TO`        | Recipient for inquiry notification emails         |
+| `CRON_SECRET`             | Shared secret for `/api/internal/*`; the `apps/cron` Worker has the same value |
 
 Emails (inquiries, booking confirmations, receipts, time off decisions) are skipped silently when
 `RESEND_API_KEY` isn't set, so local dev works without it.
@@ -251,7 +256,10 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/registers[/:id]` | GET, POST / PUT, DELETE | Registers (Stripe reader ID) |
 | `/api/admin/sales?from=&to=&registerId=&status=&number=&page=` | GET | Sales list (paged); `&format=csv&detail=sales\|items` exports the range |
 | `/api/admin/sales/:id` | GET, POST | Sale detail; `{ action: 'email', email }` |
-| `/api/admin/sales/report?date=` (or `?from=&to=`, `&registerId=`) | GET | Sales / end-of-day (Z) report (`_report.js` → `buildReport`) |
+| `/api/admin/sales/report?date=` (or `?from=&to=`, `&registerId=`) | GET | Sales / end-of-day (Z) report (`_report.js` → `buildReport`), incl. drawer sessions |
+| `/api/admin/drawer-sessions?from=&to=&registerId=` | GET | Cash drawer sessions in a range (open ones with running totals) |
+| `/api/admin/drawer-sessions/:id` | POST | `{ action: 'close', countedCents, note }` — close a stuck drawer |
+| `/api/admin/users/:id` | PUT | `{ role?, memberUntil?, membershipTier? }` |
 
 **Staff portal** (`requireStaff`: an active `Employee` linked to the login; register endpoints use `requireRegister`)
 
@@ -265,8 +273,17 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch |
 | `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
 | `/api/staff/register/report?registerId=&date=` | GET | Z report for one register and day (register managers only) |
-| `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`) |
-| `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`) |
+| `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session (expected only for managers); `open` with a float / `close` with a count |
+| `/api/staff/teesheet?date=` | GET | Tee sheet: slots, bookings, check-in, receipts |
+| `/api/staff/teesheet/:bookingId` | POST | `{ action: 'check_in' \| 'undo_check_in' }` (paid bookings only) |
+| `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`). Items can be products, custom amounts, a checked-in `booking` ($0) or a `newBooking` (walk-in/phone, created with the sale). Cash needs an open drawer (409 `DRAWER_CLOSED`); membership products need a customer |
+| `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`; cash refunds need an open drawer) |
+
+**Internal** (`Authorization: Bearer <CRON_SECRET>`)
+
+| Path | Methods | Description |
+|------|---------|-------------|
+| `/api/internal/memberships` | POST | Daily: renewal reminders (30/7 days, ended) + lapsed members → GUEST |
 
 ### Auth helpers in Functions
 `functions/api/admin/_auth.js` and `functions/api/staff/_auth.js` hold the helpers. Each returns either a
@@ -318,28 +335,37 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 
 | Area | Model | Key fields |
 |------|-------|------------|
-| Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId` |
+| Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`, `memberUntil?` (last day; null = no expiry), `membershipTier?`, `renewalReminderKey?` |
 | | `TeeTimeSlot` | `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
-| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy) |
+| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy) |
 | | `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range, pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`) |
 | | `TournamentEvent`, `Inquiry`, `ContactMessage` | Events and form submissions |
 | Staff | `Employee` | `userId?` (linked by email), names, `email`, `position` (`EmployeePosition`), `hourlyRateCents`, `active`, manager PIN hash/lockout |
 | | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
 | | `Shift` | `employeeId`, `date`, `startTime`/`endTime` ("HH:MM"; end ≤ start = overnight), `position?` override, `notes?` |
 | | `TimeOffRequest` | `startDate`/`endDate` (inclusive), `type`, `reason?`, `status` (PENDING/APPROVED/DENIED/CANCELLED), `reviewedById` (User.id), `reviewedAt`, `reviewNote` |
-| POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant |
+| POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant; `Product.membershipMonths?`/`membershipTier?` mark membership products |
 | | `InventoryAdjustment` | Stock change log (`InventoryReason`) |
 | | `Register` | Physical register; `stripeReaderId` |
-| | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line |
+| | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line; `SaleItem.bookingId?` links tee time lines |
+| | `CashDrawerSession` | Drawer float, count, expected and over/short per register (one open at a time) |
 | | `ManagerApproval` | Single-use, short-lived manager sign-offs |
 | | `SaleRefund`, `SaleRefundItem` | Voids and refunds |
 
 Postgres functions (in the migrations, callable only by the service role): `adjust_inventory()`,
 `create_sale()`, `refund_sale()`. The partial unique index `TimeEntry_one_open_per_employee` allows one open
-time entry per employee; Prisma can't model it, so delete the `DROP INDEX` line from any generated migration.
+time entry per employee, and `CashDrawerSession_one_open_per_register` one open drawer per register; Prisma can't
+model partial indexes, so delete any `DROP INDEX` line for them from generated migrations.
+
+The source of `create_sale()` / `refund_sale()` lives only in the local migrations (4 and 5), not in the repo.
+New features avoid changing them: follow-up writes (e.g. linking `SaleItem.bookingId`, membership dates) run
+right after the RPC and report a warning instead of failing the sale.
 
 ### Database migrations
-`apps/api/prisma/migrations/` is **gitignored** — migration folders are kept locally. Each phase that changes the
+`apps/api/prisma/migrations/` is **gitignored** — migration folders are kept locally, and migrations written in
+cloud sessions are committed to `apps/api/prisma/sql/` instead (see its README). Generate the SQL with
+`npx prisma migrate diff --from-schema-datamodel <old schema> --to-schema-datamodel prisma/schema.prisma --script`.
+Each phase that changes the
 schema adds a folder (`0_init`, `1_employee_time_management`, `2_timeclock_admin`, `3_pos_catalog`, `4_pos_sales`,
 `5_pos_approvals_refunds`, …) whose SQL is written to be pasted into the **Supabase SQL Editor**: wrapped in a
 transaction, with RLS enabled on new tables (the Functions use the service role, which bypasses RLS). When a
@@ -369,7 +395,7 @@ reach the database. `TODO.md` → Housekeeping tracks which migrations still nee
 | `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `registers` | `requiresAdmin` |
 | `/staff`        | `staff/StaffLayout.vue` + `TimeClockView` | `requiresStaff` |
 | `/staff/timesheet`, `/staff/schedule`, `/staff/time-off` | `MyTimesheetView`, `MyScheduleView`, `TimeOffView` | `requiresStaff` |
-| `/staff/register` | `RegisterView.vue` | `requiresStaff` + `requiresRegister` |
+| `/staff/register`, `/staff/teesheet` | `RegisterView.vue`, `TeeSheetView.vue` | `requiresStaff` + `requiresRegister` |
 | `/staff/pin`    | `ManagerPinView.vue`  | `requiresStaff` + `requiresRegisterManager` |
 
 The router guard awaits `auth.init()` (session + profile) before checking roles, so a page reload doesn't look
@@ -413,13 +439,16 @@ message (plus `status` and optional `code`).
 
 ## Shared libraries (`src/lib/`)
 
-`timeclock.js`, `schedule.js` and `pricing.js` are imported by **both** the Vue app and the Functions (by relative
+`timeclock.js`, `schedule.js`, `pricing.js`, `membership.js` and `teesheet.js` are imported by **both** the Vue app and the Functions (by relative
 path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports or browser-only APIs.
 
 | File | Contents |
 |------|----------|
 | `timeclock.js` | `COURSE_TZ` (America/Chicago), course-local date helpers (`localDate`, `addDays`, `localDateTimeToUtc`…), worked/overtime minutes, pay periods, display formatting |
 | `schedule.js` | Shift length (overnight wrap), overlaps, `scheduleWarnings()`, week/2-week/month `schedulePeriod()` |
+| `membership.js` | `isActiveMember()`, `isLapsedMember()`, `extendMembership()` (shared: register pricing, tee times, sales) |
+| `teesheet.js` | Tee time labels (`teeTime`, `teeTimeLabel`) used on the tee sheet and on receipt lines |
+| `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
 | `pricing.js` | Register line/tax/total math, shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
 | `api.js` | `apiFetch()` (see above) |
@@ -458,7 +487,11 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
 - **Time off**: staff request on `/staff/time-off`; admins approve/deny on `/admin/time-off` (sidebar badge shows
   the pending count) and the employee is emailed. Approved and pending time off shows on the schedule.
 - **POS**: see `TODO.md` → Feature 2 for the register, manager approvals, receipts, voids and refunds.
-  Reporting lives on `/admin/sales` (sales list, receipts, CSV, end-of-day report) and the dashboard; managers print
+  The **tee sheet** (`/staff/teesheet`) checks paid bookings in (register opens with a $0 prepaid line) and books
+  walk-ins/phone bookings that are paid at the register. **Membership products** (`Product.membershipMonths`) need a
+  customer and extend `User.memberUntil`. **Cash drawers** must be open (counted float) before cash moves; closing
+  records the count and over/short.
+  Reporting lives on `/admin/sales` (sales list, receipts, CSV, end-of-day report, drawers) and the dashboard; managers print
   the end-of-day (Z) slip from the register. Sales count on the day they're rung up and voids/refunds on the day they
   happen. Supabase returns at most 1,000 rows per request, so reports and exports page through with `fetchAll()`.
 
@@ -540,7 +573,13 @@ Pure JS modules in `apps/web/src/data/` — no API calls needed:
 
 **Environment variable setup in Cloudflare dashboard:**
 1. Build-time vars (Build tab): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_GOOGLE_MAPS_API_KEY`, `VITE_STRIPE_PUBLISHABLE_KEY`
-2. Runtime secrets (Production tab): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `CONTACT_EMAIL_TO`
+2. Runtime secrets (Production tab): `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `CONTACT_EMAIL_TO`, `CRON_SECRET`
+
+### Scheduled jobs (`apps/cron`)
+Pages has no cron triggers, so a separate Worker runs daily (11:15 UTC) and POSTs to each `/api/internal/*` job
+with `Authorization: Bearer <CRON_SECRET>`. Today: `/api/internal/memberships` (renewal reminders, lapsed members →
+GUEST). Deploy: `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy`. Add new jobs to `JOBS` in
+`apps/cron/src/index.js`.
 
 ### Stripe Webhook
 - Register endpoint: `https://deerrun.golf/api/webhooks/stripe`

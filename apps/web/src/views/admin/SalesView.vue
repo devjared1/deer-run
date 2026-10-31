@@ -177,6 +177,26 @@
       </div>
     </template>
 
+    <!-- ── Drawer sessions ─────────────────────────────────────────────── -->
+    <template v-else-if="tab === 'drawers'">
+      <div v-if="loading && !drawers" class="text-gray-400 text-sm">
+        Loading…
+      </div>
+      <div v-else-if="error" class="text-red-500 text-sm">
+        {{ error }}
+      </div>
+      <div v-else-if="drawers" class="bg-white rounded-xl border border-gray-200 p-5">
+        <DrawerSessionsTable v-if="drawers.sessions.length" :sessions="drawers.sessions" closable @close="startAdminClose" />
+        <p v-else class="text-gray-400 text-sm font-body text-center py-6">
+          No drawer sessions in this period.
+        </p>
+        <p class="text-xs text-gray-400 font-body mt-4">
+          Drawers are opened and closed at the register. Close one here only if the register can't (the closing
+          count still needs to be entered).
+        </p>
+      </div>
+    </template>
+
     <!-- ── Report ──────────────────────────────────────────────────────── -->
     <template v-else>
       <div class="flex flex-wrap items-baseline gap-3 mb-4">
@@ -208,6 +228,34 @@
       </div>
       <SalesReport v-else-if="report" :report="report" />
     </template>
+
+    <!-- Close a drawer from the admin panel -->
+    <div v-if="adminClose" class="modal-overlay print:hidden" @click.self="adminClose = null">
+      <div class="modal-box max-w-sm">
+        <h2 class="font-display font-bold text-bark mb-1">
+          Close {{ adminClose.session.register?.name }} drawer
+        </h2>
+        <p class="text-gray-500 text-sm font-body mb-4">
+          Opened {{ formatWhen(adminClose.session.openedAt) }} by {{ adminClose.session.openedBy?.firstName }}.
+          Enter the cash counted in the drawer.
+        </p>
+        <label class="label-sm">Counted cash ($)</label>
+        <input v-model="adminClose.amount" type="number" min="0" step="0.01" class="input-field w-full">
+        <label class="label-sm mt-3">Note</label>
+        <input v-model="adminClose.note" type="text" maxlength="250" class="input-field w-full" placeholder="Why it's being closed here">
+        <p v-if="adminClose.error" class="text-red-500 text-xs mt-2 font-body">
+          {{ adminClose.error }}
+        </p>
+        <div class="flex justify-end gap-3 mt-5">
+          <button class="btn-outline-sm" @click="adminClose = null">
+            Cancel
+          </button>
+          <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="adminClose.busy || adminClose.amount === ''" @click="submitAdminClose">
+            {{ adminClose.busy ? 'Closing…' : 'Close Drawer' }}
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Sale detail -->
     <div v-if="selected" class="modal-overlay print:hidden" @click.self="selected = null">
@@ -287,17 +335,19 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { apiFetch } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
-import { formatCents } from '@/lib/money'
+import { formatCents, dollarsToCents } from '@/lib/money'
 import { printReceipt } from '@/lib/printReceipt'
 import { localDate, addDays, formatLocalDate, COURSE_TZ } from '@/lib/timeclock'
 import { reportDateLabel, SALE_STATUS_LABELS, SALE_STATUS_CLASSES } from '@/components/pos/salesReport'
 import SaleReceipt from '@/components/pos/SaleReceipt.vue'
 import SalesReport from '@/components/pos/SalesReport.vue'
 import ZReportSlip from '@/components/pos/ZReportSlip.vue'
+import DrawerSessionsTable from '@/components/pos/DrawerSessionsTable.vue'
 
 const TABS = [
   { value: 'sales',  label: 'Sales' },
   { value: 'report', label: 'Report' },
+  { value: 'drawers', label: 'Drawers' },
 ]
 const PAYMENT_LABELS = { CASH: 'Cash', CARD_TERMINAL: 'Card', HOUSE_ACCOUNT: 'House account', PREPAID_ONLINE: 'Paid online', GIFT_CARD: 'Gift card' }
 
@@ -313,6 +363,8 @@ const number     = ref('')
 const registers  = ref([])
 
 const list          = ref(null)
+const drawers       = ref(null)
+const adminClose    = ref(null)
 const report        = ref(null)
 const loading       = ref(false)
 const error         = ref(null)
@@ -371,9 +423,44 @@ async function loadReport() {
   }
 }
 
+async function loadDrawers() {
+  loading.value = true
+  error.value   = null
+  try {
+    drawers.value = await apiFetch(`/api/admin/drawer-sessions?${filterParams()}`)
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    loading.value = false
+  }
+}
+
 function load() {
   if (!from.value || !to.value) return
+  if (tab.value === 'drawers') return loadDrawers()
   return tab.value === 'sales' ? loadSales(1) : loadReport()
+}
+
+function startAdminClose(session) {
+  adminClose.value = { session, amount: '', note: '', busy: false, error: null }
+}
+
+async function submitAdminClose() {
+  const c = adminClose.value
+  c.busy  = true
+  c.error = null
+  try {
+    await apiFetch(`/api/admin/drawer-sessions/${c.session.id}`, {
+      method: 'POST',
+      body: { action: 'close', countedCents: dollarsToCents(c.amount), note: c.note },
+    })
+    adminClose.value = null
+    await loadDrawers()
+  } catch (e) {
+    c.error = e.message
+  } finally {
+    c.busy = false
+  }
 }
 
 watch([tab, from, to, registerId, status], load)

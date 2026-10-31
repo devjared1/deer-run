@@ -38,6 +38,27 @@
           </label>
         </div>
 
+        <!-- Membership -->
+        <div class="grid sm:grid-cols-[auto,1fr,1fr] gap-3 items-end">
+          <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer pb-2">
+            <input v-model="form.isMembership" type="checkbox" class="rounded" /> Selling this makes the customer a member
+          </label>
+          <div v-if="form.isMembership">
+            <label class="label-sm">Membership length (months) *</label>
+            <input v-model="form.membershipMonths" type="number" min="1" max="60" step="1" class="input-field w-full" placeholder="12" />
+          </div>
+          <div v-if="form.isMembership">
+            <label class="label-sm">Tier</label>
+            <select v-model="form.membershipTier" class="input-field w-full">
+              <option value="">—</option>
+              <option v-for="t in membershipTiers" :key="t.name" :value="t.name">{{ t.name }}</option>
+            </select>
+          </div>
+          <p v-if="form.isMembership" class="sm:col-span-3 text-xs text-gray-400 font-body -mt-1">
+            The register asks for the customer's account and adds the months to their membership (renewals extend it).
+          </p>
+        </div>
+
         <!-- Variants -->
         <div class="border-t border-gray-100 pt-4">
           <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer mb-3">
@@ -147,6 +168,7 @@
 import { ref, computed } from 'vue'
 import { apiFetch } from '@/lib/api'
 import { centsToDollars, dollarsToCents } from '@/lib/money'
+import { membershipTiers } from '@/data/membershipTiers'
 
 const props = defineProps({
   product: { type: Object, default: null },
@@ -183,6 +205,9 @@ function initialForm(p) {
     memberPrice: centsToDollars(p?.memberPriceCents ?? null),
     trackInventory: p?.trackInventory ?? false,
     active: p?.active ?? true,
+    isMembership: !!p?.membershipMonths,
+    membershipMonths: p?.membershipMonths ?? '',
+    membershipTier: p?.membershipTier ?? '',
     hasOptions: !isDefaultOnly,
     single: isDefaultOnly && variants[0] ? toRow(variants[0]) : toRow({}),
     variants: isDefaultOnly ? [] : variants.map(toRow),
@@ -232,6 +257,10 @@ async function save() {
     error.value = 'Add at least one size or color, or uncheck "comes in sizes and/or colors"'
     return
   }
+  if (f.isMembership && !(Number(f.membershipMonths) >= 1)) {
+    error.value = 'Enter how many months the membership lasts'
+    return
+  }
   saving.value = true
   error.value  = null
   try {
@@ -243,6 +272,8 @@ async function save() {
       memberPriceCents: dollarsToCents(f.memberPrice),
       trackInventory: f.trackInventory,
       active: f.active,
+      membershipMonths: f.isMembership ? Number(f.membershipMonths) || null : null,
+      membershipTier: f.isMembership ? f.membershipTier || null : null,
       variants: f.hasOptions
         ? f.variants.map(variantPayload)
         : [variantPayload({ ...f.single, size: '', color: '', active: true })],

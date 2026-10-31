@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { registerAccess } from '../staff/_auth.js'
+import { downgradeIfLapsed } from '../admin/_membership.js'
+import { localDate } from '../../../src/lib/timeclock.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -46,6 +48,13 @@ export async function onRequestGet({ request, env }) {
       .update({ userId: user.id })
       .eq('email', user.email.toLowerCase())
       .is('userId', null)
+  }
+
+  // A membership that has run out drops to GUEST at sign-in (the daily job does the same for everyone)
+  try {
+    user = await downgradeIfLapsed(supabase, user, localDate())
+  } catch {
+    // Not fatal: the profile still loads, and the register and booking checks also look at memberUntil
   }
 
   // Linked employee record (null for non-staff); the frontend uses it to show the staff portal

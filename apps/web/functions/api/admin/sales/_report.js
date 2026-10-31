@@ -1,22 +1,12 @@
 import { isValidYmd, localDate, startOfLocalDay, addDays, daysBetween } from '../../../../src/lib/timeclock.js'
 import { PAYMENT_LABELS } from '../../staff/sales/_sale.js'
+import { fetchAll } from '../_db.js'
+import { loadDrawerSessions } from '../../staff/_drawer.js'
 
 // Longest range a report or export covers at once
 export const MAX_REPORT_DAYS = 366
 
-// PostgREST returns at most 1,000 rows per request; page through larger results
-const PAGE = 1000
-
-/** Runs `makeQuery()` (a fresh, ordered select each time) page by page and returns every row. */
-export async function fetchAll(makeQuery) {
-  const rows = []
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await makeQuery().range(from, from + PAGE - 1)
-    if (error) throw new Error(error.message)
-    rows.push(...(data || []))
-    if (!data || data.length < PAGE) return rows
-  }
-}
+export { fetchAll }
 
 /**
  * Validates ?from=&to= (course-local dates, inclusive; default today) or ?date= (one day).
@@ -128,7 +118,7 @@ export function buildReport({ sales, refunds, noSales = 0 }) {
 export async function loadReport(supabase, range, registerId = null) {
   const scoped = q => (registerId ? q.eq('registerId', registerId) : q)
 
-  const [sales, refunds, noSaleRes, registerRes] = await Promise.all([
+  const [sales, refunds, noSaleRes, registerRes, drawerSessions] = await Promise.all([
     fetchAll(() => scoped(supabase
       .from('Sale')
       .select('id, subtotalCents, discountCents, taxCents, totalCents, ' +
@@ -149,6 +139,7 @@ export async function loadReport(supabase, range, registerId = null) {
       .gte('createdAt', range.startUtc)
       .lt('createdAt', range.endUtc)),
     registerId ? supabase.from('Register').select('id, name').eq('id', registerId).maybeSingle() : Promise.resolve({ data: null }),
+    loadDrawerSessions(supabase, range, registerId),
   ])
   if (noSaleRes.error) throw new Error(noSaleRes.error.message)
 
@@ -158,6 +149,8 @@ export async function loadReport(supabase, range, registerId = null) {
     register: registerRes.data ?? null,
     generatedAt: new Date().toISOString(),
     ...buildReport({ sales, refunds, noSales: noSaleRes.count ?? 0 }),
+    // Drawer sessions open at any point in the range (a session can start before or end after it)
+    drawerSessions,
   }
 }
 

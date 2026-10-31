@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import { isActiveMember } from '../../src/lib/membership.js'
+import { localDate } from '../../src/lib/timeclock.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -26,7 +28,8 @@ export async function onRequestGet({ request, env }) {
   })
 
   const dbUser = await getOptionalUser(request, supabase)
-  const isMember = dbUser?.role === 'MEMBER' || dbUser?.role === 'ADMIN'
+  // Members-only slots: admins and active members (memberUntil not passed)
+  const isMember = dbUser?.role === 'ADMIN' || isActiveMember(dbUser, localDate())
 
   const { data: slots, error } = await supabase
     .from('TeeTimeSlot')

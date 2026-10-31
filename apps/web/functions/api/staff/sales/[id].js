@@ -3,6 +3,7 @@ import { requireRegister } from '../_auth.js'
 import { loadSale, emailReceipt } from './_sale.js'
 import { consumeApproval } from '../_approvals.js'
 import { localDate } from '../../../../src/lib/timeclock.js'
+import { openSession } from '../_drawer.js'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -61,6 +62,11 @@ async function refund({ supabase, dbUser, employee }, saleId, body) {
 
   const { data: register } = await supabase.from('Register').select('id, active').eq('id', body.registerId ?? '').maybeSingle()
   if (!register?.active) return json({ error: 'Choose a register' }, 400)
+
+  // Cash comes out of this register's drawer, so it must be open
+  if (!(await openSession(supabase, register.id))) {
+    return json({ error: 'Open the cash drawer first (count the starting cash), then give the refund.', code: 'DRAWER_CLOSED' }, 409)
+  }
 
   // Money goes back the way it came. Only cash exists today; card refunds arrive with Stripe Terminal.
   if (sale.payments.some(p => p.method !== 'CASH')) {

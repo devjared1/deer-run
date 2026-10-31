@@ -1,0 +1,14 @@
+# Scheduled jobs for deerrun.golf. Cloudflare Pages has no cron triggers, so this small Worker calls the
+# site's protected /api/internal/* endpoints on a schedule. Deploy with `npm run deploy --workspace=apps/cron`.
+name = "deer-run-cron"
+main = "src/index.js"
+compatibility_date = "2024-09-23"
+
+[vars]
+SITE_URL = "https://deerrun.golf"
+
+# Cron times are UTC. 11:15 UTC = 6:15 AM Central (5:15 AM during daylight saving time).
+[triggers]
+crons = ["15 11 * * *"]
+
+# Secret (must match CRON_SECRET in the Pages project): wrangler secret put CRON_SECRET
