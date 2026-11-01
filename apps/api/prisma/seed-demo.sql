@@ -593,8 +593,8 @@ BEGIN
   END IF;
 
   v_vid_weekday    := pg_temp.demo_vid('Weekday 18 Holes');
-  v_vid_weekend    := pg_temp.demo_vid('Weekend 18 Holes');
-  v_vid_twilight   := pg_temp.demo_vid('Twilight');
+  v_vid_weekend    := pg_temp.demo_vid('Weekend/Holiday 18 Holes');
+  v_vid_twilight   := pg_temp.demo_vid('Weekday 9 Holes'); -- late weekday rounds play 9 (no twilight rate)
   v_vid_range      := pg_temp.demo_vid('Range Bucket');
   v_vid_water      := pg_temp.demo_vid('Bottled Water');
   v_vid_membership := pg_temp.demo_vid('Individual Membership — Annual');
@@ -723,7 +723,7 @@ BEGIN
 
       v_players := (ARRAY[1, 2, 2, 3, 4, 4])[pg_temp.demo_rand(1, 6)];
       v_gname := pg_temp.demo_pick(v_names);
-      v_greens := CASE WHEN v_slot_time >= '14:00' THEN v_vid_twilight WHEN v_weekend THEN v_vid_weekend ELSE v_vid_weekday END;
+      v_greens := CASE WHEN v_weekend THEN v_vid_weekend WHEN v_slot_time >= '15:00' THEN v_vid_twilight ELSE v_vid_weekday END;
       SELECT COALESCE(v."priceCents", p."priceCents") INTO v_unit
       FROM "ProductVariant" v JOIN "Product" p ON p.id = v."productId" WHERE v.id = v_greens;
 

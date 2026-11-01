@@ -5,7 +5,7 @@
       <h2 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:#1E3D2F;">Choose a Tee Time</h2>
     </div>
     <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-bottom:24px;">
-      {{ formattedDate }} · ${{ store.PRICE_PER_PLAYER }}/player w/ cart
+      {{ formattedDate }} · {{ rateLine }}
     </p>
 
     <div v-if="loading" class="text-center py-12" style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.4);">Loading tee times…</div>
@@ -70,6 +70,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useBookingStore } from '@/stores/booking'
+import { isWeekendRate } from '@/lib/rates'
 
 const emit = defineEmits(['next', 'back'])
 const store = useBookingStore()
@@ -87,6 +88,15 @@ const formattedDate = computed(() => {
   if (!store.selectedDate) return ''
   return new Date(store.selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
 })
+
+// "Weekday rate: $20 (9) / $30 (18) per player"
+const rateLine = computed(() => {
+  const weekend = store.selectedDate && isWeekendRate(store.selectedDate, store.holidayDates)
+  const prefix = weekend ? 'WEEKEND' : 'WEEKDAY'
+  const d = cents => `$${(cents / 100).toFixed(cents % 100 ? 2 : 0)}`
+  return `${weekend ? 'Weekend/holiday' : 'Weekday'} rate: ${d(store.rates[`${prefix}_9`])} (9) / ${d(store.rates[`${prefix}_18`])} (18) per player`
+})
+onMounted(() => store.loadRates())
 
 const playerOptions = computed(() => {
   const max = selectedSlot.value?.available ?? 4

@@ -2,6 +2,8 @@ import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 import { bookedPlayers, HOLD_COLUMNS } from '../../../src/lib/teesheet.js'
 import { releaseInBackground, slotsWithExpiredHolds } from './_holds.js'
+import { loadRates } from '../_rates.js'
+import { bookingPrice } from '../../../src/lib/rates.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -32,22 +34,16 @@ export async function onRequestPost(context) {
   }
 
   const { teeTimeSlotId, players, guestName, guestEmail } = body
+  const roundHoles = body.roundHoles === undefined ? 18 : Number(body.roundHoles)
+  const cart = body.cart === true
 
   if (!teeTimeSlotId || !players || players < 1 || players > 4) {
     return json({ error: 'teeTimeSlotId and players (1–4) are required' }, 400)
   }
+  if (![9, 18].includes(roundHoles)) return json({ error: 'roundHoles must be 9 or 18' }, 400)
   if (!dbUser && (!guestName || !guestEmail)) {
     return json({ error: 'guestName and guestEmail required for unauthenticated bookings' }, 400)
   }
-
-  // Load course settings for price
-  const { data: settings } = await supabase
-    .from('CourseSettings')
-    .select('pricePerPlayerCents')
-    .eq('id', 'singleton')
-    .single()
-
-  if (!settings) return json({ error: 'Course settings not configured' }, 500)
 
   // Check slot availability
   const { data: slot } = await supabase
@@ -67,10 +63,13 @@ export async function onRequestPost(context) {
     return json({ error: 'Not enough spots available' }, 409)
   }
 
-  // Create Stripe PaymentIntent
-  const totalCents = settings.pricePerPlayerCents * players
+  // Price from the rate products (what the register charges): weekday/weekend × 9/18, plus the cart per rider
+  const { rates, holidayDates } = await loadRates(supabase)
+  const { totalCents } = bookingPrice({
+    rates, holidayDates, ymd: String(slot.date).slice(0, 10), holes: roundHoles, players, cart,
+  })
   const customerEmail = dbUser?.email ?? guestEmail
-  const playerLabel = `${players} player${players > 1 ? 's' : ''}`
+  const playerLabel = `${players} player${players > 1 ? 's' : ''}, ${roundHoles} holes${cart ? ', cart' : ''}`
 
   const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
 
@@ -94,6 +93,9 @@ export async function onRequestPost(context) {
       guestEmail: dbUser ? null : guestEmail,
       players,
       totalCents,
+      roundHoles,
+      // Only sent when true, so walking bookings still work on a database without migration 11
+      ...(cart ? { cartIncluded: true } : {}),
       status: 'PENDING',
       stripePaymentId: paymentIntent.id,
     })

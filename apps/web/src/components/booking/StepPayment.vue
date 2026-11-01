@@ -15,12 +15,13 @@
         <div class="flex justify-between"><span>Date</span><strong>{{ formattedDate }}</strong></div>
         <div class="flex justify-between"><span>Tee Time</span><strong>{{ formattedTime }}</strong></div>
         <div class="flex justify-between"><span>Players</span><strong>{{ store.players }}</strong></div>
+        <div class="flex justify-between"><span>Round</span><strong>{{ store.roundHoles }} holes · {{ store.cart ? 'riding' : 'walking' }}</strong></div>
         <div class="flex justify-between"><span>Name</span><strong>{{ playerName }}</strong></div>
       </div>
       <div class="divider my-3"></div>
       <div class="flex justify-between">
         <span style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(61,43,26,.6);">Total</span>
-        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#1E3D2F;">${{ store.totalPrice }}</span>
+        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#1E3D2F;">${{ store.totalPrice.toFixed(2) }}</span>
       </div>
     </div>
 
@@ -45,7 +46,7 @@
         :style="processing ? 'opacity:.6;cursor:not-allowed;' : ''"
       >
         <svg v-if="processing" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-        {{ processing ? 'Processing payment…' : `Pay $${store.totalPrice} Securely` }}
+        {{ processing ? 'Processing payment…' : `Pay $${store.totalPrice.toFixed(2)} Securely` }}
       </button>
     </div>
 

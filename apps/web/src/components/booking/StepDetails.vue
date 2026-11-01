@@ -52,15 +52,55 @@
       </div>
     </div>
 
+    <!-- Round: 9 or 18 holes, riding or walking -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+      <fieldset>
+        <legend class="field-label">Holes</legend>
+        <div class="flex gap-2">
+          <button
+            v-for="n in [9, 18]"
+            :key="n"
+            type="button"
+            :aria-pressed="store.roundHoles === n"
+            :class="['flex-1 px-4 py-3 text-sm font-bold rounded-sm transition-all', store.roundHoles === n ? '' : 'btn-outline-pine']"
+            :style="store.roundHoles === n ? 'background:#1E3D2F;color:#F2EBD9;font-family:Lato,sans-serif;border:none;' : ''"
+            @click="store.roundHoles = n"
+          >
+            {{ n }} holes
+          </button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend class="field-label">Cart</legend>
+        <div class="flex gap-2">
+          <button
+            v-for="opt in [{ value: true, label: 'Riding' }, { value: false, label: 'Walking' }]"
+            :key="opt.label"
+            type="button"
+            :aria-pressed="store.cart === opt.value"
+            :class="['flex-1 px-4 py-3 text-sm font-bold rounded-sm transition-all', store.cart === opt.value ? '' : 'btn-outline-pine']"
+            :style="store.cart === opt.value ? 'background:#1E3D2F;color:#F2EBD9;font-family:Lato,sans-serif;border:none;' : ''"
+            @click="store.cart = opt.value"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
+      </fieldset>
+    </div>
+
     <!-- Order summary -->
     <div class="p-4 rounded mb-6" style="background:rgba(196,135,58,.08);border:1px solid rgba(196,135,58,.2);">
-      <div class="flex justify-between mb-2" style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.6);">
-        <span>{{ store.players }} player{{ store.players > 1 ? 's' : '' }} × ${{ store.PRICE_PER_PLAYER }}</span>
-        <span style="font-weight:700;color:#3D2B1A;">${{ store.totalPrice }}</span>
+      <div class="flex justify-between mb-2" style="font-family:'Lato',sans-serif;font-size:13px;color:#52392A;">
+        <span>Greens fee, {{ store.roundHoles }} holes · {{ store.players }} × {{ money(store.price.greensCents) }}</span>
+        <span>{{ money(store.price.greensCents * store.players) }}</span>
       </div>
-      <div class="flex justify-between" style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(61,43,26,.4);">
-        <span>Cart fee included</span>
-        <span>$0</span>
+      <div v-if="store.cart" class="flex justify-between mb-2" style="font-family:'Lato',sans-serif;font-size:13px;color:#52392A;">
+        <span>Cart · {{ store.players }} × {{ money(store.price.cartCents) }}</span>
+        <span>{{ money(store.price.cartCents * store.players) }}</span>
+      </div>
+      <div class="flex justify-between pt-2" style="font-family:'Lato',sans-serif;font-size:14px;font-weight:700;color:#3D2B1A;border-top:1px solid rgba(196,135,58,.25);">
+        <span>Total</span>
+        <span>{{ money(store.price.totalCents) }}</span>
       </div>
     </div>
 
@@ -78,13 +118,18 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useBookingStore } from '@/stores/booking'
 import { useAuthStore } from '@/stores/auth'
 
 const emit = defineEmits(['next', 'back'])
 const store     = useBookingStore()
 const authStore = useAuthStore()
+onMounted(() => store.loadRates())
+
+function money(cents) {
+  return `$${(cents / 100).toFixed(2)}`
+}
 const mode  = ref(authStore.isLoggedIn ? 'member' : 'guest')
 const error = ref('')
 

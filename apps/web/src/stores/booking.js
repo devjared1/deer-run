@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAuthStore } from './auth'
+import { DEFAULT_RATES, bookingPrice } from '@/lib/rates'
 
 export const useBookingStore = defineStore('booking', () => {
   const authStore = useAuthStore()
@@ -9,9 +10,27 @@ export const useBookingStore = defineStore('booking', () => {
   const players       = ref(2)
   const guestName     = ref('')
   const guestEmail    = ref('')
+  const roundHoles    = ref(18)
+  const cart          = ref(true)
 
-  const PRICE_PER_PLAYER = 45
-  const totalPrice = computed(() => players.value * PRICE_PER_PLAYER)
+  // Greens fee + cart rates from GET /api/rates (defaults until loaded). Display only: the server prices the booking.
+  const rates        = ref({ ...DEFAULT_RATES })
+  const holidayDates = ref([])
+  let ratesLoaded = null
+  function loadRates() {
+    ratesLoaded ??= fetch('/api/rates')
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('rates'))))
+      .then((data) => { rates.value = { ...rates.value, ...data.rates }; holidayDates.value = data.holidayDates ?? [] })
+      .catch(() => { ratesLoaded = null })
+    return ratesLoaded
+  }
+
+  // { greensKey, greensCents, cartCents, perPlayerCents, totalCents } for the current selection
+  const price = computed(() => bookingPrice({
+    rates: rates.value, holidayDates: holidayDates.value, ymd: selectedDate.value ?? '2000-01-03',
+    holes: roundHoles.value, players: players.value, cart: cart.value,
+  }))
+  const totalPrice = computed(() => price.value.totalCents / 100)
 
   async function fetchAvailableSlots(date) {
     const token = authStore.getToken()
@@ -29,7 +48,7 @@ export const useBookingStore = defineStore('booking', () => {
 
   function selectionKey() {
     return JSON.stringify([
-      selectedSlot.value?.id, Number(players.value), authStore.profile?.id ?? null,
+      selectedSlot.value?.id, Number(players.value), roundHoles.value, cart.value, authStore.profile?.id ?? null,
       authStore.isLoggedIn ? null : guestName.value.trim(), authStore.isLoggedIn ? null : guestEmail.value.trim(),
     ])
   }
@@ -48,6 +67,8 @@ export const useBookingStore = defineStore('booking', () => {
       body: JSON.stringify({
         teeTimeSlotId: selectedSlot.value.id,
         players: players.value,
+        roundHoles: roundHoles.value,
+        cart: cart.value,
         guestName:  authStore.isLoggedIn ? null : guestName.value,
         guestEmail: authStore.isLoggedIn ? null : guestEmail.value,
       }),
@@ -70,10 +91,12 @@ export const useBookingStore = defineStore('booking', () => {
     players.value = 2
     guestName.value = ''
     guestEmail.value = ''
+    roundHoles.value = 18
+    cart.value = true
   }
 
   return {
-    selectedDate, selectedSlot, players, guestName, guestEmail,
-    PRICE_PER_PLAYER, totalPrice, fetchAvailableSlots, createBooking, reset,
+    selectedDate, selectedSlot, players, guestName, guestEmail, roundHoles, cart,
+    rates, holidayDates, loadRates, price, totalPrice, fetchAvailableSlots, createBooking, reset,
   }
 })

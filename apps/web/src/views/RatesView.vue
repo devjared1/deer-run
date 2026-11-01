@@ -3,7 +3,7 @@
     <PageHero
       label="Green Fees"
       title-html="Rates &amp; <em>Services</em>"
-      description="Competitive rates with cart included. Twilight specials available every day after 2 PM."
+      description="Simple weekday and weekend rates for 9 or 18 holes. Ride or walk."
       bg-image="/images/course-3.jpg"
       height="650px"
       :classes="['flex', 'items-center']"
@@ -12,42 +12,49 @@
     <section class="topo py-14">
       <div class="max-w-7xl mx-auto px-5">
 
-        <!-- Rate cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-14">
+        <!-- Rate cards (live prices from /api/rates; the defaults show until they load) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto mb-6">
           <div
             v-for="r in rateCards"
             :key="r.title"
-            :class="['card rounded-lg overflow-hidden', r.featured ? 'ring-2' : '']"
-            :style="r.featured ? 'box-shadow:0 0 0 2px #C4873A,0 3px 18px rgba(30,61,47,.09);' : ''"
+            class="card rounded-lg overflow-hidden"
           >
-            <div v-if="r.featured" class="py-2 text-center" style="background:#C4873A;">
-              <span style="font-family:'Lato',sans-serif;font-size:11px;font-weight:900;letter-spacing:.18em;text-transform:uppercase;color:#0D1F16;">Most Popular</span>
-            </div>
             <div class="p-7">
-              <div style="font-family:'Lato',sans-serif;font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(61,43,26,.4);margin-bottom:6px;">{{ r.subtitle }}</div>
+              <div style="font-family:'Lato',sans-serif;font-size:12px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:#6B5A48;margin-bottom:6px;">{{ r.subtitle }}</div>
               <h3 style="font-family:'Playfair Display',serif;font-size:22px;font-weight:700;color:#1E3D2F;margin-bottom:14px;">{{ r.title }}</h3>
-              <div class="flex items-end gap-1 mb-1">
-                <span style="font-family:'Playfair Display',serif;font-size:48px;font-weight:900;color:#1E3D2F;line-height:1;">${{ r.price }}</span>
+              <div class="grid grid-cols-2 gap-4">
+                <div v-for="p in r.prices" :key="p.label">
+                  <div style="font-family:'Playfair Display',serif;font-size:44px;font-weight:900;color:#1E3D2F;line-height:1;">{{ dollars(p.cents) }}</div>
+                  <div style="font-family:'Lato',sans-serif;font-size:13px;color:#6B5A48;margin-top:4px;">{{ p.label }}</div>
+                </div>
               </div>
-              <div style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(61,43,26,.4);margin-bottom:20px;">per player · cart included</div>
-              <div class="divider mb-5"></div>
-              <ul class="space-y-2.5">
-                <li
-                  v-for="item in r.includes"
-                  :key="item"
-                  class="flex items-center gap-2.5 text-sm"
-                  style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.65);"
-                >
-                  <svg class="w-4 h-4 flex-shrink-0" style="color:#1E3D2F;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                    <path d="M5 13l4 4L19 7"/>
-                  </svg>
-                  {{ item }}
-                </li>
-              </ul>
-              <RouterLink to="/book" class="btn-amber w-full justify-center mt-6">Book This Rate</RouterLink>
+              <div style="font-family:'Lato',sans-serif;font-size:13px;color:#6B5A48;margin-top:14px;">Greens fee per player</div>
+              <RouterLink to="/book" class="btn-amber w-full justify-center mt-6">Book a Tee Time</RouterLink>
             </div>
           </div>
         </div>
+
+        <div class="max-w-4xl mx-auto mb-14 card-pine rounded-lg px-7 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#F2EBD9;">Cart Fee</div>
+            <div style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(242,235,217,.75);">Per rider, added to the greens fee. Walking is welcome.</div>
+          </div>
+          <div style="font-family:'Playfair Display',serif;font-size:36px;font-weight:900;color:#F2EBD9;line-height:1;">{{ dollars(rates.CART) }}</div>
+        </div>
+
+        <ul class="max-w-4xl mx-auto mb-14 grid sm:grid-cols-2 gap-x-6 gap-y-2">
+          <li
+            v-for="item in rateIncludes"
+            :key="item"
+            class="flex items-center gap-2.5 text-sm"
+            style="font-family:'Lato',sans-serif;color:#52392A;"
+          >
+            <svg class="w-4 h-4 flex-shrink-0" style="color:#1E3D2F;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M5 13l4 4L19 7"/>
+            </svg>
+            {{ item }}
+          </li>
+        </ul>
 
         <!-- Additional fees table -->
         <div class="max-w-3xl mx-auto mb-14">
@@ -103,7 +110,33 @@
 </template>
 
 <script setup>
+import { computed, onMounted, ref } from 'vue'
 import PageHero     from '@/components/layout/PageHero.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
-import { rateCards, additionalFees, policies } from '@/data/rates'
+import { rateIncludes, additionalFees, policies } from '@/data/rates'
+import { DEFAULT_RATES } from '@/lib/rates'
+
+const rates = ref({ ...DEFAULT_RATES })
+
+const rateCards = computed(() => [
+  {
+    title: 'Weekday', subtitle: 'Monday – Friday',
+    prices: [{ label: '9 holes', cents: rates.value.WEEKDAY_9 }, { label: '18 holes', cents: rates.value.WEEKDAY_18 }],
+  },
+  {
+    title: 'Weekend & Holiday', subtitle: 'Saturday, Sunday & holidays',
+    prices: [{ label: '9 holes', cents: rates.value.WEEKEND_9 }, { label: '18 holes', cents: rates.value.WEEKEND_18 }],
+  },
+])
+
+function dollars(cents) {
+  return cents % 100 ? `$${(cents / 100).toFixed(2)}` : `$${cents / 100}`
+}
+
+onMounted(async () => {
+  try {
+    const res = await fetch('/api/rates')
+    if (res.ok) rates.value = { ...rates.value, ...(await res.json()).rates }
+  } catch { /* keep the defaults */ }
+})
 </script>

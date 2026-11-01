@@ -7,7 +7,7 @@ import { DEFAULT_ROUND_MINUTES } from '../../../../src/lib/pace.js'
 import { releaseInBackground, slotsWithExpiredHolds } from '../../bookings/_holds.js'
 
 export const TEESHEET_BOOKING_COLUMNS = 'id, players, status, source, guestName, guestEmail, checkedInAt, createdAt, totalCents, stripePaymentId, ' +
-  'cartNumbers, ownCart, startHole, roundHoles, teedOffAt, positionHole, positionStage, positionAt, finishedAt'
+  'cartNumbers, ownCart, startHole, roundHoles, cartIncluded, teedOffAt, positionHole, positionStage, positionAt, finishedAt'
 
 // GET /api/staff/teesheet?date=YYYY-MM-DD (default today, course time)
 // The day's tee times with their bookings, for the pro shop. Each booking has the golfer, how it was
@@ -15,6 +15,7 @@ export const TEESHEET_BOOKING_COLUMNS = 'id, players, status, source, guestName,
 // rung up on. Cancelled and refunded bookings are included (the page shows them faded) but don't
 // count toward a slot's booked players; nor do unpaid online bookings past their 30-minute hold
 // (`holdExpired`), which are released in the background. Each booking has `holdsSpot`.
+// cartIncluded: an online booking paid the cart fee for every player (migration 11).
 // On-course tracking per booking: cartNumbers, ownCart, startHole, roundHoles, teedOffAt, positionHole,
 // positionStage, positionAt, finishedAt; `roundMinutes` is the expected 18-hole round and `holeSeconds` the learned
 // per-hole times ([] until learned), the pace profile for src/lib/pace.js.

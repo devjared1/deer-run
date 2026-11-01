@@ -3,13 +3,18 @@ import { isValidYmd } from '../../../src/lib/timeclock.js'
 import { POSITIONS } from './employees/_validate.js'
 import { makeStripe, syncTerminalTipping, stripeMessage } from '../staff/_stripe.js'
 import { MAX_ROUND_MINUTES, MIN_ROUND_MINUTES } from '../../../src/lib/pace.js'
+import { RATE_KEYS, RATE_LABELS, RATE_PRODUCTS } from '../../../src/lib/rates.js'
+import { loadRates } from '../_rates.js'
 
 const PAY_PERIOD_LENGTHS = [7, 14]
+const MAX_RATE_CENTS = 100000 // $1,000
+const MAX_HOLIDAYS = 60
 const MAX_TAX_BPS = 2000 // 20%
 const MAX_TIP_PERCENT = 50
 const MAX_LATE_FEE_CENTS = 50000 // house account late fee, $500
 
-// GET /api/admin/settings
+// GET /api/admin/settings → CourseSettings + rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART } (cents)
+// PUT takes any of the CourseSettings fields below, holidayDates ['YYYY-MM-DD'] and rates { key: cents }
 export async function onRequestGet({ request, env }) {
   const result = await requireAdmin(request, env)
   if (result instanceof Response) return result
@@ -22,7 +27,53 @@ export async function onRequestGet({ request, env }) {
     .single()
 
   if (error) return json({ error: error.message }, 500)
-  return json(data)
+  return json({ ...data, ...(await ratesForAdmin(supabase)) })
+}
+
+// { rates: { key: cents } } from the rate products, or {} before migration 11 (no Product.rateKey yet)
+async function ratesForAdmin(supabase) {
+  const { error } = await supabase.from('Product').select('rateKey').limit(1)
+  if (error) return {}
+  const { rates } = await loadRates(supabase)
+  return { rates }
+}
+
+/**
+ * Sets each rate product's price (and clears variant price overrides, so the register charges exactly this).
+ * A missing rate product is created in its category (made if needed). Returns an error message or null.
+ */
+async function saveRates(supabase, rates) {
+  const { fromProducts } = await loadRates(supabase)
+  const { data: tagged } = await supabase.from('Product').select('id, rateKey').not('rateKey', 'is', null)
+  const byKey = Object.fromEntries((tagged ?? []).map(p => [p.rateKey, p.id]))
+
+  for (const [key, cents] of Object.entries(rates)) {
+    const productId = fromProducts[key] ?? byKey[key]
+    if (productId) {
+      const { error } = await supabase.from('Product').update({ priceCents: cents, active: true }).eq('id', productId)
+      if (error) return error.message
+      const { error: vErr } = await supabase.from('ProductVariant').update({ priceCents: null }).eq('productId', productId)
+      if (vErr) return vErr.message
+      continue
+    }
+    const def = RATE_PRODUCTS[key]
+    let { data: category } = await supabase.from('ProductCategory').select('id').eq('name', def.category).maybeSingle()
+    if (!category) {
+      const { data: made, error: cErr } = await supabase
+        .from('ProductCategory').insert({ id: crypto.randomUUID(), name: def.category }).select('id').single()
+      if (cErr) return cErr.message
+      category = made
+    }
+    const id = crypto.randomUUID()
+    const { error: pErr } = await supabase.from('Product').insert({
+      id, categoryId: category.id, name: def.name, description: def.description, priceCents: cents,
+      memberPriceCents: key === 'CART' ? null : 0, rateKey: key, sortOrder: RATE_KEYS.indexOf(key),
+    })
+    if (pErr) return pErr.message
+    const { error: vErr } = await supabase.from('ProductVariant').insert({ id: crypto.randomUUID(), productId: id })
+    if (vErr) return vErr.message
+  }
+  return null
 }
 
 // PUT /api/admin/settings
@@ -90,6 +141,29 @@ export async function onRequestPut({ request, env }) {
     allowed.tipPercentages = [...new Set(list)].sort((a, b) => a - b)
   }
 
+  // Weekend rates apply on these dates too
+  if (body.holidayDates !== undefined) {
+    const list = Array.isArray(body.holidayDates) ? body.holidayDates : []
+    if (list.length > MAX_HOLIDAYS || list.some(d => !isValidYmd(d))) {
+      return json({ error: `Holidays must be dates (YYYY-MM-DD), at most ${MAX_HOLIDAYS}` }, 400)
+    }
+    allowed.holidayDates = [...new Set(list)].sort()
+  }
+
+  // Greens fee and cart rates (cents), saved onto the rate products the register sells
+  let rates = null
+  if (body.rates !== undefined) {
+    rates = {}
+    for (const key of RATE_KEYS) {
+      if (body.rates?.[key] === undefined) continue
+      const cents = Number(body.rates[key])
+      if (!Number.isInteger(cents) || cents < 0 || cents > MAX_RATE_CENTS) {
+        return json({ error: `${RATE_LABELS[key]} must be between $0 and $${MAX_RATE_CENTS / 100}` }, 400)
+      }
+      rates[key] = cents
+    }
+  }
+
   const { data, error } = await supabase
     .from('CourseSettings')
     .update(allowed)
@@ -98,6 +172,12 @@ export async function onRequestPut({ request, env }) {
     .single()
 
   if (error) return json({ error: error.message }, 500)
+
+  if (rates && Object.keys(rates).length) {
+    const ratesError = await saveRates(supabase, rates)
+    if (ratesError) return json({ error: `Settings saved, but the rates weren't: ${ratesError}` }, 500)
+  }
+  Object.assign(data, await ratesForAdmin(supabase))
 
   // The readers take the tip percentages from Stripe (a Terminal configuration). The setting is saved either way;
   // a Stripe problem comes back as a warning.
