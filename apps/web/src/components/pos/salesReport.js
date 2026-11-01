@@ -14,7 +14,7 @@ export const SALE_STATUS_LABELS = {
 
 export const SALE_STATUS_CLASSES = {
   COMPLETED: 'bg-pine/15 text-pine',
-  PARTIALLY_REFUNDED: 'bg-amber/20 text-amber-dark',
+  PARTIALLY_REFUNDED: 'bg-gold/20 text-gold-dark',
   REFUNDED: 'bg-gray-100 text-gray-600',
   VOIDED: 'bg-red-100 text-red-600',
 }

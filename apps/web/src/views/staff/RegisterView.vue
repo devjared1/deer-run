@@ -91,7 +91,7 @@
           <p v-if="registerError" class="px-4 pt-2 text-red-500 text-xs font-body">{{ registerError }}</p>
 
           <!-- Cash drawer -->
-          <div v-if="drawer && !drawer.session" class="mx-4 mt-3 rounded-lg bg-amber/15 border border-amber/40 px-3 py-2 flex items-center gap-3">
+          <div v-if="drawer && !drawer.session" class="mx-4 mt-3 rounded-lg bg-gold/15 border border-gold/40 px-3 py-2 flex items-center gap-3">
             <span class="text-xs font-body text-bark flex-1">The cash drawer is closed. Count the starting cash and open it to take cash.</span>
             <button class="btn-amber px-3 py-1.5 text-xs whitespace-nowrap" @click="openDrawerForm">Open drawer</button>
           </div>
@@ -130,7 +130,7 @@
               v-for="line in pricedLines"
               :key="line.key"
               :data-line-key="line.key"
-              :class="['cart-line px-4 py-2.5', { 'bg-amber/15': line.key === highlightLineKey }]"
+              :class="['cart-line px-4 py-2.5', { 'bg-gold/15': line.key === highlightLineKey }]"
             >
               <div class="flex justify-between gap-2">
                 <span class="font-body text-sm text-bark">{{ line.description }}</span>

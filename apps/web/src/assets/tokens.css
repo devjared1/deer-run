@@ -1,0 +1,124 @@
+/*
+ * Design tokens (Material Design 3), mapped into Tailwind in tailwind.config.js.
+ *
+ * Colors are RGB channels so Tailwind's opacity modifiers work (bg-primary/10). Roles come from the HCT tonal
+ * palettes of the brand colors (scripts/gen-theme.mjs): primary = pine (the brand seed #1E3D2F itself),
+ * secondary = lake, tertiary = clay, neutrals = warm parchment, plus gold (brand accent: fills and the primary
+ * call to action, never small text on light surfaces — use gold-text for that), success, warning and error.
+ * Text tiers: on-surface (primary text) and on-surface-variant (secondary text) both pass WCAG AA on every
+ * surface; don't use alpha text.
+ *
+ * Light theme only for now. [data-contrast="high"] (On Course, Tee Sheet outdoors) darkens text and outlines.
+ */
+:root {
+  /* Primary: pine */
+  --md-sys-color-primary: 30 61 47;               /* #1E3D2F */
+  --md-sys-color-on-primary: 255 255 255;
+  --md-sys-color-primary-container: 193 236 212;  /* #C1ECD4 pine 90 */
+  --md-sys-color-on-primary-container: 0 33 20;   /* #002114 pine 10 */
+
+  /* Secondary: lake */
+  --md-sys-color-secondary: 60 100 113;           /* #3C6471 lake 40 */
+  --md-sys-color-on-secondary: 255 255 255;
+  --md-sys-color-secondary-container: 210 236 246;/* #D2ECF6 */
+  --md-sys-color-on-secondary-container: 0 31 39; /* #001F27 */
+
+  /* Tertiary: clay */
+  --md-sys-color-tertiary: 140 74 47;             /* #8C4A2F */
+  --md-sys-color-on-tertiary: 255 255 255;
+  --md-sys-color-tertiary-container: 255 219 206; /* #FFDBCE */
+  --md-sys-color-on-tertiary-container: 55 14 0;  /* #370E00 */
+
+  /* Gold: brand accent (CTA fill) */
+  --md-sys-color-gold: 196 135 58;                /* #C4873A */
+  --md-sys-color-on-gold: 36 22 0;                /* #241600 */
+  --md-sys-color-gold-container: 255 221 185;     /* #FFDDB9 */
+  --md-sys-color-on-gold-container: 43 23 0;      /* #2B1700 */
+  --md-sys-color-gold-text: 134 83 4;             /* #865304 gold 40: gold as text on light surfaces */
+
+  /* Status */
+  --md-sys-color-error: 186 26 26;                /* #BA1A1A */
+  --md-sys-color-on-error: 255 255 255;
+  --md-sys-color-error-container: 255 218 213;    /* #FFDAD5 */
+  --md-sys-color-on-error-container: 65 0 2;      /* #410002 */
+  --md-sys-color-success: 27 109 36;              /* #1B6D24 */
+  --md-sys-color-on-success: 255 255 255;
+  --md-sys-color-success-container: 200 245 196;  /* #C8F5C4 */
+  --md-sys-color-on-success-container: 0 34 4;    /* #002204 */
+  --md-sys-color-warning: 138 81 0;               /* #8A5100 */
+  --md-sys-color-on-warning: 255 255 255;
+  --md-sys-color-warning-container: 255 220 189;  /* #FFDCBD */
+  --md-sys-color-on-warning-container: 44 22 0;   /* #2C1600 */
+
+  /* Surfaces: warm parchment neutrals */
+  --md-sys-color-surface: 255 251 244;            /* #FFFBF4 */
+  --md-sys-color-surface-dim: 223 218 204;        /* #DFDACC */
+  --md-sys-color-surface-bright: 255 251 244;
+  --md-sys-color-surface-container-lowest: 255 255 255;
+  --md-sys-color-surface-container-low: 249 243 229;     /* #F9F3E5 */
+  --md-sys-color-surface-container: 242 235 217;         /* #F2EBD9 parch */
+  --md-sys-color-surface-container-high: 238 232 218;    /* #EEE8DA */
+  --md-sys-color-surface-container-highest: 232 226 212; /* #E8E2D4 */
+  --md-sys-color-surface-variant: 237 225 202;    /* #EDE1CA */
+  --md-sys-color-on-surface: 30 28 19;            /* #1E1C13 */
+  --md-sys-color-on-surface-variant: 77 70 53;    /* #4D4635 */
+  --md-sys-color-outline: 127 118 99;             /* #7F7663 */
+  --md-sys-color-outline-variant: 208 198 175;    /* #D0C6AF */
+  --md-sys-color-inverse-surface: 51 48 39;       /* #333027 */
+  --md-sys-color-inverse-on-surface: 247 240 226; /* #F7F0E2 */
+  --md-sys-color-inverse-primary: 166 208 185;    /* #A6D0B9 */
+  --md-sys-color-scrim: 0 0 0;
+  --md-sys-color-shadow: 0 0 0;
+
+  /* Focus ring: dark on light surfaces; dark surfaces (.on-dark, pine shells) switch to light gold */
+  --focus-ring: 30 61 47;
+
+  /* Elevation (MD3 levels 1–5: key + ambient shadow) */
+  --md-sys-elevation-1: 0 1px 2px 0 rgb(0 0 0 / .3), 0 1px 3px 1px rgb(0 0 0 / .15);
+  --md-sys-elevation-2: 0 1px 2px 0 rgb(0 0 0 / .3), 0 2px 6px 2px rgb(0 0 0 / .15);
+  --md-sys-elevation-3: 0 1px 3px 0 rgb(0 0 0 / .3), 0 4px 8px 3px rgb(0 0 0 / .15);
+  --md-sys-elevation-4: 0 2px 3px 0 rgb(0 0 0 / .3), 0 6px 10px 4px rgb(0 0 0 / .15);
+  --md-sys-elevation-5: 0 4px 4px 0 rgb(0 0 0 / .3), 0 8px 12px 6px rgb(0 0 0 / .15);
+
+  /* Motion */
+  --md-sys-motion-easing-emphasized: cubic-bezier(.2, 0, 0, 1);
+  --md-sys-motion-easing-emphasized-decelerate: cubic-bezier(.05, .7, .1, 1);
+  --md-sys-motion-easing-emphasized-accelerate: cubic-bezier(.3, 0, .8, .15);
+  --md-sys-motion-easing-standard: cubic-bezier(.2, 0, 0, 1);
+  --md-sys-motion-easing-standard-decelerate: cubic-bezier(0, 0, 0, 1);
+  --md-sys-motion-easing-standard-accelerate: cubic-bezier(.3, 0, 1, 1);
+  --md-sys-motion-duration-short2: 100ms;
+  --md-sys-motion-duration-short4: 200ms;
+  --md-sys-motion-duration-medium2: 300ms;
+  --md-sys-motion-duration-medium4: 400ms;
+  --md-sys-motion-duration-long2: 500ms;
+
+  /* State layer opacities */
+  --md-sys-state-hover: .08;
+  --md-sys-state-focus: .1;
+  --md-sys-state-pressed: .1;
+  --md-sys-state-dragged: .16;
+
+  /* z-stack: app bars < drawers < dialogs < snackbars */
+  --z-app-bar: 30;
+  --z-drawer: 40;
+  --z-dialog: 50;
+  --z-snackbar: 60;
+}
+
+/* Outdoor pages (On Course, Tee Sheet): darker secondary text and outlines, heavier text */
+[data-contrast="high"] {
+  --md-sys-color-on-surface: 0 0 0;
+  --md-sys-color-on-surface-variant: 30 28 19;
+  --md-sys-color-outline: 51 48 39;
+  --md-sys-color-outline-variant: 77 70 53;
+  --md-sys-color-surface: 255 255 255;
+  --md-sys-color-surface-container-low: 255 255 255;
+}
+
+.on-dark,
+.bg-primary,
+.bg-pine,
+.hero-bg {
+  --focus-ring: 254 185 103; /* gold 80 */
+}

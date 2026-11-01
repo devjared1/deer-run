@@ -88,7 +88,7 @@
               </div>
             </div>
             <span v-if="e.longOpen" class="text-xs px-2 py-0.5 rounded-full bg-red-100 text-red-700 font-body flex-shrink-0">Missed clock-out?</span>
-            <span v-else-if="e.status === 'break'" class="text-xs px-2 py-0.5 rounded-full bg-amber/20 text-bark font-body flex-shrink-0">On break</span>
+            <span v-else-if="e.status === 'break'" class="text-xs px-2 py-0.5 rounded-full bg-gold/20 text-bark font-body flex-shrink-0">On break</span>
             <span v-else class="text-xs px-2 py-0.5 rounded-full bg-pine/15 text-pine font-body flex-shrink-0">Working</span>
           </div>
           <div v-if="!onClock.length" class="px-5 py-6 text-gray-400 text-sm text-center">Nobody is on the clock</div>
@@ -128,7 +128,7 @@
                 <div class="font-body text-sm text-bark truncate">{{ e.name }}</div>
                 <div class="text-gray-400 text-xs">{{ formatDate(e.eventDate) }}</div>
               </div>
-              <span v-if="e.featured" class="text-xs px-2 py-0.5 rounded-full bg-amber/20 text-amber font-body">Featured</span>
+              <span v-if="e.featured" class="text-xs px-2 py-0.5 rounded-full bg-gold/20 text-gold font-body">Featured</span>
             </div>
             <div v-if="!data.upcomingEvents.length" class="px-5 py-6 text-gray-400 text-sm text-center">No upcoming events</div>
           </div>

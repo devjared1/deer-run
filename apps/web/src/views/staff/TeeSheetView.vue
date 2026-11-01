@@ -193,7 +193,7 @@
           {{ teeTimeLabel(cancelling.slot.date, cancelling.slot.startTime) }} ·
           {{ cancelling.booking.players }} player{{ cancelling.booking.players === 1 ? '' : 's' }} · {{ statusBadge(cancelling.booking).label }}
         </p>
-        <p class="text-sm font-body text-bark bg-amber/10 rounded-lg px-3 py-2">
+        <p class="text-sm font-body text-bark bg-gold/10 rounded-lg px-3 py-2">
           {{ moneyNote(cancelling.booking) }}
         </p>
         <div class="flex justify-end gap-3 mt-5">
@@ -549,7 +549,7 @@ function statusBadge(b) {
     return { label: b.source === 'PHONE' ? 'Phone · paid' : 'Walk-in · paid', class: 'bg-pine/15 text-pine' }
   }
   if (b.status === 'PENDING' && b.holdExpired) return { label: 'Payment not finished · released', class: 'bg-gray-100 text-gray-500' }
-  if (b.status === 'PENDING') return { label: 'Payment not finished', class: 'bg-amber/20 text-amber-dark' }
+  if (b.status === 'PENDING') return { label: 'Payment not finished', class: 'bg-gold/20 text-gold-dark' }
   return { label: b.status === 'REFUNDED' ? 'Refunded' : 'Cancelled', class: 'bg-gray-100 text-gray-500' }
 }
 

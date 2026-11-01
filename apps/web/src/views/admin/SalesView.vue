@@ -125,7 +125,7 @@
               <tr
                 v-for="s in list.sales"
                 :key="s.id"
-                class="hover:bg-amber/5 cursor-pointer transition-colors"
+                class="hover:bg-gold/5 cursor-pointer transition-colors"
                 @click="openSale(s.id)"
               >
                 <td class="td font-semibold text-bark">

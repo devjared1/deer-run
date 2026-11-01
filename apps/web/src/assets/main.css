@@ -2,6 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  html {
+    font-family: theme('fontFamily.body');
+    color: rgb(var(--md-sys-color-on-surface));
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* One visible focus ring everywhere (keyboard only); dark surfaces switch --focus-ring to light gold */
+  :focus-visible {
+    outline: 3px solid rgb(var(--focus-ring));
+    outline-offset: 2px;
+  }
+  :focus:not(:focus-visible) { outline: none; }
+
+  .sr-only-focusable:not(:focus) {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+  }
+
+  /* Icons (unplugin-icons) default to 1em and inherit the text color */
+  .app-icon { flex-shrink: 0; }
+}
+
+/* Every animation and transition respects reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer components {
+  /*
+   * MD3 state layer: a currentColor overlay at 8% on hover, 10% on focus and press, 16% dragged.
+   * Add .state-layer to any interactive element (it needs position other than static; this sets relative).
+   * Disabled elements get no state layer.
+   */
+  .state-layer { position: relative; isolation: isolate; }
+  .state-layer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+    transition: opacity var(--md-sys-motion-duration-short2) linear;
+  }
+  .state-layer:hover::before { opacity: var(--md-sys-state-hover); }
+  .state-layer:focus-visible::before { opacity: var(--md-sys-state-focus); }
+  .state-layer:active::before { opacity: var(--md-sys-state-pressed); }
+  .state-layer[data-dragging]::before { opacity: var(--md-sys-state-dragged); }
+  .state-layer:disabled::before,
+  .state-layer[aria-disabled="true"]::before { opacity: 0; }
+}
+
 /* ── Topo texture background ── */
 .topo {
   background-image:

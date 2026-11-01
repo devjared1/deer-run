@@ -5,7 +5,7 @@ import { shiftMinutes, timeOffCovers } from '@/lib/schedule'
 const DEPARTMENT_CLASSES = {
   'Management':         'bg-pine/15 border-pine/40 text-pine',
   'Golf Operations':    'bg-lake/15 border-lake/40 text-lake-dark',
-  'Course Maintenance': 'bg-amber/20 border-amber/50 text-bark',
+  'Course Maintenance': 'bg-gold/20 border-gold/50 text-bark',
   'Food & Beverage':    'bg-clay/15 border-clay/40 text-clay-dark',
 }
 

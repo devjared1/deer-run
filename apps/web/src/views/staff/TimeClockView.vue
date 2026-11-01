@@ -32,7 +32,7 @@
           <button
             v-if="state.status === 'on'"
             :disabled="busy"
-            class="action-btn bg-amber text-bark hover:bg-amber/90"
+            class="action-btn bg-gold text-bark hover:bg-gold/90"
             @click="act('break_start')"
           >
             Start Break
@@ -40,7 +40,7 @@
           <button
             v-if="state.status === 'break'"
             :disabled="busy"
-            class="action-btn bg-amber text-bark hover:bg-amber/90"
+            class="action-btn bg-gold text-bark hover:bg-gold/90"
             @click="act('break_end')"
           >
             End Break
@@ -139,7 +139,7 @@ const currentBreak = computed(() => state.value?.openEntry?.breaks.find(b => !b.
 const statusStyle = computed(() => ({
   off:   { label: 'Off the clock', badge: 'bg-gray-100 text-gray-600',   dot: 'bg-gray-400' },
   on:    { label: 'On the clock',  badge: 'bg-pine/15 text-pine',        dot: 'bg-pine animate-pulse' },
-  break: { label: 'On break',      badge: 'bg-amber/20 text-bark',       dot: 'bg-amber animate-pulse' },
+  break: { label: 'On break',      badge: 'bg-gold/20 text-bark',       dot: 'bg-gold animate-pulse' },
 }[state.value?.status ?? 'off']))
 
 function liveMinutes(entry) {

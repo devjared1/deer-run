@@ -20,7 +20,7 @@
           :to="item.to"
           :class="['flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-body transition-colors',
             isActive(item.to)
-              ? 'bg-amber text-bark font-semibold'
+              ? 'bg-gold text-bark font-semibold'
               : 'text-parch/80 hover:bg-white/10 hover:text-parch']"
           @click="sidebarOpen = false"
         >

@@ -2,7 +2,7 @@ export const STATUS_LABELS = { ACTIVE: 'Active', SUSPENDED: 'Suspended', CLOSED:
 
 export const STATUS_CLASSES = {
   ACTIVE: 'bg-pine/15 text-pine',
-  SUSPENDED: 'bg-amber/20 text-amber-dark',
+  SUSPENDED: 'bg-gold/20 text-gold-dark',
   CLOSED: 'bg-gray-100 text-gray-500',
 }
 
@@ -11,7 +11,7 @@ import { localDate } from '@/lib/timeclock'
 export const STATEMENT_STATUS_LABELS = { OPEN: 'Due', PAID: 'Paid', AUTOPAY_FAILED: 'Autopay failed', OVERDUE: 'Overdue' }
 
 export const STATEMENT_STATUS_CLASSES = {
-  OPEN: 'bg-amber/20 text-amber-dark',
+  OPEN: 'bg-gold/20 text-gold-dark',
   PAID: 'bg-pine/15 text-pine',
   AUTOPAY_FAILED: 'bg-red-100 text-red-600',
   OVERDUE: 'bg-red-100 text-red-600',

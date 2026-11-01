@@ -264,7 +264,7 @@
       </div>
     </form>
 
-    <div class="mt-4 bg-amber/10 border border-amber/30 rounded-xl p-4 text-sm font-body text-bark">
+    <div class="mt-4 bg-gold/10 border border-gold/30 rounded-xl p-4 text-sm font-body text-bark">
       <strong class="font-semibold">Note:</strong> Changing price or booking window takes effect immediately for all new bookings.
       Existing pending/confirmed bookings are not affected.
     </div>
