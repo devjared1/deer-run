@@ -9,14 +9,13 @@
         to="/"
         class="flex items-center gap-3 cursor-pointer flex-shrink-0"
       >
-        <!-- <DeerLogo :size="36" /> -->
-        <div class="hidden sm:block">
-          <img
-            src="/images/deerrunlogo.svg"
-            alt="Deer Run Logo"
-            class="h-16"
-          >
-        </div>
+        <img
+          src="/images/deerrunlogo.svg"
+          alt="Deer Run Golf Course — home"
+          class="h-11 sm:h-12 w-auto"
+          width="69"
+          height="48"
+        >
       </RouterLink>
 
       <!-- Desktop nav -->
@@ -72,9 +71,18 @@
         >
           Book Tee Time
         </RouterLink>
+        <RouterLink
+          to="/book"
+          class="btn-amber sm:hidden"
+          style="padding:10px 16px;font-size:12px;min-height:40px;"
+        >
+          Book
+        </RouterLink>
         <button
-          class="lg:hidden flex flex-col gap-1.5 p-2"
-          aria-label="Menu"
+          class="lg:hidden flex flex-col justify-center items-center gap-1.5 w-12 h-12"
+          :aria-label="mobileOpen ? 'Close menu' : 'Open menu'"
+          :aria-expanded="mobileOpen"
+          aria-controls="mobile-menu"
           @click="mobileOpen = !mobileOpen"
         >
           <span :class="['block w-6 h-0.5 bg-parch/70 transition-all', mobileOpen ? 'rotate-45 translate-y-2' : '']" />
@@ -88,6 +96,7 @@
     <Transition name="slide-down">
       <div
         v-if="mobileOpen"
+        id="mobile-menu"
         class="lg:hidden"
         style="background:#0D1F16;border-top:1px solid rgba(255,255,255,.07);"
       >
@@ -150,12 +159,18 @@
 
 <script setup>
 import { useAuthStore } from '@/stores/auth'
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route      = useRoute()
 const authStore  = useAuthStore()
 const mobileOpen = ref(false)
+
+// The menu closes on navigation and on Esc
+watch(() => route.fullPath, () => { mobileOpen.value = false })
+function onKey(e) { if (e.key === 'Escape') mobileOpen.value = false }
+onMounted(() => document.addEventListener('keydown', onKey))
+onBeforeUnmount(() => document.removeEventListener('keydown', onKey))
 
 const pages = [
   { to: '/',            label: 'Home' },
