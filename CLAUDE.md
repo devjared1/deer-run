@@ -66,6 +66,7 @@ deer-run/
 │       ├── package.json       # Prisma devDep only
 │       └── .env.example       # DATABASE_URL only
 ├── docs/register-setup.md     # How to set up a POS register PC (printer, kiosk Chrome, scanner, reader)
+├── docs/ui-ux-review.md       # UI/UX review + redesign brief (MD3, icons, logo); phases in TODO.md → Feature 4
 ├── TODO.md                    # Roadmap: employee time management + POS
 └── package.json               # Workspace root (npm workspaces)
 ```

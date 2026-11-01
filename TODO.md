@@ -1,7 +1,8 @@
 # TODO
 
 Roadmap for two large features: **Employee Time Management** and a **Point of Sale (POS)** system, plus
-**On-course tracking** built on the tee sheet.
+**On-course tracking** built on the tee sheet and a site-wide **UI / UX overhaul** (Feature 4, brief in
+`docs/ui-ux-review.md`).
 Employee Time Management comes first. The POS depends on it, because every sale is rung up by an
 employee and the register lives in the staff portal.
 
@@ -465,3 +466,205 @@ Groups with no tee-off recorded are assumed to have gone off on time.
 - [x] Decision: pace stays information for the pro shop; it doesn't change booking or tee time spacing
 - [ ] Pace by time of day / day of week (mornings play faster than a Saturday afternoon), if the single profile isn't
       good enough
+
+---
+
+## Feature 4: UI / UX overhaul
+
+Goal: a public site on par with nationally recognized golf course websites, fast and intuitive staff and admin tools,
+**Material Design 3**, mobile-first and responsive at every size, the new logo everywhere, and a real icon library
+instead of emoji. The full review, decisions and file:line findings are in **`docs/ui-ux-review.md`**; read it before
+starting a phase. One phase per branch/PR. Each phase ends with lint + build passing, a check at 360/412/768/1024/
+1280/1920px, a keyboard pass, and axe with 0 serious issues.
+
+Decisions (see the brief §2): stay on Vue + Tailwind with MD3 tokens and in-house components (no Vuetify / Material
+Web; `@headlessui/vue` allowed for a11y primitives). Icons are **Material Symbols Rounded** via `unplugin-icons` +
+`@iconify-json/material-symbols`. Playfair Display + Lato (drop Libre Baskerville), self-hosted. Color roles come from
+seed pine `#1E3D2F`; the brand `amber` token is renamed `gold`. MD3 shape scale: pill buttons, 12dp cards, 28dp
+dialogs. Receipts and slips aren't redesigned.
+
+### Phase 0: Quick wins and bugs found in the review
+- [ ] Move `.btn-*`, `.field`, `.card` in `main.css` into `@layer components` (they currently override Tailwind
+      utilities, so every primary button, incl. the register's Charge/Complete Sale, renders at the wrong size) and
+      add `:disabled` styles
+- [ ] Booking wizard full width on mobile (`BookingWizard.vue:2` `w-2/3` → `w-full`; `BookView.vue:16` padding)
+- [ ] Payment step creates a new PENDING booking + PaymentIntent every time it mounts (Back → Next = a second
+      30-minute hold): create once per selection and reuse (`StepPayment.vue:100`)
+- [ ] Show the API's error message when a booking fails ("slot just filled") instead of "Booking failed"
+- [ ] Logo visible at every size in `AppNav` (hidden below `sm` today) plus a compact Book button on mobile
+- [ ] Missing files: `/favicon.svg` (404 in `index.html`), `/images/course-1.jpg` (Tournaments hero 404); remove the
+      near-duplicate `course-2-edited.jpg` / `course-5-copy.jpg` (or pick them as the keepers)
+- [ ] Tournament **Register** goes to `/book` (the tee time flow): link to a contact/inquiry with the event name until
+      the event page exists (Phase 3)
+- [ ] Admin Tee Times "today" uses UTC (tomorrow after 7 pm Central): use `localDate()` (`admin/TeeTimesView.vue:124`)
+- [ ] Customer cancel window counts from UTC midnight of the slot date, not the tee time (`AccountView.vue:148`)
+- [ ] Booking "Member / Sign In" keeps the flow (`/login?redirect=/book`); don't say "Signed in as member" to guests
+- [ ] Confirmation page: Processing state that polls while the webhook is pending, handle Stripe
+      `redirect_status=failed|processing`, only say "confirmation sent" once CONFIRMED
+- [ ] `PageHero`: `classes` prop optional with a sensible default, `min-height` instead of a fixed height that clips text
+- [ ] Define the missing `price-featured` / `price-card` / `event-row` / `event-past` styles (Best Value emphasis, past
+      events dimmed); fix the duplicate `id="inquiry-form"`
+- [ ] Footer dead links (Privacy Policy, Accessibility, City of Moulton) → real pages/links or removed
+- [ ] Confirm before destructive actions: delete register/category/shift, deactivate employee/product, reset PIN,
+      promote to ADMIN, customer booking cancel; relabel admin booking REFUNDED/CANCELLED as "status only, no money moves"
+- [ ] Dialogs with typed input (Tender, Refund, Cash movement, product/employee/tournament forms) stop closing on a
+      backdrop tap
+- [ ] A failed row action shows a message instead of replacing the whole table (Employees, Products, Registers)
+- [ ] Wrap the tables that scroll the whole page sideways in `overflow-x-auto` (HouseAccounts, Registers,
+      HouseAccountDetail, CategoryManagerModal, SalesReport, Memberships comparison)
+- [ ] Register scanner: select the search text on a missed scan so the next scan replaces it; scroll to and highlight
+      the added line
+- [ ] Sign out in the admin and staff shells
+- [ ] ❓ Online price vs rate card: booking always charges $45 (`stores/booking.js:13`, server
+      `pricePerPlayerCents`) while Rates shows weekend $50 / twilight $30. Decide what's sold online
+      Answer: see if you can find the actual rates for Deer Run online. If you can, add those rates to the Admin portal so they can be changed whenever. In-store and online should pull those rates to charge. If nothing online found default to:
+            - Weekday 9/18 Green Fee: $20/$30
+            - Weekend/Holiday 9/18 Green Fee: $30/$40
+            - Cart: $12
+- [ ] ❓ Copy to confirm with the course: hours (footer vs Contact), twilight / 9-hole / tee-time policies on Rates,
+      member events by tier, hole names in `data/holes.js`
+      Answer: Deer Run does not have any twilight rates. See above about trying to find actual rates online.
+
+### Phase 1: Design system foundation
+- [ ] Logo assets: ask the course for the original vector file. Meanwhile, export the emblem from
+      `deerrunlogo.svg` (534 KB raster in an SVG wrapper) as optimized WebP + PNG at 1x/2x/3x (<30 KB each), plus a
+      square **mark** (stag + sun, no text). Generate `favicon.svg`, `favicon.ico`, `apple-touch-icon.png`, 192/512
+      manifest icons, `site.webmanifest`, `theme-color`
+- [ ] `BrandLogo.vue` (`variant="emblem|mark"`, `size`); delete `DeerLogo.vue` once unused
+- [ ] Tokens: MD3 color roles from seed pine as CSS variables mapped into `tailwind.config.js` (primary/secondary/
+      tertiary/error/success/warning, surface + surface-container levels, outline, on-* colors; brand gold/clay/lake as
+      extended colors; rename `amber` → `gold`); AA-passing solid text tiers instead of alpha text
+- [ ] MD3 type scale (display/headline/title/body/label × L/M/S) as `fontSize` tokens; self-host Playfair Display + Lato
+      with `@fontsource` (woff2, swap, preload); drop Libre Baskerville and Lato 300
+- [ ] Shape, elevation (levels 0–5), state-layer, motion (easing/duration) tokens; global `:focus-visible` ring;
+      `prefers-reduced-motion` for all animations
+- [ ] Icons: `unplugin-icons` + `@iconify-json/material-symbols` (Rounded) in `vite.config.js`; size convention;
+      custom golf-cart and bunker SVGs in the same style
+- [ ] Core components in `src/components/ui/` (brief §7): `AppButton`, `IconButton`, `AppDialog` (focus trap, Esc,
+      scroll lock, aria, full-screen on phones, `persistent`), `ConfirmDialog` + `useConfirm()`, `BottomSheet`,
+      `AppSnackbar` + `useSnackbar()`, `TextField`/`SelectField`/`TextArea`, `MoneyField`, `Checkbox`/`Switch`/
+      `RadioGroup`, `SegmentedButton`, `ChipGroup`/`FilterChip`, `Tabs`, `Card`, `StatCard`, `StatusChip` (one status map),
+      `EmptyState`, `Skeleton`, `ProgressIndicator`, `ErrorBanner` (Retry), `PageHeader`, `RowActionsMenu`, `Pagination`,
+      `DataTable` (cards below md), `DateStepper`, `DateRangeField`, `NumericKeypad`, `ResultDialog`, `CustomerSearch`
+- [ ] Dev-only component gallery at `/dev/ui` showing every component in every state
+- [ ] Update `CLAUDE.md` → Design System with the tokens, components and icon conventions
+
+### Phase 2: App shells and navigation
+- [ ] Public `AppNav`: `<header>`, skip link, logo at every size (40–48px), desktop links + Sign in/Account + gold Book
+      CTA, mobile full-screen navigation drawer (48dp items, Esc, closes on route change, scroll lock,
+      `aria-expanded`), **sticky bottom "Book a tee time" bar** on mobile
+- [ ] Public `AppFooter`: new logo, contact with icons, hours, directions link, social links, newsletter signup, real
+      legal links
+- [ ] Router: 404 page, per-route `meta.title`/`description` (`@unhead/vue`), `scrollBehavior` honoring
+      `savedPosition` and `#hash`
+- [ ] Admin shell: top app bar (title, breadcrumbs from route meta, page actions, account menu, sign out),
+      **navigation rail at md**, drawer at lg, nav grouped (Overview / Golf / Staff / Pro Shop / Admin) with Material
+      Symbols, 56dp items with MD3 active indicator, time-off badge kept, `document.title`
+- [ ] Staff shell: **bottom navigation bar on phones** (role-based 3–5 destinations + More), rail on tablets, drawer
+      on desktop; clock-status chip in the top bar; sign out; **Lock / switch cashier** on the register PC
+- [ ] Register mode: full-bleed route meta (no sidebar/padding, rail collapsed) for `/staff/register`
+- [ ] All nav emoji replaced (brief §8)
+
+### Phase 3: Public site redesign (benchmark level)
+- [ ] Image pipeline: `vite-imagetools` (AVIF/WebP at 640/1280/1920, `srcset`/`sizes`), width/height on every image,
+      `loading="lazy"` below the fold, heroes as `<picture fetchpriority="high">` instead of CSS backgrounds
+- [ ] Home: full-bleed cinematic hero with the emblem and an **instant tee-time search** (date, players, time of day →
+      `/book` prefilled); three photo-led cards (Course, Tee Times & Rates, Events); "Plan your visit" strip (address,
+      hours, phone, directions, weather); next 3 events from `/api/events`; testimonials/rating; membership teaser;
+      responsive gallery with lightbox (snap carousel on mobile); remove dead `quickInfo`
+- [ ] Course: standard scorecard (all tees, men's/ladies' handicap, sticky first column, caption/scope, computed par
+      totals, printable PDF); hazard icons with visible legend (no `title`-only meaning); `TeeSetSelector` as a radiogroup
+- [ ] Hole-by-hole pages `/course/hole/:n`: photo, yardage per tee, hole diagram, pro tip, previous/next swipe
+      (flyover/drone media when available)
+- [ ] Rates: fee notes visible on mobile (stacked), table header/caption, one elevation for the featured card, honest
+      Book buttons (per the Phase 0 pricing decision)
+- [ ] Memberships: per-tier stacked comparison on mobile with sr-only "Included/Not included", Best Value emphasis,
+      inquiry as a real `<form>` (labels, `autocomplete`, inline validation, 1-column on mobile), icon success state
+- [ ] Tournaments: sorted upcoming/past, skeleton loading, empty state with action, event images, **event detail page
+      with registration/inquiry form**, Add to calendar, share, `Event` JSON-LD
+- [ ] Contact: labeled form with `autocomplete` and validation, tappable phone, template links instead of `v-html`,
+      **Get directions** (Google/Apple Maps), icon tiles
+- [ ] Login: compact header, "Sign in" (not "Member Sign In"), forgot password, create account, show/hide password,
+      `autocomplete`, friendly errors
+- [ ] Account: friendly status chips, cancel with confirmation and error feedback, contrast-safe past bookings,
+      error state; `HouseAccountPanel` / `StripeElementModal` moved onto the shared components and tokens, one primary
+      action + overflow menu
+- [ ] Statement: Download PDF (server already builds it), Print with icons, 48dp back button, logo on the printed
+      statement
+- [ ] SEO: OG/Twitter tags and share images per page, canonical, `robots.txt`, `sitemap.xml`, `GolfCourse` +
+      `LocalBusiness` JSON-LD (address, geo, phone, hours, `ReserveAction` → `/book`), prerender public routes
+      (`vite-ssg` or build-time prerender)
+- [ ] Accessibility statement page (linked from the footer)
+- [ ] ❓ Professional photography (drone, golden hour, holes 1–18, clubhouse, grill, people playing) and an optional
+      muted hero video loop
+      Answer: Use the current photography pics where you can. Will need to get professional photos done at a later date.
+
+### Phase 4: Booking flow
+- [ ] Steps in the URL (`/book?step=` or child routes) so browser Back works; focus moves to each step heading;
+      `aria-current="step"`; reduced-motion-aware transitions
+- [ ] Date: horizontal 7–14 day strip on mobile, month calendar on desktop with grid semantics and arrow keys, 48dp
+      days, navigation limited to the booking window, per-day availability hint, no extra "continue" click
+- [ ] Time: **players first**, then only times that fit; grouped Morning / Midday / Twilight with sticky subheads;
+      skeleton loading; empty state with next-day chips; sticky bottom summary (date · time · players · total) with
+      Continue
+- [ ] Details: segmented guest/member control, phone field, inline validation, `autocomplete`, labels tied to inputs
+- [ ] Payment: total from the server's PaymentIntent, terms and cancellation-policy line, busy state, Stripe
+      `appearance` from the tokens
+- [ ] Confirmation: booking reference, Add to calendar (.ics), directions, manage booking, arrival tips, weather for
+      the tee date
+
+### Phase 5: Admin panel migration
+- [ ] Migrate every admin view to the shared components and tokens (removes the copied `.modal-*`, `.btn-*`,
+      `.input-field`, `.badge`, `.th` CSS and the raw `gray-*`/`red-*`/`green-*` classes); `apiFetch` everywhere
+- [ ] `DataTable` everywhere: cards below md, `more_vert` row menus, keyboard-reachable clickable rows (Sales,
+      HouseAccounts, Timesheets)
+- [ ] One filter behavior (reload on change, debounce text), filter chips + `DateRangeField`; Sales filters in a
+      bottom sheet on mobile
+- [ ] Snackbar feedback on every save (Undo for deactivations); confirmations through `useConfirm()`
+- [ ] Friendly labels everywhere: status chips, 12-hour times, formatted dates, `$1,234.56`
+- [ ] Settings: tabbed/sectioned cards (Booking / Payroll / Point of Sale / Tipping / On Course / House Accounts),
+      sticky save bar, unsaved-changes guard, money in dollars, stacking grids, hole-time grid that fits at 360px
+- [ ] Dashboard: date-context header, StatCards with trends/sparklines, quick actions
+- [ ] Tee Times: bulk generate / close slots
+- [ ] Schedule: agenda list instead of the month grid on phones, keyboard-reachable cells, visible legend
+- [ ] Time Off: red Deny/Revoke; House account detail: scroll to the shown statement, busy labels on saves
+
+### Phase 6: Staff portal and POS
+- [ ] Register layout: Total `text-3xl`, Charge as an xl filled button, icon toolbar + overflow for Recent sales / No
+      sale / Account payment / End of day / Change register and the drawer actions, scrolling 48dp category chip row,
+      48dp qty ± and line icon buttons
+- [ ] Scanner: document-level scanner buffer (works whenever no input/dialog has focus), scan during "Sale complete"
+      starts a new sale with that item, error tone on a miss, `inputmode="none"` on the scan field with a keyboard toggle
+- [ ] Tender: 64dp quick-cash buttons, Enter on an empty cash field = Exact, split asks for the cash part and
+      computes the card remainder, errors above the buttons, Print/Email receipt as a segmented control, defaults to
+      Card (or warns) while the drawer is closed
+- [ ] Card: reader online/offline chip in the cart header (Card disabled when offline), "Pay with cash instead" on a
+      decline
+- [ ] Manager approval with large name buttons + `NumericKeypad` (also house account PIN, drawer counts, Manager PIN
+      page); refund reason chips; one `ResultDialog` for sale / refund / drawer / account payment results
+- [ ] Check-in path: "No add-ons, done" (no $0 sale needed) and "Back to tee sheet" after a check-in sale
+- [ ] All POS modals on `AppDialog` (consistent z-stack, print-hidden, Esc, no backdrop-close with input); verify only
+      the slip prints during refund/approval flows
+- [ ] Tee Sheet: one card per booking (name + players, one icon status chip, one primary action, overflow menu),
+      inline "Open: tap to book" rows, `DateStepper`, help text behind an info icon, AA contrast
+- [ ] On Course: group cards with one big **Update position** action, bottom-sheet update flow (group → hole → stage,
+      56dp+ hole picker in 5–6 columns, full-width stage control), whole hole tile as the map target, pace shown with
+      arrows/"+6" text (not color only), estimates as a different fill, compact sticky pace bar
+- [ ] High-contrast mode for outdoor pages (On Course, Tee Sheet): dark text, 16px minimum, heavier weights
+- [ ] `RoundSetupFields`: 48dp toggles, MD3 switch for own cart
+- [ ] Time Clock: action first and full width on phones; My Timesheet: day list below sm; My Schedule: top app bar +
+      chip row, agenda list on phones; Time Off: extended FAB + full-screen request dialog, `useConfirm()` for cancel;
+      Manager PIN: snackbar
+- [ ] Remaining emoji (✓ ✕ ⚠ 🖨 🛺 etc.) replaced; `apiFetch` in TimeClock and MyTimesheet
+
+### Phase 7: Quality pass
+- [ ] Lighthouse ≥ 90 (Performance, Accessibility, Best Practices, SEO) on every public route; LCP < 2.5 s on 4G,
+      CLS < 0.1
+- [ ] axe: 0 serious/critical issues across public, admin and staff pages; full keyboard-only walkthrough of booking,
+      register sale, refund, check-in and On Course update
+- [ ] Contrast audit of every token pairing (WCAG AA; 3:1 for large text and UI components)
+- [ ] Device pass: iPhone SE / 14 / Pro Max, Android 412px, iPad portrait/landscape, the register PC at 1366×768
+      touch, 1920 desktop; print checks for schedules, statements, Z report and receipts
+- [ ] No emoji icons left (`grep` for emoji ranges in `src`); no `DeerLogo` imports; no inline hex colors outside
+      print components
+- [ ] Update `CLAUDE.md` (Design System, components, routes) and this file
