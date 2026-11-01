@@ -241,9 +241,9 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 
 | Path | Methods | Description |
 |------|---------|-------------|
-| `/api/admin/dashboard` | GET | Dashboard stats |
-| `/api/admin/teetimes[/:id]` | GET, POST / PUT, DELETE | Tee time slots |
-| `/api/admin/bookings[/:id]` | GET / PUT | Bookings list, status changes |
+| `/api/admin/dashboard` | GET | Dashboard stats (course-local today, same day last week, 7-day `series`) |
+| `/api/admin/teetimes[/:id]` | GET, POST / PUT, DELETE | Tee time slots; POST `{ action: 'generate' \| 'close' \| 'members', from, to, … , dryRun? }` for bulk generate / delete open slots / members-only (returns counts) |
+| `/api/admin/bookings[/:id]` | GET / PUT | Bookings list (`from`, `to`, `search`, `status` comma list, paged), status changes |
 | `/api/admin/events[/:id]` | GET, POST / PUT, DELETE | Tournaments |
 | `/api/admin/users[/:id]` | GET / PUT | Users, role changes |
 | `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS, tipping, late fee) + `rates` (saved onto the rate products) and `holidayDates`; PUT returns `warning` if the tip percentages didn't reach Stripe |
@@ -512,7 +512,7 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 | `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
 | `pricing.js` | Register line/tax/total math incl. the member Pro Shop discount (`memberDiscountBps`; imports `../data/membershipTiers.js`), shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
-| `api.js` | `apiFetch()` (see above) |
+| `api.js` | `apiFetch()` (see above), `apiDownload(url, fallbackName)` (authenticated file downloads: CSV, PDF) |
 | `printReceipt.js`, `print.js` | `printReceipt()` (80 mm `@page`) and `printLandscape()`; each adds its `@page` rule only while printing |
 | `supabase.js` | Anon client singleton (frontend only) |
 

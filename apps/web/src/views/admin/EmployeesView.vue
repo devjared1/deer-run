@@ -1,245 +1,260 @@
 <template>
   <div>
-    <!-- Filters -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap items-end gap-4">
-      <div>
-        <label class="label-sm">Search</label>
-        <input type="text" v-model="filters.search" @keyup.enter="load" class="input-field" placeholder="Name or email" />
-      </div>
-      <div>
-        <label class="label-sm">Position</label>
-        <select v-model="filters.position" @change="load" class="input-field">
-          <option value="">All positions</option>
+    <Teleport to="#admin-page-actions" defer>
+      <AppButton :icon="IconPersonAdd" class="hidden sm:inline-flex" @click="openCreate">New employee</AppButton>
+      <IconButton :icon="IconPersonAdd" variant="filled" label="New employee" class="sm:hidden" @click="openCreate" />
+    </Teleport>
+
+    <!-- Filters: reload on change, search debounced -->
+    <div class="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] items-start gap-3">
+      <TextField
+        v-model="filters.search"
+        type="search"
+        label="Search"
+        placeholder="Name or email"
+        :leading-icon="IconSearch"
+        autocomplete="off"
+      />
+      <SelectField v-model="filters.position" label="Position" placeholder="All positions">
+        <optgroup v-for="dept in departments" :key="dept" :label="dept">
+          <option v-for="p in positionsIn(dept)" :key="p.value" :value="p.value">{{ p.label }}</option>
+        </optgroup>
+      </SelectField>
+      <SegmentedButton
+        v-model="filters.status"
+        label="Status"
+        class="sm:col-span-2 lg:col-span-1 lg:mt-2"
+        :options="[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }, { value: 'all', label: 'All' }]"
+      />
+      <AppButton v-if="filtersChanged" variant="text" class="justify-self-start lg:mt-2" @click="resetFilters">Reset</AppButton>
+    </div>
+
+    <ErrorBanner v-if="error" :message="error" @retry="load" />
+
+    <template v-else>
+      <ErrorBanner v-if="actionError" class="mb-3" :message="actionError" @dismiss="actionError = null" />
+
+      <DataTable
+        :columns="columns"
+        :rows="employees"
+        :loading="loading && !loaded"
+        caption="Employees"
+        :row-label="emp => `Edit ${fullName(emp)}`"
+        @row-click="openEdit"
+      >
+        <template #cell-name="{ row }">{{ fullName(row) }}</template>
+        <template #cell-contact="{ row }">
+          <span class="block [overflow-wrap:anywhere]">{{ row.email }}</span>
+          <span v-if="row.phone" class="block whitespace-nowrap text-body-s text-on-surface-variant">{{ row.phone }}</span>
+        </template>
+        <template #cell-status="{ row }">
+          <span class="inline-flex flex-wrap items-center gap-1">
+            <StatusChip
+              :label="row.active ? 'Active' : 'Inactive'"
+              :tone="row.active ? 'success' : 'neutral'"
+              :icon="row.active ? 'check' : 'block'"
+              size="sm"
+            />
+            <span
+              v-if="!row.userId"
+              title="No site account uses this email yet. It links automatically the first time they sign in with it."
+            >
+              <StatusChip label="No login yet" tone="neutral" :icon="false" size="sm" />
+            </span>
+            <StatusChip v-if="row.managerPinLocked" label="PIN locked" tone="error" icon="lock" size="sm" />
+          </span>
+          <span v-if="!row.managerPinLocked && row.hasManagerPin" class="block mt-1 text-body-s text-on-surface-variant">
+            Manager PIN set
+          </span>
+        </template>
+        <template #empty>
+          <EmptyState
+            compact
+            :icon="IconBadge"
+            :title="filtersChanged ? 'No employees match' : 'No employees yet'"
+            :message="filtersChanged ? 'Try another search or position.' : 'Add your staff so they can clock in and use the register.'"
+            :action-label="filtersChanged ? 'Reset filters' : 'New employee'"
+            @action="filtersChanged ? resetFilters() : openCreate()"
+          />
+        </template>
+        <template #actions="{ row }">
+          <RowActionsMenu :label="`Actions for ${fullName(row)}`" :items="rowActions(row)" />
+        </template>
+      </DataTable>
+
+      <p v-if="employees.length" class="mt-3 text-body-m text-on-surface-variant" aria-live="polite">
+        {{ employees.length }} employee{{ employees.length === 1 ? '' : 's' }}
+      </p>
+    </template>
+
+    <!-- Create / edit -->
+    <AppDialog
+      v-model:open="showForm"
+      :title="formData.id ? 'Edit employee' : 'New employee'"
+      persistent
+      fullscreen-on-mobile
+      :confirm-label="formData.id ? 'Save' : 'Create'"
+      :confirm-loading="saving"
+      @confirm="submitForm"
+    >
+      <form id="employee-form" ref="formEl" class="space-y-4 pt-2 pb-2" @submit.prevent="submitForm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <TextField v-model="formData.firstName" label="First name" required autocomplete="off" data-autofocus />
+          <TextField v-model="formData.lastName" label="Last name" required autocomplete="off" />
+        </div>
+        <TextField
+          v-model="formData.email"
+          type="email"
+          label="Email"
+          required
+          autocomplete="off"
+          helper="The employee signs in to the staff portal with a site account that uses this email."
+        />
+        <TextField v-model="formData.phone" type="tel" label="Phone" autocomplete="off" placeholder="(256) 555-0100" />
+        <SelectField v-model="formData.position" label="Position" required placeholder="Select a position">
           <optgroup v-for="dept in departments" :key="dept" :label="dept">
             <option v-for="p in positionsIn(dept)" :key="p.value" :value="p.value">{{ p.label }}</option>
           </optgroup>
-        </select>
-      </div>
-      <div>
-        <label class="label-sm">Status</label>
-        <select v-model="filters.status" @change="load" class="input-field">
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="all">All</option>
-        </select>
-      </div>
-      <button @click="load" class="btn-pine px-4 py-2 text-sm">Search</button>
-      <button @click="resetFilters" class="btn-outline-sm">Reset</button>
-      <button @click="openCreate" class="btn-amber px-4 py-2 text-sm ml-auto">+ New Employee</button>
-    </div>
-
-    <div v-if="loading" class="text-gray-400 text-sm">Loading…</div>
-    <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
-
-    <template v-else>
-      <p v-if="actionError" class="text-red-500 text-sm mb-3">{{ actionError }}</p>
-
-      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm font-body">
-            <thead>
-              <tr class="bg-gray-50 border-b border-gray-100 text-left">
-                <th class="th">Name</th>
-                <th class="th">Position</th>
-                <th class="th">Contact</th>
-                <th class="th">Rate</th>
-                <th class="th">Hired</th>
-                <th class="th">Login</th>
-                <th class="th">Status</th>
-                <th class="px-5 py-3"></th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              <tr v-for="emp in employees" :key="emp.id" class="hover:bg-gray-50/50 transition-colors">
-                <td class="px-5 py-3 text-bark font-semibold whitespace-nowrap">{{ emp.firstName }} {{ emp.lastName }}</td>
-                <td class="px-5 py-3 text-gray-600">{{ positionLabel(emp.position) }}</td>
-                <td class="px-5 py-3 text-gray-600">
-                  <div>{{ emp.email }}</div>
-                  <div v-if="emp.phone" class="text-gray-400 text-xs">{{ emp.phone }}</div>
-                </td>
-                <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ formatRate(emp.hourlyRateCents) }}</td>
-                <td class="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">{{ formatDate(emp.hireDate) }}</td>
-                <td class="px-5 py-3">
-                  <span
-                    v-if="emp.userId"
-                    class="text-xs px-2 py-0.5 rounded-full bg-pine/20 text-pine"
-                  >Linked</span>
-                  <span
-                    v-else
-                    class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"
-                    title="No site account uses this email yet. It links automatically the first time they sign in with it."
-                  >No account</span>
-                </td>
-                <td class="px-5 py-3">
-                  <span
-                    :class="emp.active ? 'bg-lake/20 text-lake' : 'bg-gray-100 text-gray-500'"
-                    class="text-xs px-2 py-0.5 rounded-full"
-                  >{{ emp.active ? 'Active' : 'Inactive' }}</span>
-                  <div v-if="emp.managerPinLocked" class="text-xs text-red-600 mt-1">PIN locked</div>
-                  <div v-else-if="emp.hasManagerPin" class="text-xs text-gray-400 mt-1">Manager PIN set</div>
-                </td>
-                <td class="px-5 py-3 whitespace-nowrap text-right space-x-3">
-                  <button @click="openEdit(emp)" class="text-xs text-lake hover:text-pine">Edit</button>
-                  <button @click="toggleActive(emp)" class="text-xs text-gold hover:text-clay">
-                    {{ emp.active ? 'Deactivate' : 'Reactivate' }}
-                  </button>
-                  <button
-                    v-if="emp.hasManagerPin"
-                    class="text-xs text-lake hover:text-pine"
-                    title="Clear the manager PIN so they can set a new one"
-                    @click="resetPin(emp)"
-                  >
-                    Reset PIN
-                  </button>
-                  <button @click="confirmDelete(emp)" class="text-xs text-red-400 hover:text-red-600">Delete</button>
-                </td>
-              </tr>
-              <tr v-if="!employees.length">
-                <td colspan="8" class="px-5 py-8 text-center text-gray-400">No employees found.</td>
-              </tr>
-            </tbody>
-          </table>
+        </SelectField>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <MoneyField v-model="formData.hourlyRateCents" label="Hourly rate" :min="0" :max="100000" helper="Optional" />
+          <TextField v-model="formData.hireDate" type="date" label="Hire date" float-label />
         </div>
-        <div v-if="employees.length" class="px-5 py-3 border-t border-gray-100 text-xs text-gray-500 font-body">
-          {{ employees.length }} employee{{ employees.length === 1 ? '' : 's' }}
-        </div>
-      </div>
-    </template>
-
-    <!-- Create / Edit modal -->
-    <div v-if="showForm" class="modal-overlay">
-      <div class="modal-box max-w-lg overflow-y-auto max-h-[90vh]">
-        <h2 class="font-display font-bold text-bark mb-4">{{ formData.id ? 'Edit Employee' : 'New Employee' }}</h2>
-        <div class="space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="label-sm">First Name *</label>
-              <input type="text" v-model="formData.firstName" class="input-field w-full" />
-            </div>
-            <div>
-              <label class="label-sm">Last Name *</label>
-              <input type="text" v-model="formData.lastName" class="input-field w-full" />
-            </div>
-          </div>
-          <div>
-            <label class="label-sm">Email *</label>
-            <input type="email" v-model="formData.email" class="input-field w-full" placeholder="name@example.com" />
-            <p class="text-gray-400 text-xs mt-1 font-body">
-              The employee signs in to the staff portal with a site account that uses this email.
-            </p>
-          </div>
-          <div>
-            <label class="label-sm">Phone</label>
-            <input type="tel" v-model="formData.phone" class="input-field w-full" placeholder="(256) 555-0100" />
-          </div>
-          <div>
-            <label class="label-sm">Position *</label>
-            <select v-model="formData.position" class="input-field w-full">
-              <option value="" disabled>Select a position</option>
-              <optgroup v-for="dept in departments" :key="dept" :label="dept">
-                <option v-for="p in positionsIn(dept)" :key="p.value" :value="p.value">{{ p.label }}</option>
-              </optgroup>
-            </select>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="label-sm">Hourly Rate ($)</label>
-              <input type="number" v-model="formData.hourlyRate" min="0" step="0.01" class="input-field w-full" placeholder="—" />
-            </div>
-            <div>
-              <label class="label-sm">Hire Date</label>
-              <input type="date" v-model="formData.hireDate" class="input-field w-full" />
-            </div>
-          </div>
-          <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer">
-            <input type="checkbox" v-model="formData.active" class="rounded" /> Active
-          </label>
-        </div>
-        <div class="flex justify-end gap-3 mt-5">
-          <button @click="showForm = false" class="btn-outline-sm">Cancel</button>
-          <button @click="saveEmployee" :disabled="saving" class="btn-amber px-4 py-2 text-sm disabled:opacity-50">
-            {{ saving ? 'Saving…' : (formData.id ? 'Save Changes' : 'Create Employee') }}
-          </button>
-        </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">{{ formError }}</p>
-      </div>
-    </div>
-
-    <!-- Delete confirm -->
-    <div v-if="deleting" class="modal-overlay" @click.self="deleting = null">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-2">Delete Employee?</h2>
-        <p class="text-gray-500 text-sm font-body mb-5">
-          {{ deleting.firstName }} {{ deleting.lastName }} and their schedule and time off requests will be
-          permanently removed. Employees with time clock history can't be deleted; deactivate them instead.
-        </p>
-        <div class="flex justify-end gap-3">
-          <button @click="deleting = null" class="btn-outline-sm">Cancel</button>
-          <button @click="deleteEmployee" :disabled="saving" class="bg-red-500 hover:bg-red-600 text-white text-sm px-4 py-2 rounded-lg font-body transition-colors">
-            {{ saving ? 'Deleting…' : 'Delete' }}
-          </button>
-        </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">{{ formError }}</p>
-      </div>
-    </div>
+        <Switch v-model="formData.active" label="Active" helper="Inactive employees can't use the staff portal." />
+        <ErrorBanner v-if="formError" :message="formError" />
+      </form>
+      <template #actions="{ close }">
+        <AppButton variant="text" :disabled="saving" @click="close">Cancel</AppButton>
+        <AppButton type="submit" form="employee-form" :loading="saving">
+          {{ formData.id ? 'Save changes' : 'Create employee' }}
+        </AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { apiFetch } from '@/lib/api'
+import { formatCents } from '@/lib/money'
+import { formatLocalDate } from '@/lib/timeclock'
 import { employeePositions, departments, positionLabel } from '@/data/employeePositions'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import DataTable from '@/components/ui/DataTable.vue'
+import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import TextField from '@/components/ui/TextField.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import MoneyField from '@/components/ui/MoneyField.vue'
+import Switch from '@/components/ui/Switch.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import IconPersonAdd from '~icons/material-symbols/person-add-rounded'
+import IconSearch from '~icons/material-symbols/search-rounded'
+import IconBadge from '~icons/material-symbols/badge-rounded'
+import IconEdit from '~icons/material-symbols/edit-rounded'
+import IconLockReset from '~icons/material-symbols/lock-reset-rounded'
+import IconPersonOff from '~icons/material-symbols/person-off-rounded'
+import IconPersonCheck from '~icons/material-symbols/person-check-rounded'
+import IconDelete from '~icons/material-symbols/delete-rounded'
 
-const authStore = useAuthStore()
+const confirm  = useConfirm()
+const snackbar = useSnackbar()
+
 const employees = ref([])
 const loading   = ref(false)
+const loaded    = ref(false)
 const error     = ref(null)
-const actionError = ref(null) // a failed row action (deactivate, reset PIN); shown above the table instead of replacing it
-const saving   = ref(false)
+const actionError = ref(null) // a failed row action; shown above the table instead of replacing it
+const saving    = ref(false)
 const formError = ref(null)
+const formEl    = ref(null)
 
-const filters  = ref({ search: '', position: '', status: 'active' })
+const DEFAULT_FILTERS = { search: '', position: null, status: 'active' }
+const filters  = ref({ ...DEFAULT_FILTERS })
 const showForm = ref(false)
-const deleting = ref(null)
 const formData = ref({})
+
+const filtersChanged = computed(() =>
+  filters.value.search.trim() !== '' || !!filters.value.position || filters.value.status !== 'active')
+
+const columns = [
+  { key: 'name', label: 'Name', primary: true },
+  { key: 'position', label: 'Position', format: v => positionLabel(v) },
+  { key: 'contact', label: 'Contact', class: 'min-w-[12rem]' },
+  { key: 'hourlyRateCents', label: 'Rate', align: 'right', class: 'whitespace-nowrap tabular-nums', format: formatRate },
+  { key: 'hireDate', label: 'Hired', class: 'whitespace-nowrap hidden xl:table-cell', hideOnMobile: true, format: v => (v ? formatLocalDate(v, { month: 'short', day: 'numeric', year: 'numeric' }) : '—') },
+  { key: 'status', label: 'Status' },
+]
 
 const blankForm = () => ({
   id: null, firstName: '', lastName: '', email: '', phone: '',
-  position: '', hourlyRate: '', hireDate: '', active: true,
+  position: null, hourlyRateCents: null, hireDate: '', active: true,
 })
+
+const fullName = emp => `${emp.firstName} ${emp.lastName}`
 
 function positionsIn(dept) {
   return employeePositions.filter(p => p.department === dept)
 }
 
-async function api(url, options = {}) {
-  const res = await fetch(url, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.getToken()}` },
-  })
-  if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-  return res.json()
+function formatRate(cents) {
+  return cents === null || cents === undefined ? '—' : `${formatCents(cents)}/hr`
 }
 
+function rowActions(emp) {
+  return [
+    { label: 'Edit', icon: IconEdit, onClick: () => openEdit(emp) },
+    ...(emp.hasManagerPin ? [{ label: 'Reset manager PIN', icon: IconLockReset, onClick: () => resetPin(emp) }] : []),
+    emp.active
+      ? { label: 'Deactivate', icon: IconPersonOff, onClick: () => setActive(emp, false) }
+      : { label: 'Activate', icon: IconPersonCheck, onClick: () => setActive(emp, true) },
+    { label: 'Delete', icon: IconDelete, danger: true, onClick: () => deleteEmployee(emp) },
+  ]
+}
+
+// ─── Load ───────────────────────────────────────────────────────────────────
+
+let loadSeq = 0
 async function load() {
+  const seq = ++loadSeq
   loading.value = true
   error.value   = null
   try {
     const params = new URLSearchParams({ status: filters.value.status })
-    if (filters.value.search)   params.set('search', filters.value.search)
+    const search = filters.value.search.trim()
+    if (search)                 params.set('search', search)
     if (filters.value.position) params.set('position', filters.value.position)
-    employees.value = await api(`/api/admin/employees?${params}`)
+    const data = await apiFetch(`/api/admin/employees?${params}`)
+    if (seq !== loadSeq) return
+    employees.value = data
+    loaded.value = true
   } catch (e) {
-    error.value = e.message
+    if (seq === loadSeq) error.value = e.message
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
+let searchTimer = null
+watch(() => filters.value.search, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(load, 300)
+})
+watch(() => [filters.value.position, filters.value.status], load)
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
 function resetFilters() {
-  filters.value = { search: '', position: '', status: 'active' }
-  load()
+  clearTimeout(searchTimer)
+  filters.value = { ...DEFAULT_FILTERS }
 }
+
+// ─── Create / edit ──────────────────────────────────────────────────────────
 
 function openCreate() {
   formData.value  = blankForm()
@@ -255,12 +270,17 @@ function openEdit(emp) {
     email: emp.email,
     phone: emp.phone ?? '',
     position: emp.position,
-    hourlyRate: emp.hourlyRateCents !== null ? (emp.hourlyRateCents / 100).toFixed(2) : '',
+    hourlyRateCents: emp.hourlyRateCents ?? null,
     hireDate: emp.hireDate ?? '',
     active: emp.active,
   }
   formError.value = null
   showForm.value  = true
+}
+
+function submitForm() {
+  if (!formEl.value?.reportValidity()) return
+  saveEmployee()
 }
 
 async function saveEmployee() {
@@ -274,15 +294,16 @@ async function saveEmployee() {
       email: f.email,
       phone: f.phone || null,
       position: f.position,
-      hourlyRateCents: f.hourlyRate !== '' && f.hourlyRate !== null ? Math.round(Number(f.hourlyRate) * 100) : null,
+      hourlyRateCents: f.hourlyRateCents ?? null,
       hireDate: f.hireDate || null,
       active: f.active,
     }
-    await api(f.id ? `/api/admin/employees/${f.id}` : '/api/admin/employees', {
+    await apiFetch(f.id ? `/api/admin/employees/${f.id}` : '/api/admin/employees', {
       method: f.id ? 'PUT' : 'POST',
-      body: JSON.stringify(body),
+      body,
     })
     showForm.value = false
+    snackbar.show(f.id ? `${f.firstName} ${f.lastName} saved` : `${f.firstName} ${f.lastName} added`)
     await load()
   } catch (e) {
     formError.value = e.message
@@ -291,17 +312,22 @@ async function saveEmployee() {
   }
 }
 
-async function toggleActive(emp) {
+// ─── Row actions ────────────────────────────────────────────────────────────
+
+async function setActive(emp, active, { undo = true } = {}) {
   actionError.value = null
-  if (emp.active && !window.confirm(
-    `Deactivate ${emp.firstName} ${emp.lastName}? They won't be able to use the staff portal until they're reactivated.`,
-  )) return
   try {
-    await api(`/api/admin/employees/${emp.id}`, {
-      method: 'PUT',
-      body: JSON.stringify({ active: !emp.active }),
-    })
+    await apiFetch(`/api/admin/employees/${emp.id}`, { method: 'PUT', body: { active } })
     await load()
+    if (!active && undo) {
+      snackbar.show({
+        message: `${fullName(emp)} deactivated`,
+        actionLabel: 'Undo',
+        onAction: () => setActive(emp, true, { undo: false }),
+      })
+    } else {
+      snackbar.show(`${fullName(emp)} ${active ? 'activated' : 'deactivated'}`)
+    }
   } catch (e) {
     actionError.value = e.message
   }
@@ -309,55 +335,38 @@ async function toggleActive(emp) {
 
 async function resetPin(emp) {
   actionError.value = null
-  if (!window.confirm(
-    `Reset ${emp.firstName} ${emp.lastName}'s manager PIN? Their current PIN stops working until they set a new one.`,
-  )) return
+  const ok = await confirm({
+    title: 'Reset manager PIN?',
+    message: `${fullName(emp)}'s current PIN stops working until they set a new one.`,
+    confirmLabel: 'Reset PIN',
+  })
+  if (!ok) return
   try {
-    await api(`/api/admin/employees/${emp.id}`, { method: 'PUT', body: JSON.stringify({ resetManagerPin: true }) })
+    await apiFetch(`/api/admin/employees/${emp.id}`, { method: 'PUT', body: { resetManagerPin: true } })
+    snackbar.show(`${fullName(emp)}'s manager PIN was reset`)
     await load()
   } catch (e) {
     actionError.value = e.message
   }
 }
 
-function confirmDelete(emp) {
-  deleting.value  = emp
-  formError.value = null
-}
-
-async function deleteEmployee() {
-  saving.value    = true
-  formError.value = null
+async function deleteEmployee(emp) {
+  actionError.value = null
+  const ok = await confirm({
+    title: 'Delete employee?',
+    message: `${fullName(emp)} and their schedule and time off requests will be permanently removed. Employees with time clock history can't be deleted; deactivate them instead.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+  })
+  if (!ok) return
   try {
-    await api(`/api/admin/employees/${deleting.value.id}`, { method: 'DELETE' })
-    deleting.value = null
+    await apiFetch(`/api/admin/employees/${emp.id}`, { method: 'DELETE' })
+    snackbar.show(`${fullName(emp)} deleted`)
     await load()
   } catch (e) {
-    formError.value = e.message
-  } finally {
-    saving.value = false
+    actionError.value = e.message
   }
-}
-
-function formatRate(cents) {
-  return cents === null ? '—' : `$${(cents / 100).toFixed(2)}/hr`
-}
-
-function formatDate(date) {
-  if (!date) return '—'
-  // DATE columns come back as YYYY-MM-DD; format in UTC so the day doesn't shift
-  return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
 }
 
 onMounted(load)
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.th             { @apply px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold; }
-.btn-pine       { @apply bg-pine text-parch rounded-lg font-body font-semibold hover:bg-pine/90 transition-colors; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

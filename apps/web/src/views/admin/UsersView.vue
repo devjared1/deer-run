@@ -1,211 +1,263 @@
 <template>
-  <div>
-    <!-- Filters -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap items-end gap-4">
-      <div>
-        <label class="block text-xs text-gray-500 mb-1 font-body">Search</label>
-        <input type="text" v-model="filters.search" @keyup.enter="load(1)" class="input-field" placeholder="Name or email" />
+  <div class="space-y-6">
+    <!-- Filters: every change reloads (search after a 300 ms pause) -->
+    <Card variant="outlined">
+      <div class="space-y-4">
+        <TextField
+          v-model="search"
+          type="search"
+          label="Search"
+          placeholder="Name or email"
+          :leading-icon="IconSearch"
+          autocomplete="off"
+        />
+        <div class="space-y-1">
+          <p class="text-label-l text-on-surface-variant" aria-hidden="true">Role</p>
+          <ChipGroup v-model="role" type="choice" :options="ROLE_OPTIONS" label="Role" scroll />
+        </div>
       </div>
-      <div>
-        <label class="block text-xs text-gray-500 mb-1 font-body">Role</label>
-        <select v-model="filters.role" class="input-field">
-          <option value="">All roles</option>
-          <option>GUEST</option>
-          <option>MEMBER</option>
-          <option>ADMIN</option>
-        </select>
-      </div>
-      <button @click="load(1)" class="btn-pine px-4 py-2 text-sm">Search</button>
-      <button @click="resetFilters" class="btn-outline-sm">Reset</button>
-    </div>
+    </Card>
 
-    <div v-if="loading" class="text-gray-400 text-sm">Loading…</div>
-    <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
+    <ErrorBanner v-if="error" :message="error" @retry="load" />
 
     <template v-else>
-      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm font-body">
-            <thead>
-              <tr class="bg-gray-50 border-b border-gray-100 text-left">
-                <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Name</th>
-                <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Email</th>
-                <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Role</th>
-                <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Membership</th>
-                <th class="px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold">Joined</th>
-                <th class="px-5 py-3"></th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              <tr v-for="u in users" :key="u.id" class="hover:bg-gray-50/50 transition-colors">
-                <td class="px-5 py-3 text-bark font-semibold">{{ u.name || '—' }}</td>
-                <td class="px-5 py-3 text-gray-600">{{ u.email }}</td>
-                <td class="px-5 py-3">
-                  <span :class="roleClass(u.role)" class="text-xs px-2 py-0.5 rounded-full">{{ u.role }}</span>
-                </td>
-                <td class="px-5 py-3 text-xs">
-                  <template v-if="u.memberUntil">
-                    <span :class="u.memberUntil < today ? 'text-red-500' : 'text-gray-600'">
-                      {{ u.memberUntil < today ? 'Ended' : 'Through' }} {{ formatYmd(u.memberUntil) }}
-                    </span>
-                    <span v-if="u.membershipTier" class="text-gray-400"> · {{ u.membershipTier }}</span>
-                  </template>
-                  <span v-else-if="u.role === 'MEMBER'" class="text-gray-400">No end date</span>
-                  <span v-else class="text-gray-300">—</span>
-                </td>
-                <td class="px-5 py-3 text-gray-400 text-xs">{{ formatDate(u.createdAt) }}</td>
-                <td class="px-5 py-3">
-                  <button @click="openRoleModal(u)" class="text-xs text-lake hover:text-pine">Edit</button>
-                </td>
-              </tr>
-              <tr v-if="!users.length">
-                <td colspan="6" class="px-5 py-8 text-center text-gray-400">No users found.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+      <DataTable
+        :columns="columns"
+        :rows="users"
+        :loading="loading"
+        manual-sort
+        caption="Users"
+        :row-label="u => `${u.name || u.email}, ${statusInfo('role', u.role).label}`"
+        @row-click="openEdit"
+      >
+        <template #cell-name="{ row }">
+          <span class="block">{{ row.name || row.email }}</span>
+          <span v-if="row.name" class="block text-body-s font-normal text-on-surface-variant md:hidden">{{ row.email }}</span>
+        </template>
+        <template #cell-role="{ row }"><StatusChip kind="role" :status="row.role" size="sm" /></template>
+        <template #cell-membership="{ row }">
+          <template v-if="row.memberUntil">
+            <span :class="row.memberUntil < today ? 'text-error' : 'text-on-surface'">
+              {{ row.memberUntil < today ? 'Ended' : 'Through' }} {{ formatYmd(row.memberUntil) }}
+            </span>
+            <span v-if="row.membershipTier" class="text-on-surface-variant"> · {{ row.membershipTier }}</span>
+          </template>
+          <span v-else-if="row.role === 'MEMBER'" class="text-on-surface-variant">
+            No end date<template v-if="row.membershipTier"> · {{ row.membershipTier }}</template>
+          </span>
+          <span v-else class="text-on-surface-variant">—</span>
+        </template>
+        <template #cell-createdAt="{ row }">{{ formatJoined(row.createdAt) }}</template>
+        <template #actions="{ row }">
+          <RowActionsMenu
+            :label="`Actions for ${row.name || row.email}`"
+            :items="[{ label: 'Edit role and membership', icon: IconManage, onClick: () => openEdit(row) }]"
+          />
+        </template>
+        <template #empty>
+          <EmptyState
+            compact
+            :icon="IconGroup"
+            :title="search || role ? 'No users match' : 'No users yet'"
+            :message="search || role ? 'Try another name or role.' : 'Accounts appear here when people sign up or sign in.'"
+            :action-label="search || role ? 'Clear filters' : ''"
+            @action="clearFilters"
+          />
+        </template>
+      </DataTable>
 
-        <div v-if="total > 0" class="px-5 py-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500 font-body">
-          <span>{{ total }} total · page {{ page }} of {{ totalPages }}</span>
-          <div class="flex gap-2">
-            <button @click="load(page - 1)" :disabled="page <= 1" class="px-3 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 transition-colors">Prev</button>
-            <button @click="load(page + 1)" :disabled="page >= totalPages" class="px-3 py-1 border rounded disabled:opacity-40 hover:bg-gray-50 transition-colors">Next</button>
-          </div>
-        </div>
-      </div>
+      <AppPagination v-model:page="page" :total="total" :page-size="LIMIT" label="Users pages" />
     </template>
 
-    <!-- Role modal -->
-    <div v-if="editing" class="modal-overlay">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-1">Edit User</h2>
-        <p class="text-gray-400 text-xs mb-4 font-body">{{ editing.email }}</p>
-        <div class="space-y-2">
-          <label
-            v-for="r in ['GUEST', 'MEMBER', 'ADMIN']"
-            :key="r"
-            class="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
-          >
-            <input type="radio" :value="r" v-model="newRole" class="text-pine" />
-            <span :class="roleClass(r)" class="text-xs px-2 py-0.5 rounded-full">{{ r }}</span>
-            <span class="text-gray-500 text-xs font-body">{{ roleDesc[r] }}</span>
-          </label>
-        </div>
-        <div class="grid grid-cols-2 gap-3 mt-4">
-          <div>
-            <label class="block text-xs text-gray-500 mb-1 font-body">Member until</label>
-            <input v-model="membership.until" type="date" class="input-field w-full" />
+    <!-- Edit role + membership -->
+    <AppDialog :open="!!editing" title="Edit user" persistent @update:open="v => { if (!v) editing = null }">
+      <template v-if="editing">
+        <p class="mb-4 text-body-m text-on-surface-variant break-words">
+          <template v-if="editing.name">{{ editing.name }} · </template>{{ editing.email }}
+        </p>
+        <form id="user-form" class="space-y-5" @submit.prevent="save">
+          <RadioGroup
+            v-model="newRole"
+            label="Role"
+            :options="ROLES.map(r => ({ value: r, label: statusInfo('role', r).label, description: ROLE_DESC[r] }))"
+          />
+          <div class="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
+            <TextField v-model="membership.until" type="date" label="Member until" />
+            <SelectField
+              v-model="membership.tier"
+              label="Tier"
+              placeholder="None"
+              :options="membershipTiers.map(t => ({ value: t.name, label: t.name }))"
+            />
           </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1 font-body">Tier</label>
-            <select v-model="membership.tier" class="input-field w-full">
-              <option value="">—</option>
-              <option v-for="t in membershipTiers" :key="t.name" :value="t.name">{{ t.name }}</option>
-            </select>
-          </div>
-          <p class="col-span-2 text-xs text-gray-400 font-body -mt-1">
-            Last day of membership. Leave empty for no end date. Memberships sold at the register set this
+          <p class="-mt-2 text-body-s text-on-surface-variant">
+            Last day of membership. Leave it empty for no end date. Memberships sold at the register set this
             automatically; members drop to Guest after it passes.
           </p>
-        </div>
-        <div class="flex justify-end gap-3 mt-5">
-          <button @click="editing = null" class="btn-outline-sm">Cancel</button>
-          <button @click="updateRole" :disabled="saving || !changed" class="btn-amber px-4 py-2 text-sm disabled:opacity-50">
-            {{ saving ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">{{ formError }}</p>
-      </div>
-    </div>
+        </form>
+        <ErrorBanner v-if="formError" class="mt-4" :message="formError" />
+      </template>
+      <template #actions="{ close }">
+        <AppButton variant="text" @click="close">Cancel</AppButton>
+        <AppButton type="submit" form="user-form" :loading="saving" :disabled="!changed">Save</AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { localDate, formatLocalDate } from '@/lib/timeclock'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { apiFetch } from '@/lib/api'
+import { formatLocalDate, localDate, toUtcIso } from '@/lib/timeclock'
 import { membershipTiers } from '@/data/membershipTiers'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { statusInfo } from '@/components/ui/statusChips.js'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import AppPagination from '@/components/ui/AppPagination.vue'
+import Card from '@/components/ui/Card.vue'
+import ChipGroup from '@/components/ui/ChipGroup.vue'
+import DataTable from '@/components/ui/DataTable.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import RadioGroup from '@/components/ui/RadioGroup.vue'
+import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import TextField from '@/components/ui/TextField.vue'
+import IconSearch from '~icons/material-symbols/search-rounded'
+import IconManage from '~icons/material-symbols/manage-accounts-rounded'
+import IconGroup from '~icons/material-symbols/group-rounded'
 
-const authStore = useAuthStore()
-const users     = ref([])
-const loading   = ref(false)
-const error     = ref(null)
-const total     = ref(0)
-const page      = ref(1)
-const limit     = 25
+const confirm  = useConfirm()
+const snackbar = useSnackbar()
 
-const filters   = ref({ search: '', role: '' })
-const editing   = ref(null)
-const newRole   = ref('')
-const saving    = ref(false)
-const formError = ref(null)
-const membership = ref({ until: '', tier: '' })
-const today      = localDate()
-
-const changed = computed(() => editing.value && (newRole.value !== editing.value.role ||
-  membership.value.until !== (editing.value.memberUntil ?? '') || membership.value.tier !== (editing.value.membershipTier ?? '')))
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit)))
-
-const roleDesc = {
+const LIMIT = 25
+const ROLES = ['GUEST', 'MEMBER', 'ADMIN']
+const ROLE_OPTIONS = [{ value: '', label: 'All roles' }, ...ROLES.map(r => ({ value: r, label: statusInfo('role', r).label }))]
+const ROLE_DESC = {
   GUEST:  'Limited access, no member pricing',
   MEMBER: 'Extended booking window + member-only slots',
   ADMIN:  'Full admin panel access',
 }
+const columns = [
+  { key: 'name', label: 'Name', primary: true },
+  { key: 'email', label: 'Email', hideOnMobile: true },
+  { key: 'role', label: 'Role' },
+  { key: 'membership', label: 'Membership' },
+  { key: 'createdAt', label: 'Joined', hideOnMobile: true, class: 'whitespace-nowrap' },
+]
 
-async function load(p = 1) {
-  page.value    = p
+const users   = ref([])
+const loading = ref(true)
+const error   = ref(null)
+const total   = ref(0)
+const page    = ref(1)
+const search  = ref('')
+const role    = ref('')
+const today   = localDate()
+
+const formatYmd = ymd => formatLocalDate(ymd, { month: 'short', day: 'numeric', year: 'numeric' })
+const formatJoined = iso => new Date(toUtcIso(iso)).toLocaleDateString('en-US', {
+  month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Chicago',
+})
+
+let loadSeq = 0
+async function load() {
+  const seq = ++loadSeq
   loading.value = true
   error.value   = null
   try {
-    const params = new URLSearchParams({ page: p, limit })
-    if (filters.value.role)   params.set('role', filters.value.role)
-    if (filters.value.search) params.set('search', filters.value.search)
-    const res = await fetch(`/api/admin/users?${params}`, {
-      headers: { Authorization: `Bearer ${authStore.getToken()}` },
-    })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-    const data = await res.json()
+    const params = new URLSearchParams({ page: page.value, limit: LIMIT })
+    if (role.value) params.set('role', role.value)
+    if (search.value.trim()) params.set('search', search.value.trim())
+    const data = await apiFetch(`/api/admin/users?${params}`)
+    if (seq !== loadSeq) return
     users.value = data.users
     total.value = data.total
   } catch (e) {
-    error.value = e.message
+    if (seq === loadSeq) error.value = e.message
   } finally {
-    loading.value = false
+    if (seq === loadSeq) loading.value = false
   }
 }
 
-function resetFilters() {
-  filters.value = { search: '', role: '' }
-  load(1)
+function reloadFromFirstPage() {
+  if (page.value === 1) load()
+  else page.value = 1
+}
+watch(page, load)
+watch(role, reloadFromFirstPage)
+let searchTimer = null
+watch(search, () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(reloadFromFirstPage, 300)
+})
+onBeforeUnmount(() => clearTimeout(searchTimer))
+
+function clearFilters() {
+  search.value = ''
+  role.value = ''
 }
 
-function openRoleModal(user) {
+// ── Edit ──
+const editing    = ref(null)
+const newRole    = ref('')
+const membership = ref({ until: '', tier: null })
+const saving     = ref(false)
+const formError  = ref(null)
+
+const changed = computed(() => !!editing.value && (newRole.value !== editing.value.role ||
+  membership.value.until !== (editing.value.memberUntil ?? '') || (membership.value.tier ?? '') !== (editing.value.membershipTier ?? '')))
+
+function openEdit(user) {
   editing.value = user
   newRole.value = user.role
-  membership.value = { until: user.memberUntil ?? '', tier: user.membershipTier ?? '' }
+  membership.value = { until: user.memberUntil ?? '', tier: user.membershipTier ?? null }
   formError.value = null
 }
 
-async function updateRole() {
-  if (newRole.value === 'ADMIN' && editing.value.role !== 'ADMIN' && !window.confirm(
-    `Make ${editing.value.name || editing.value.email} an admin? They'll get full access to the admin panel.`,
-  )) return
+async function putUser(id, body) {
+  return apiFetch(`/api/admin/users/${id}`, { method: 'PUT', body })
+}
+
+async function save() {
+  const user = editing.value
+  if (!user || !changed.value) return
+  const who = user.name || user.email
+  if (newRole.value === 'ADMIN' && user.role !== 'ADMIN' && !(await confirm({
+    title: `Make ${who} an admin?`,
+    message: "They'll get full access to the admin panel.",
+    confirmLabel: 'Make admin',
+  }))) return
+
   saving.value = true
   formError.value = null
   try {
-    const res = await fetch(`/api/admin/users/${editing.value.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.getToken()}` },
-      body: JSON.stringify({
-        ...(newRole.value !== editing.value.role ? { role: newRole.value } : {}),
-        memberUntil: membership.value.until || null,
-        membershipTier: membership.value.tier || null,
-      }),
+    await putUser(user.id, {
+      ...(newRole.value !== user.role ? { role: newRole.value } : {}),
+      memberUntil: membership.value.until || null,
+      membershipTier: membership.value.tier || null,
     })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
     editing.value = null
-    await load(page.value)
+    // Undo puts the old role and membership back through the same API
+    const before = { role: user.role, memberUntil: user.memberUntil ?? null, membershipTier: user.membershipTier ?? null }
+    const roleChanged = newRole.value !== user.role
+    snackbar.show({
+      message: `Saved ${who}`,
+      actionLabel: 'Undo',
+      onAction: async () => {
+        try {
+          await putUser(user.id, roleChanged ? before : { memberUntil: before.memberUntil, membershipTier: before.membershipTier })
+          snackbar.show(`Restored ${who}`)
+          await load()
+        } catch (e) {
+          snackbar.show({ message: `Couldn't undo: ${e.message}`, tone: 'error' })
+        }
+      },
+    })
+    await load()
   } catch (e) {
     formError.value = e.message
   } finally {
@@ -213,29 +265,5 @@ async function updateRole() {
   }
 }
 
-function roleClass(role) {
-  return {
-    GUEST:  'bg-gray-100 text-gray-600',
-    MEMBER: 'bg-lake/20 text-lake',
-    ADMIN:  'bg-pine/20 text-pine font-semibold',
-  }[role] || 'bg-gray-100 text-gray-500'
-}
-
-function formatYmd(ymd) {
-  return formatLocalDate(ymd, { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-function formatDate(iso) {
-  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
-
-onMounted(() => load(1))
+onMounted(load)
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.btn-pine       { @apply bg-pine text-parch rounded-lg font-body font-semibold hover:bg-pine/90 transition-colors; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

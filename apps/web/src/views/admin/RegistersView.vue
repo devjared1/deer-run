@@ -1,177 +1,225 @@
 <template>
-  <div class="max-w-3xl">
-    <div class="flex items-center justify-between mb-6">
-      <p class="text-gray-500 text-sm font-body">
-        Each register is a checkout station. A PC chooses which register it is the first time it opens
-        the register screen.
-      </p>
-      <button class="btn-amber px-4 py-2 text-sm flex-shrink-0 ml-4" @click="openForm(null)">+ New Register</button>
+  <div class="max-w-4xl font-body text-on-surface">
+    <Teleport to="#admin-page-actions" defer>
+      <!-- Phones: icon only, so the page title keeps its room -->
+      <AppButton variant="gold" :icon="IconAdd" class="hidden sm:inline-flex" @click="openForm(null)">New register</AppButton>
+      <IconButton variant="filled" :icon="IconAdd" label="New register" class="sm:hidden" @click="openForm(null)" />
+    </Teleport>
+
+    <p class="mb-4 text-body-m text-on-surface-variant">
+      Each register is a checkout station. A PC chooses which register it is the first time it opens the register screen.
+    </p>
+
+    <ErrorBanner v-if="actionError" :message="actionError" class="mb-4" @dismiss="actionError = null" />
+    <ErrorBanner v-if="error" :message="error" :retrying="loading" @retry="load" />
+
+    <DataTable
+      v-else
+      :columns="columns"
+      :rows="registers"
+      :loading="loading && !registers.length"
+      :loading-rows="2"
+      caption="Registers"
+      actions-label="Register actions"
+    >
+      <template #cell-reader="{ row }">
+        <template v-if="row.stripeReaderId">
+          <div class="flex flex-wrap items-center gap-2">
+            <template v-if="readerFor(row)">
+              <span>{{ readerFor(row).label }}</span>
+              <StatusChip
+                :label="readerFor(row).status === 'online' ? 'Online' : 'Offline'"
+                :tone="readerFor(row).status === 'online' ? 'success' : 'error'"
+                :icon="readerFor(row).status === 'online' ? IconWifi : IconWifiOff"
+                size="sm"
+              />
+              <StatusChip v-if="readerFor(row).simulated" label="Simulated" tone="info" :icon="false" size="sm" />
+            </template>
+            <StatusChip v-else-if="readers" label="Not found in Stripe" tone="warning" icon="warning" size="sm" />
+            <span v-else class="text-on-surface-variant">Checking…</span>
+          </div>
+          <code class="block mt-0.5 text-body-s text-on-surface-variant break-all">{{ row.stripeReaderId }}</code>
+        </template>
+        <AppButton v-else-if="readers?.configured" variant="text" :icon="IconAddLink" class="-ml-3" @click="openPair(row)">
+          Pair a reader
+        </AppButton>
+        <span v-else class="text-on-surface-variant">Not assigned</span>
+      </template>
+      <template #cell-active="{ row }">
+        <StatusChip
+          :label="row.active ? 'Active' : 'Inactive'"
+          :tone="row.active ? 'success' : 'neutral'"
+          :icon="row.active ? 'check' : 'block'"
+          size="sm"
+        />
+      </template>
+      <template #empty>
+        <EmptyState
+          :icon="IconPointOfSale"
+          title="No registers yet"
+          message="Add one for each checkout station."
+          action-label="New register"
+          :action-icon="IconAdd"
+          compact
+          @action="openForm(null)"
+        />
+      </template>
+      <template #actions="{ row }">
+        <RowActionsMenu :label="`Actions for ${row.name}`" :items="rowActions(row)" />
+      </template>
+    </DataTable>
+
+    <div class="mt-3 flex flex-wrap items-center gap-x-2 text-body-s text-on-surface-variant">
+      <template v-if="readers && !readers.configured">
+        Card readers need Stripe (STRIPE_SECRET_KEY) set in the Pages project.
+      </template>
+      <template v-else-if="readers">
+        <span>
+          Reader status comes from Stripe<template v-if="readers.testMode"> (test mode: pair code <code>simulated-wpe</code> makes a simulated reader)</template>.
+        </span>
+        <AppButton variant="text" :icon="IconRefresh" :loading="readersLoading" @click="loadReaders">Refresh</AppButton>
+      </template>
     </div>
-
-    <div v-if="loading" class="text-gray-400 text-sm">Loading…</div>
-    <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
-
-    <template v-else>
-      <p v-if="actionError" class="text-red-500 text-sm mb-3">{{ actionError }}</p>
-
-      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm font-body">
-            <thead>
-              <tr class="bg-gray-50 border-b border-gray-100 text-left">
-                <th class="th">Name</th>
-                <th class="th">Card Reader</th>
-                <th class="th">Status</th>
-                <th class="th" />
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-50">
-              <tr v-for="r in registers" :key="r.id">
-                <td class="td text-bark font-semibold">{{ r.name }}</td>
-                <td class="td text-gray-600">
-                  <template v-if="r.stripeReaderId">
-                    <div class="flex items-center gap-2">
-                      <span
-                        :class="['w-2 h-2 rounded-full flex-shrink-0', readerFor(r)?.status === 'online' ? 'bg-pine' : readerFor(r) ? 'bg-red-400' : 'bg-gray-300']"
-                        :title="readerFor(r)?.status ?? 'unknown'"
-                      />
-                      <span v-if="readerFor(r)" class="text-sm">
-                        {{ readerFor(r).label }}
-                        <span class="text-xs" :class="readerFor(r).status === 'online' ? 'text-pine' : 'text-red-500'">
-                          {{ readerFor(r).status === 'online' ? 'Online' : 'Offline' }}
-                        </span>
-                        <span v-if="readerFor(r).simulated" class="text-xs text-gold-dark"> · simulated</span>
-                      </span>
-                      <span v-else-if="readers" class="text-xs text-red-500">Not found in Stripe</span>
-                    </div>
-                    <code class="text-[11px] text-gray-400">{{ r.stripeReaderId }}</code>
-                  </template>
-                  <button v-else-if="readers?.configured" class="text-xs text-lake hover:text-pine" @click="openPair(r)">
-                    + Pair a reader
-                  </button>
-                  <span v-else class="text-gray-400 text-xs">Not assigned</span>
-                </td>
-                <td class="td">
-                  <span :class="r.active ? 'bg-lake/20 text-lake' : 'bg-gray-100 text-gray-500'" class="text-xs px-2 py-0.5 rounded-full">
-                    {{ r.active ? 'Active' : 'Inactive' }}
-                  </span>
-                </td>
-                <td class="td text-right whitespace-nowrap space-x-3 text-xs">
-                  <button class="text-lake hover:text-pine" @click="openForm(r)">Edit</button>
-                  <button class="text-red-400 hover:text-red-600" @click="remove(r)">Delete</button>
-                </td>
-              </tr>
-              <tr v-if="!registers.length">
-                <td colspan="4" class="px-5 py-8 text-center text-gray-400">No registers yet.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </template>
-
-    <p v-if="readers && !readers.configured" class="text-gray-400 text-xs font-body mt-3">
-      Card readers need Stripe (STRIPE_SECRET_KEY) set in the Pages project.
-    </p>
-    <p v-else-if="readers" class="text-gray-400 text-xs font-body mt-3">
-      Reader status comes from Stripe<template v-if="readers.testMode"> (test mode: pair code <code>simulated-wpe</code> makes a simulated reader)</template>.
-      <button class="text-lake hover:text-pine ml-1" @click="loadReaders">Refresh</button>
-    </p>
-    <p v-if="readersError" class="text-red-500 text-xs font-body mt-2">{{ readersError }}</p>
+    <ErrorBanner v-if="readersError" :message="readersError" class="mt-2" :retrying="readersLoading" @retry="loadReaders" />
 
     <!-- Pair a reader -->
-    <div v-if="pairing" class="modal-overlay">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-1">Pair a card reader</h2>
-        <p class="text-gray-500 text-sm font-body mb-4">
-          For {{ pairing.register.name }}. On the reader, open <strong>Settings → Generate pairing code</strong>
+    <AppDialog v-model:open="pairOpen" title="Pair a card reader" size="sm" persistent>
+      <template v-if="pairing">
+        <p class="text-body-m text-on-surface-variant mb-4">
+          For {{ pairing.register.name }}. On the reader, open <strong class="text-on-surface">Settings › Generate pairing code</strong>
           (it needs Wi-Fi or Ethernet) and enter the code here.
         </p>
-        <div class="space-y-3">
-          <div>
-            <label class="label-sm">Pairing code *</label>
-            <input v-model="pairing.code" type="text" class="input-field w-full" :placeholder="readers?.testMode ? 'simulated-wpe' : 'e.g. sepia-cerulean-aardvark'" />
-          </div>
-          <div>
-            <label class="label-sm">Reader name *</label>
-            <input v-model="pairing.label" type="text" maxlength="100" class="input-field w-full" />
-          </div>
-        </div>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="pairing = null">Cancel</button>
-          <button :disabled="pairing.busy || !pairing.code.trim() || !pairing.label.trim()" class="btn-amber px-4 py-2 text-sm disabled:opacity-50" @click="pair">
-            {{ pairing.busy ? 'Pairing…' : 'Pair Reader' }}
-          </button>
-        </div>
-        <p v-if="pairing.error" class="text-red-500 text-xs mt-2">{{ pairing.error }}</p>
-      </div>
-    </div>
+        <form id="pair-form" novalidate class="space-y-1" @submit.prevent="pair">
+          <TextField
+            v-model="pairing.code"
+            label="Pairing code"
+            required
+            autocomplete="off"
+            autocapitalize="off"
+            :placeholder="readers?.testMode ? 'simulated-wpe' : 'e.g. sepia-cerulean-aardvark'"
+            data-autofocus
+          />
+          <TextField v-model="pairing.label" label="Reader name" required maxlength="100" autocomplete="off" />
+          <ErrorBanner v-if="pairing.error" :message="pairing.error" />
+        </form>
+      </template>
+      <template #actions="{ close }">
+        <AppButton variant="text" :disabled="pairing?.busy" @click="close">Cancel</AppButton>
+        <AppButton
+          type="submit"
+          form="pair-form"
+          :icon="IconAddLink"
+          :loading="pairing?.busy"
+          :disabled="!pairing?.code.trim() || !pairing?.label.trim()"
+        >
+          {{ pairing?.busy ? 'Pairing…' : 'Pair reader' }}
+        </AppButton>
+      </template>
+    </AppDialog>
 
-    <div v-if="form" class="modal-overlay">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-4">{{ form.id ? 'Edit Register' : 'New Register' }}</h2>
-        <div class="space-y-3">
-          <div>
-            <label class="label-sm">Name *</label>
-            <input v-model="form.name" type="text" class="input-field w-full" placeholder="Pro Shop" />
-          </div>
-          <div>
-            <label class="label-sm">Stripe Card Reader ID</label>
-            <input v-model="form.stripeReaderId" type="text" class="input-field w-full" placeholder="tmr_…" />
-            <p class="text-gray-400 text-xs mt-1 font-body">Set automatically by "Pair a reader". Clear it to unassign the reader.</p>
-          </div>
-          <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer">
-            <input v-model="form.active" type="checkbox" class="rounded" /> Active
-          </label>
-        </div>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="form = null">Cancel</button>
-          <button :disabled="saving" class="btn-amber px-4 py-2 text-sm disabled:opacity-50" @click="save">
-            {{ saving ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">{{ formError }}</p>
-      </div>
-    </div>
+    <!-- New / edit -->
+    <AppDialog v-model:open="formOpen" :title="form?.id ? 'Edit register' : 'New register'" size="sm" persistent>
+      <form v-if="form" id="register-form" novalidate class="space-y-1 pt-2" @submit.prevent="save">
+        <TextField v-model="form.name" label="Name" required placeholder="Pro Shop" autocomplete="off" data-autofocus />
+        <TextField
+          v-model="form.stripeReaderId"
+          label="Stripe card reader ID"
+          placeholder="tmr_…"
+          autocomplete="off"
+          helper="Set automatically by Pair a reader. Clear it to unassign the reader."
+        />
+        <Switch v-model="form.active" label="Active" />
+        <ErrorBanner v-if="formError" :message="formError" />
+      </form>
+      <template #actions="{ close }">
+        <AppButton variant="text" :disabled="saving" @click="close">Cancel</AppButton>
+        <AppButton type="submit" form="register-form" :loading="saving">{{ saving ? 'Saving…' : 'Save' }}</AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import { apiFetch } from '@/lib/api'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import DataTable from '@/components/ui/DataTable.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import Switch from '@/components/ui/Switch.vue'
+import TextField from '@/components/ui/TextField.vue'
+import IconAdd from '~icons/material-symbols/add-rounded'
+import IconAddLink from '~icons/material-symbols/add-link-rounded'
+import IconEdit from '~icons/material-symbols/edit-rounded'
+import IconDelete from '~icons/material-symbols/delete-rounded'
+import IconRefresh from '~icons/material-symbols/refresh-rounded'
+import IconWifi from '~icons/material-symbols/wifi-rounded'
+import IconWifiOff from '~icons/material-symbols/wifi-off-rounded'
+import IconPointOfSale from '~icons/material-symbols/point-of-sale-rounded'
 
-const registers = ref([])
-const loading   = ref(false)
-const error     = ref(null)
+const confirm  = useConfirm()
+const snackbar = useSnackbar()
+
+const columns = [
+  { key: 'name', label: 'Name', primary: true },
+  { key: 'reader', label: 'Card reader' },
+  { key: 'active', label: 'Status' },
+]
+
+const registers   = ref([])
+const loading     = ref(false)
+const error       = ref(null)
 const actionError = ref(null) // a failed row action (delete); shown above the table instead of replacing it
-const form     = ref(null)
-const saving    = ref(false)
-const formError = ref(null)
+const form        = ref(null)
+const formOpen    = ref(false)
+const saving      = ref(false)
+const formError   = ref(null)
 
 // Stripe Terminal readers: { configured, testMode, readers: [{ id, label, status, simulated }] }
-const readers      = ref(null)
-const readersError = ref(null)
-const pairing      = ref(null)
+const readers        = ref(null)
+const readersError   = ref(null)
+const readersLoading = ref(false)
+const pairing        = ref(null)
+const pairOpen       = ref(false)
 
 function readerFor(r) {
   return readers.value?.readers.find(x => x.id === r.stripeReaderId) ?? null
 }
 
+function rowActions(r) {
+  return [
+    { label: 'Edit', icon: IconEdit, onClick: () => openForm(r) },
+    { label: 'Pair a reader', icon: IconAddLink, disabled: !readers.value?.configured || !!r.stripeReaderId, onClick: () => openPair(r) },
+    { label: 'Delete', icon: IconDelete, danger: true, onClick: () => remove(r) },
+  ]
+}
+
 async function loadReaders() {
   readersError.value = null
+  readersLoading.value = true
   try {
     readers.value = await apiFetch('/api/admin/registers/readers')
   } catch (e) {
     readersError.value = `Couldn't load card readers from Stripe: ${e.message}`
+  } finally {
+    readersLoading.value = false
   }
 }
 
 function openPair(register) {
   pairing.value = { register, code: readers.value?.testMode ? 'simulated-wpe' : '', label: register.name, busy: false, error: null }
+  pairOpen.value = true
 }
 
 async function pair() {
   const p = pairing.value
+  if (!p || p.busy || !p.code.trim() || !p.label.trim()) return
   p.busy  = true
   p.error = null
   try {
@@ -179,7 +227,8 @@ async function pair() {
       method: 'POST',
       body: { registrationCode: p.code.trim(), label: p.label.trim(), registerId: p.register.id },
     })
-    pairing.value = null
+    pairOpen.value = false
+    snackbar.show(`Reader paired with ${p.register.name}`)
     await Promise.all([load(), loadReaders()])
   } catch (e) {
     p.error = e.message
@@ -203,15 +252,18 @@ async function load() {
 function openForm(r) {
   form.value = { id: r?.id ?? null, name: r?.name ?? '', stripeReaderId: r?.stripeReaderId ?? '', active: r?.active ?? true }
   formError.value = null
+  formOpen.value = true
 }
 
 async function save() {
+  if (saving.value) return
   saving.value    = true
   formError.value = null
   try {
     const { id, ...body } = form.value
     await apiFetch(id ? `/api/admin/registers/${id}` : '/api/admin/registers', { method: id ? 'PUT' : 'POST', body })
-    form.value = null
+    formOpen.value = false
+    snackbar.show(id ? `${body.name} saved` : `${body.name} added`)
     await load()
   } catch (e) {
     formError.value = e.message
@@ -222,9 +274,11 @@ async function save() {
 
 async function remove(r) {
   actionError.value = null
-  if (!window.confirm(`Delete register "${r.name}"? This can't be undone.`)) return
+  const ok = await confirm({ title: `Delete ${r.name}?`, message: "This can't be undone.", confirmLabel: 'Delete', destructive: true })
+  if (!ok) return
   try {
     await apiFetch(`/api/admin/registers/${r.id}`, { method: 'DELETE' })
+    snackbar.show(`${r.name} deleted`)
     await load()
   } catch (e) {
     actionError.value = e.message
@@ -236,13 +290,3 @@ onMounted(() => {
   loadReaders()
 })
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.th             { @apply px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold; }
-.td             { @apply px-5 py-3; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

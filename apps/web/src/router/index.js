@@ -107,7 +107,7 @@ const routes = [
       {
         path: 'house-accounts/:id',
         component: () => import('@/views/admin/HouseAccountDetailView.vue'),
-        meta: { title: 'House Account', breadcrumbs: [{ label: 'House Accounts', to: '/admin/house-accounts' }] },
+        meta: { title: 'House Account', breadcrumbs: [{ label: 'House Accounts', to: '/admin/house-accounts' }, { label: 'House Account' }] },
       },
       { path: 'registers',  component: () => import('@/views/admin/RegistersView.vue'),   meta: { title: 'Registers' } },
     ],

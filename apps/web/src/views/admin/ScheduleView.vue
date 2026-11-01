@@ -1,90 +1,163 @@
 <template>
-  <div class="schedule-page">
+  <div class="space-y-4">
+    <!-- Primary action in the admin top bar -->
+    <Teleport
+      to="#admin-page-actions"
+      defer
+    >
+      <AppButton
+        :icon="IconAdd"
+        class="hidden sm:inline-flex"
+        :disabled="!data"
+        @click="openCreate({ employeeId: null, date: defaultDate })"
+      >
+        Add shift
+      </AppButton>
+      <IconButton
+        :icon="IconAdd"
+        label="Add shift"
+        variant="filled"
+        class="sm:hidden"
+        :disabled="!data"
+        @click="openCreate({ employeeId: null, date: defaultDate })"
+      />
+    </Teleport>
+
     <!-- Toolbar -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4 flex flex-wrap items-end gap-3 print:hidden">
-      <div>
-        <label class="label-sm">View</label>
-        <div class="flex rounded-lg border border-gray-300 overflow-hidden">
-          <button
-            v-for="(v, key) in SCHEDULE_VIEWS"
-            :key="key"
-            type="button"
-            :class="['px-3 py-2 text-sm font-body transition-colors', view === key ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-            @click="setView(key)"
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-3 print:hidden">
+      <DateStepper
+        :model-value="stepperDate"
+        :step="STEPS[view]"
+        :format-title="stepperTitle"
+        today
+        class="max-w-full"
+        @update:model-value="onStep"
+      />
+      <SegmentedButton
+        :model-value="view"
+        label="View"
+        :options="viewOptions"
+        @update:model-value="setView"
+      />
+      <SelectField
+        v-model="department"
+        label="Department"
+        placeholder="All departments"
+        :options="departmentOptions"
+        class="w-full sm:w-60 order-last md:order-none"
+      />
+      <div class="ml-auto flex items-center gap-2">
+        <div class="hidden md:flex flex-wrap items-center gap-2">
+          <AppButton
+            v-if="view !== 'month'"
+            variant="outlined"
+            :icon="IconCopy"
+            :disabled="!data || saving"
+            :title="`Copy the previous ${copyUnit} of shifts into this period`"
+            @click="openCopy"
           >
-            {{ v.label }}
-          </button>
+            Copy previous {{ copyUnitShort }}
+          </AppButton>
+          <AppButton
+            variant="outlined"
+            :icon="IconMail"
+            :disabled="!data || saving"
+            title="Email each employee their own shifts for this period"
+            @click="openEmail"
+          >
+            Email schedule
+          </AppButton>
+          <AppButton
+            variant="outlined"
+            :icon="IconPrint"
+            :disabled="!data"
+            @click="printLandscape"
+          >
+            Print
+          </AppButton>
         </div>
-      </div>
-      <div class="flex gap-2">
-        <button class="btn-outline-sm" :disabled="!data" @click="go(data.period.prevStart)">
-          ← Previous
-        </button>
-        <button class="btn-outline-sm" @click="go(null)">
-          Today
-        </button>
-        <button class="btn-outline-sm" :disabled="!data" @click="go(data.period.nextStart)">
-          Next →
-        </button>
-      </div>
-      <div>
-        <label class="label-sm">Department</label>
-        <select v-model="department" class="input-field">
-          <option value="">
-            All departments
-          </option>
-          <option v-for="d in departments" :key="d" :value="d">
-            {{ d }}
-          </option>
-        </select>
-      </div>
-      <div class="ml-auto flex gap-2">
-        <button
-          v-if="view !== 'month'"
-          class="btn-outline-sm"
-          :disabled="!data || saving"
-          :title="`Copy the previous ${view === 'week' ? 'week' : 'two weeks'} of shifts into this period`"
-          @click="copying = true; copyResult = null; formError = null"
-        >
-          Copy previous {{ view === 'week' ? 'week' : '2 weeks' }}
-        </button>
-        <button class="btn-outline-sm" :disabled="!data" @click="printLandscape">
-          🖨 Print
-        </button>
-        <button
-          class="btn-outline-sm"
-          :disabled="!data || saving"
-          title="Email each employee their own shifts for this period"
-          @click="emailing = true; emailResult = null; formError = null"
-        >
-          ✉ Email schedule
-        </button>
-        <button class="btn-amber px-4 py-2 text-sm" :disabled="!data" @click="openCreate({ employeeId: null, date: defaultDate })">
-          + Add Shift
-        </button>
+        <RowActionsMenu
+          class="md:hidden"
+          label="More schedule actions"
+          :items="menuItems"
+        />
       </div>
     </div>
 
-    <!-- Period heading (also the printed title) -->
-    <div v-if="data" class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
-      <h2 class="font-display font-bold text-bark text-xl">
-        <span class="hidden print:inline">Deer Run Schedule · </span>{{ periodLabel }}
+    <!-- Printed title (the date stepper shows the period on screen) -->
+    <div
+      v-if="data"
+      class="sr-only print:not-sr-only print:flex print:items-baseline print:gap-4 print:mb-2"
+    >
+      <h2 class="font-display text-headline-s text-on-surface">
+        Deer Run Schedule · {{ periodLabel }}
       </h2>
-      <span v-if="department" class="text-sm text-gray-500 font-body">{{ department }}</span>
-      <span v-if="warningCount" class="text-sm text-red-600 font-body print:hidden">
-        ⚠ {{ warningCount }} shift{{ warningCount === 1 ? '' : 's' }} with warnings
-      </span>
-      <span class="hidden print:inline text-xs text-gray-500 font-body ml-auto">Printed {{ printedAt }}</span>
+      <span
+        v-if="department"
+        class="text-body-m text-on-surface-variant"
+      >{{ department }}</span>
+      <span class="hidden print:inline text-body-s text-on-surface-variant ml-auto">Printed {{ printedAt }}</span>
     </div>
 
-    <div v-if="loading && !data" class="text-gray-400 text-sm">
-      Loading…
-    </div>
-    <div v-else-if="error" class="text-red-500 text-sm">
-      {{ error }}
-    </div>
+    <Skeleton
+      v-if="loading && !data"
+      variant="rect"
+      height="360px"
+      label="Loading schedule"
+    />
+    <ErrorBanner
+      v-else-if="error"
+      :message="error"
+      :retrying="loading"
+      @retry="load"
+    />
 
     <template v-else-if="data">
+      <!-- Warnings: icon + text, each shift listed -->
+      <div
+        v-if="warningShifts.length"
+        class="rounded-shape-md bg-error-container text-on-error-container print:hidden"
+      >
+        <button
+          type="button"
+          class="state-layer flex items-center gap-3 w-full min-h-12 px-4 rounded-shape-md text-left"
+          :aria-expanded="String(showWarnings)"
+          aria-controls="schedule-warnings"
+          @click="showWarnings = !showWarnings"
+        >
+          <IconWarning
+            class="w-5 h-5 flex-none"
+            aria-hidden="true"
+          />
+          <span class="flex-1 text-label-l">
+            {{ warningShifts.length }} shift{{ warningShifts.length === 1 ? '' : 's' }} with warnings
+          </span>
+          <IconExpand
+            :class="['w-6 h-6 flex-none transition-transform duration-short-4', showWarnings ? 'rotate-180' : '']"
+            aria-hidden="true"
+          />
+        </button>
+        <ul
+          v-show="showWarnings"
+          id="schedule-warnings"
+          class="px-4 pb-3 space-y-1 text-body-m"
+        >
+          <li
+            v-for="s in warningShifts"
+            :key="s.id"
+          >
+            <button
+              type="button"
+              class="text-left underline-offset-2 hover:underline py-1"
+              @click="openEdit(s)"
+            >
+              <span class="text-label-l">{{ employeeName(s.employeeId) }}, {{ shiftWhen(s) }}:</span>
+              {{ warnings[s.id].join('; ') }}
+            </button>
+          </li>
+        </ul>
+      </div>
+
       <ScheduleMonth
         v-if="view === 'month'"
         :dates="dates"
@@ -104,188 +177,240 @@
         :shifts="data.shifts"
         :time-off="data.timeOff"
         :warnings="warnings"
+        :caption="`Schedule, ${periodLabel}`"
         editable
         @add="openCreate"
         @edit="openEdit"
       />
-      <p class="text-gray-400 text-xs font-body mt-3 print:hidden">
-        Click an empty spot to add a shift, or a shift to edit it. An end time earlier than the start runs past midnight.
-        Dashed boxes are time off (amber = request still pending).
+
+      <ScheduleLegend />
+      <p class="text-body-s text-on-surface-variant print:hidden">
+        Select an empty spot to add a shift, or a shift to edit it. An end time earlier than the start runs past midnight.
       </p>
     </template>
 
     <!-- Add / edit shift -->
-    <div v-if="form" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-md">
-        <h2 class="font-display font-bold text-bark mb-4">
-          {{ form.id ? 'Edit Shift' : 'Add Shift' }}
-        </h2>
-        <div class="space-y-3">
-          <div>
-            <label class="label-sm">Employee *</label>
-            <select v-model="form.employeeId" class="input-field w-full">
-              <option :value="null" disabled>
-                Select an employee
-              </option>
-              <option v-for="e in formEmployees" :key="e.id" :value="e.id">
-                {{ e.lastName }}, {{ e.firstName }} — {{ positionLabel(e.position) }}{{ e.active ? '' : ' (inactive)' }}
-              </option>
-            </select>
+    <AppDialog
+      v-model:open="formOpen"
+      :title="form?.id ? 'Edit shift' : 'Add shift'"
+      persistent
+    >
+      <form
+        v-if="form"
+        id="shift-form"
+        class="space-y-4 pt-2"
+        novalidate
+        @submit.prevent="saveShift"
+      >
+        <SelectField
+          v-model="form.employeeId"
+          label="Employee"
+          required
+          placeholder="Select an employee"
+          :options="employeeOptions"
+          :error="employeeMissing ? 'Choose an employee' : ''"
+        />
+        <TextField
+          v-model="form.date"
+          type="date"
+          label="Date"
+          required
+        />
+        <div>
+          <div class="grid grid-cols-2 gap-3">
+            <TextField
+              v-model="form.startTime"
+              type="time"
+              step="900"
+              label="Start"
+              required
+            />
+            <TextField
+              v-model="form.endTime"
+              type="time"
+              step="900"
+              label="End"
+              required
+            />
           </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="label-sm">Date *</label>
-              <input v-model="form.date" type="date" class="input-field w-full">
-            </div>
-            <div>
-              <label class="label-sm">Start *</label>
-              <input v-model="form.startTime" type="time" step="900" class="input-field w-full">
-            </div>
-            <div>
-              <label class="label-sm">End *</label>
-              <input v-model="form.endTime" type="time" step="900" class="input-field w-full">
-            </div>
-          </div>
-          <p v-if="formHours" class="text-xs text-gray-500 font-body -mt-1">
+          <p
+            v-if="formHours"
+            class="px-4 pt-1 text-body-s text-on-surface-variant"
+          >
             {{ formHours }}
           </p>
-          <div>
-            <label class="label-sm">Working as</label>
-            <select v-model="form.position" class="input-field w-full">
-              <option value="">
-                Their usual position{{ formEmployee ? ` (${positionLabel(formEmployee.position)})` : '' }}
-              </option>
-              <optgroup v-for="dept in departments" :key="dept" :label="dept">
-                <option v-for="p in positionsIn(dept)" :key="p.value" :value="p.value">
-                  {{ p.label }}
-                </option>
-              </optgroup>
-            </select>
-          </div>
-          <div>
-            <label class="label-sm">Notes</label>
-            <input v-model="form.notes" type="text" maxlength="500" class="input-field w-full" placeholder="e.g. Opening, beverage cart">
-          </div>
-          <ul v-if="formWarnings.length" class="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700 font-body space-y-0.5">
-            <li v-for="w in formWarnings" :key="w">
-              ⚠ {{ w }}
+        </div>
+        <SelectField
+          v-model="form.position"
+          label="Working as"
+          :placeholder="usualPositionLabel"
+        >
+          <optgroup
+            v-for="dept in departments"
+            :key="dept"
+            :label="dept"
+          >
+            <option
+              v-for="p in positionsIn(dept)"
+              :key="p.value"
+              :value="p.value"
+            >
+              {{ p.label }}
+            </option>
+          </optgroup>
+        </SelectField>
+        <TextField
+          v-model="form.notes"
+          label="Notes"
+          maxlength="500"
+          placeholder="e.g. Opening, beverage cart"
+        />
+        <ul
+          v-if="formWarnings.length"
+          class="rounded-shape-sm bg-error-container text-on-error-container px-3 py-2 text-body-s space-y-1"
+        >
+          <li
+            v-for="w in formWarnings"
+            :key="w"
+            class="flex items-start gap-2"
+          >
+            <IconWarning
+              class="w-4 h-4 mt-0.5 flex-none"
+              aria-hidden="true"
+            />
+            <span><span class="sr-only">Warning: </span>{{ w }}</span>
+          </li>
+        </ul>
+        <ErrorBanner
+          v-if="formError"
+          :message="formError"
+        />
+      </form>
+      <template #actions="{ close }">
+        <AppButton
+          v-if="form?.id"
+          variant="text"
+          :icon="IconDelete"
+          class="mr-auto !text-error"
+          :disabled="saving"
+          @click="deleteShift"
+        >
+          Delete
+        </AppButton>
+        <AppButton
+          variant="text"
+          :disabled="saving"
+          @click="close"
+        >
+          Cancel
+        </AppButton>
+        <AppButton
+          type="submit"
+          form="shift-form"
+          :loading="saving"
+        >
+          {{ form?.id ? 'Save' : 'Add shift' }}
+        </AppButton>
+      </template>
+    </AppDialog>
+
+    <!-- Copy previous period -->
+    <AppDialog
+      v-model:open="copying"
+      :title="`Copy previous ${copyUnit}?`"
+      :persistent="saving"
+    >
+      <p v-if="data">
+        Shifts from {{ formatRange(copySource.from, copySource.to) }} will be added to
+        {{ formatRange(data.period.start, data.period.end) }} on the same days. Shifts already in this period stay,
+        exact duplicates are skipped, and inactive employees aren't copied.
+      </p>
+      <ErrorBanner
+        v-if="formError"
+        :message="formError"
+        class="mt-4"
+      />
+      <template #actions="{ close }">
+        <AppButton
+          variant="text"
+          :disabled="saving"
+          @click="close"
+        >
+          Cancel
+        </AppButton>
+        <AppButton
+          :icon="IconCopy"
+          :loading="saving"
+          @click="copyPrevious"
+        >
+          Copy shifts
+        </AppButton>
+      </template>
+    </AppDialog>
+
+    <!-- Email the schedule -->
+    <AppDialog
+      v-model:open="emailing"
+      :title="emailResult ? 'Some emails failed' : 'Email the schedule?'"
+      :persistent="saving"
+    >
+      <template v-if="data && !emailResult">
+        <p v-if="emailRecipients">
+          Each of the {{ emailRecipients }} active employee{{ emailRecipients === 1 ? '' : 's' }} with shifts during
+          {{ formatRange(data.period.start, data.period.end) }} will get an email with their own shifts and approved
+          time off for that period (all departments). Employees without an email address are skipped.
+        </p>
+        <p v-else>
+          No active employees have shifts during {{ formatRange(data.period.start, data.period.end) }}.
+        </p>
+      </template>
+      <template v-else-if="emailResult">
+        <p class="text-on-surface">
+          {{ emailSummary(emailResult) }}
+        </p>
+        <div class="mt-3 rounded-shape-sm bg-error-container text-on-error-container px-3 py-2 text-body-s">
+          Failed for {{ emailResult.failed.length }}:
+          <ul class="list-disc ml-5 mt-1">
+            <li
+              v-for="f in emailResult.failed"
+              :key="f.employeeId"
+            >
+              {{ f.name }}: {{ f.error }}
             </li>
           </ul>
         </div>
-        <div class="flex items-center gap-3 mt-5">
-          <button
-            v-if="form.id"
-            class="text-sm text-red-500 hover:text-red-700 font-body"
-            :disabled="saving"
-            @click="deleteShift"
-          >
-            Delete
-          </button>
-          <button class="btn-outline-sm ml-auto" @click="form = null">
-            Cancel
-          </button>
-          <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="saving" @click="saveShift">
-            {{ saving ? 'Saving…' : form.id ? 'Save' : 'Add Shift' }}
-          </button>
-        </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">
-          {{ formError }}
-        </p>
-      </div>
-    </div>
-
-    <!-- Copy previous period -->
-    <div v-if="copying" class="modal-overlay print:hidden" @click.self="copying = false">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-2">
-          Copy previous {{ view === 'week' ? 'week' : 'two weeks' }}?
-        </h2>
-        <template v-if="!copyResult">
-          <p class="text-gray-500 text-sm font-body mb-5">
-            Shifts from {{ formatRange(copySource.from, copySource.to) }} will be added to
-            {{ formatRange(data.period.start, data.period.end) }} on the same days. Shifts already in this period stay,
-            exact duplicates are skipped, and inactive employees aren't copied.
-          </p>
-          <div class="flex justify-end gap-3">
-            <button class="btn-outline-sm" @click="copying = false">
-              Cancel
-            </button>
-            <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="saving" @click="copyPrevious">
-              {{ saving ? 'Copying…' : 'Copy Shifts' }}
-            </button>
-          </div>
-        </template>
-        <template v-else>
-          <p class="text-bark text-sm font-body mb-1">
-            Copied {{ copyResult.created }} shift{{ copyResult.created === 1 ? '' : 's' }}.
-          </p>
-          <p v-if="copyResult.skippedExisting || copyResult.skippedInactive" class="text-gray-500 text-xs font-body mb-4">
-            Skipped {{ copyResult.skippedExisting }} already scheduled and {{ copyResult.skippedInactive }} for inactive employees.
-          </p>
-          <div class="flex justify-end">
-            <button class="btn-amber px-4 py-2 text-sm" @click="copying = false">
-              Done
-            </button>
-          </div>
-        </template>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">
-          {{ formError }}
-        </p>
-      </div>
-    </div>
-
-    <!-- Email the schedule -->
-    <div v-if="emailing" class="modal-overlay print:hidden" @click.self="!saving && (emailing = false)">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-2">
-          Email the schedule?
-        </h2>
+      </template>
+      <ErrorBanner
+        v-if="formError"
+        :message="formError"
+        class="mt-4"
+      />
+      <template #actions="{ close }">
         <template v-if="!emailResult">
-          <p class="text-gray-500 text-sm font-body mb-5">
-            <template v-if="emailRecipients">
-              Each of the {{ emailRecipients }} active employee{{ emailRecipients === 1 ? '' : 's' }} with shifts during
-              {{ formatRange(data.period.start, data.period.end) }} will get an email with their own shifts and approved
-              time off for that period (all departments). Employees without an email address are skipped.
-            </template>
-            <template v-else>
-              No active employees have shifts during {{ formatRange(data.period.start, data.period.end) }}.
-            </template>
-          </p>
-          <div class="flex justify-end gap-3">
-            <button class="btn-outline-sm" :disabled="saving" @click="emailing = false">
-              Cancel
-            </button>
-            <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="saving || !emailRecipients" @click="emailSchedule">
-              {{ saving ? 'Sending…' : 'Send Emails' }}
-            </button>
-          </div>
+          <AppButton
+            variant="text"
+            :disabled="saving"
+            @click="close"
+          >
+            Cancel
+          </AppButton>
+          <AppButton
+            :icon="IconMail"
+            :loading="saving"
+            :disabled="!emailRecipients"
+            @click="emailSchedule"
+          >
+            Send emails
+          </AppButton>
         </template>
-        <template v-else>
-          <p class="text-bark text-sm font-body mb-1">
-            Sent {{ emailResult.sent }} email{{ emailResult.sent === 1 ? '' : 's' }}.
-          </p>
-          <p v-if="emailResult.skippedNoEmail || emailResult.skippedInactive" class="text-gray-500 text-xs font-body mb-1">
-            Skipped {{ emailResult.skippedNoEmail }} without an email address and {{ emailResult.skippedInactive }} inactive.
-          </p>
-          <div v-if="emailResult.failed.length" class="text-red-600 text-xs font-body mb-1">
-            Failed for {{ emailResult.failed.length }}:
-            <ul class="list-disc ml-4">
-              <li v-for="f in emailResult.failed" :key="f.employeeId">
-                {{ f.name }}: {{ f.error }}
-              </li>
-            </ul>
-          </div>
-          <div class="flex justify-end mt-4">
-            <button class="btn-amber px-4 py-2 text-sm" @click="emailing = false">
-              Done
-            </button>
-          </div>
-        </template>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">
-          {{ formError }}
-        </p>
-      </div>
-    </div>
+        <AppButton
+          v-else
+          @click="close"
+        >
+          Done
+        </AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -295,30 +420,62 @@ import { useRoute, useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
 import { printLandscape } from '@/lib/print'
 import { localDate, addDays, formatLocalDate, isValidYmd, isValidHhmm } from '@/lib/timeclock'
-import { SCHEDULE_VIEWS, scheduleWarnings, datesBetween, shiftMinutes } from '@/lib/schedule'
+import { SCHEDULE_VIEWS, scheduleWarnings, datesBetween, shiftMinutes, longTime } from '@/lib/schedule'
 import { employeePositions, departments, positionLabel } from '@/data/employeePositions'
 import { departmentOf } from '@/components/schedule/scheduleDisplay'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
 import ScheduleGrid from '@/components/schedule/ScheduleGrid.vue'
 import ScheduleMonth from '@/components/schedule/ScheduleMonth.vue'
+import ScheduleLegend from '@/components/schedule/ScheduleLegend.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import DateStepper from '@/components/ui/DateStepper.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import TextField from '@/components/ui/TextField.vue'
+import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import IconAdd from '~icons/material-symbols/add-rounded'
+import IconCopy from '~icons/material-symbols/content-copy-rounded'
+import IconMail from '~icons/material-symbols/mail-rounded'
+import IconPrint from '~icons/material-symbols/print-rounded'
+import IconWarning from '~icons/material-symbols/warning-rounded'
+import IconDelete from '~icons/material-symbols/delete-rounded'
+import IconExpand from '~icons/material-symbols/expand-more-rounded'
 
-const route  = useRoute()
-const router = useRouter()
+const route    = useRoute()
+const router   = useRouter()
+const confirm  = useConfirm()
+const snackbar = useSnackbar()
 
-const data       = ref(null)
-const loading    = ref(false)
-const error      = ref(null)
-const saving     = ref(false)
-const formError  = ref(null)
-const form       = ref(null)
-const copying    = ref(false)
-const copyResult = ref(null)
-const emailing    = ref(false)
-const emailResult = ref(null)
-const department = ref('')
-const printedAt  = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Chicago' })
+// DateStepper step per view (two weeks = 14 days)
+const STEPS = { week: 'week', biweek: 14, month: 'month' }
+const viewOptions = Object.entries(SCHEDULE_VIEWS).map(([value, v]) => ({ value, label: v.label }))
+const departmentOptions = departments.map(d => ({ value: d, label: d }))
+
+const data         = ref(null)
+const loading      = ref(false)
+const error        = ref(null)
+const saving       = ref(false)
+const formError    = ref(null)
+const form         = ref(null)
+const formOpen     = ref(false)
+const triedSave    = ref(false)
+const copying      = ref(false)
+const emailing     = ref(false)
+const emailResult  = ref(null)
+const showWarnings = ref(false)
+const department   = ref(null)
+const printedAt    = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'America/Chicago' })
 
 const view = computed(() => (SCHEDULE_VIEWS[route.query.view] ? route.query.view : 'week'))
 const date = computed(() => (isValidYmd(route.query.date) ? route.query.date : null))
+
+const copyUnit      = computed(() => (view.value === 'week' ? 'week' : 'two weeks'))
+const copyUnitShort = computed(() => (view.value === 'week' ? 'week' : '2 weeks'))
 
 function positionsIn(dept) {
   return employeePositions.filter(p => p.department === dept)
@@ -334,6 +491,32 @@ function go(d) {
   else delete query.date
   router.replace({ query })
 }
+
+// The stepper moves from the period's first day; the server snaps any date to its period
+const stepperDate = computed(() => data.value?.period.start ?? date.value ?? localDate())
+// Compact so it fits next to the arrows on a phone: "Nov 1 – 7", "Oct 25 – Nov 7", "Dec 27, 2026 – Jan 9, 2027"
+function stepperTitle() {
+  if (!data.value) return 'Loading…'
+  const { start, end } = data.value.period
+  if (view.value === 'month') return periodLabel.value
+  const thisYear = start.slice(0, 4) === localDate().slice(0, 4) && end.slice(0, 4) === start.slice(0, 4)
+  const y = thisYear ? {} : { year: 'numeric' }
+  const to = start.slice(0, 7) === end.slice(0, 7) && thisYear
+    ? formatLocalDate(end, { day: 'numeric' })
+    : formatLocalDate(end, { month: 'short', day: 'numeric', ...y })
+  return `${formatLocalDate(start, { month: 'short', day: 'numeric', ...y })} – ${to}`
+}
+function onStep(d) {
+  go(d === localDate() ? null : d)
+}
+
+const menuItems = computed(() => [
+  ...(view.value !== 'month'
+    ? [{ label: `Copy previous ${copyUnitShort.value}`, icon: IconCopy, disabled: !data.value || saving.value, onClick: openCopy }]
+    : []),
+  { label: 'Email schedule', icon: IconMail, disabled: !data.value || saving.value, onClick: openEmail },
+  { label: 'Print', icon: IconPrint, disabled: !data.value, onClick: printLandscape },
+])
 
 const dates = computed(() => {
   if (!data.value) return []
@@ -354,6 +537,17 @@ const periodLabel = computed(() => {
     : formatRange(p.start, p.end)
 })
 
+const employeeById = computed(() => new Map((data.value?.employees ?? []).map(e => [e.id, e])))
+
+function employeeName(id) {
+  const e = employeeById.value.get(id)
+  return e ? `${e.firstName} ${e.lastName}` : 'Unknown employee'
+}
+
+function shiftWhen(s) {
+  return `${formatLocalDate(s.date, { weekday: 'short', month: 'short', day: 'numeric' })}, ${longTime(s.startTime)} – ${longTime(s.endTime)}`
+}
+
 // Employees shown: by their usual position's department, or with a shift worked in that department
 const visibleEmployees = computed(() => {
   const all = data.value?.employees ?? []
@@ -366,10 +560,13 @@ const visibleEmployees = computed(() => {
 
 const warnings = computed(() => (data.value ? scheduleWarnings(data.value.shifts, data.value.employees, data.value.timeOff) : {}))
 
-const warningCount = computed(() => {
+// Shifts with warnings among the employees and days shown (a month counts its padding days too, as before)
+const warningShifts = computed(() => {
   const shown = new Set(visibleEmployees.value.map(e => e.id))
   const inView = new Set(dates.value)
-  return (data.value?.shifts ?? []).filter(s => warnings.value[s.id] && shown.has(s.employeeId) && inView.has(s.date)).length
+  return (data.value?.shifts ?? [])
+    .filter(s => warnings.value[s.id] && shown.has(s.employeeId) && inView.has(s.date))
+    .sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
 })
 
 // Today if it's in the period shown, otherwise the period's first day
@@ -405,13 +602,19 @@ watch(() => [view.value, date.value], load, { immediate: true })
 
 const formEmployees = computed(() => (data.value?.employees ?? []).filter(e => e.active || e.id === form.value?.employeeId))
 const formEmployee  = computed(() => data.value?.employees.find(e => e.id === form.value?.employeeId) ?? null)
+const employeeOptions = computed(() => formEmployees.value.map(e => ({
+  value: e.id,
+  label: `${e.lastName}, ${e.firstName} · ${positionLabel(e.position)}${e.active ? '' : ' (inactive)'}`,
+})))
+const usualPositionLabel = computed(() => `Their usual position${formEmployee.value ? ` (${positionLabel(formEmployee.value.position)})` : ''}`)
+const employeeMissing = computed(() => triedSave.value && !form.value?.employeeId)
 
 const formHours = computed(() => {
   const f = form.value
   if (!f || !isValidHhmm(f.startTime) || !isValidHhmm(f.endTime) || f.startTime === f.endTime) return ''
   const minutes = shiftMinutes(f)
   const h = (minutes / 60).toFixed(2).replace(/\.?0+$/, '')
-  return `${h} hours${f.endTime < f.startTime ? ' (ends the next day)' : ''}`
+  return `${h} hours, ${longTime(f.startTime)} – ${longTime(f.endTime)}${f.endTime < f.startTime ? ' (ends the next day)' : ''}`
 })
 
 // Warnings for the shift as it would be saved, against everything else on the schedule
@@ -432,34 +635,47 @@ function openCreate({ employeeId, date: d }) {
     date: d,
     startTime: last?.startTime ?? '07:00',
     endTime: last?.endTime ?? '15:00',
-    position: '',
+    position: null,
     notes: '',
   }
   formError.value = null
+  triedSave.value = false
+  formOpen.value  = true
 }
 
 function openEdit(shift) {
-  form.value = { ...shift, position: shift.position ?? '', notes: shift.notes ?? '' }
+  form.value = { ...shift, position: shift.position ?? null, notes: shift.notes ?? '' }
   formError.value = null
+  triedSave.value = false
+  formOpen.value  = true
+}
+
+function shiftBody(f) {
+  return {
+    employeeId: f.employeeId, date: f.date, startTime: f.startTime, endTime: f.endTime,
+    position: f.position || null, notes: f.notes || null,
+  }
+}
+
+function putShift(saved) {
+  const shifts = data.value.shifts.filter(s => s.id !== saved.id)
+  data.value.shifts = [...shifts, saved].sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
 }
 
 async function saveShift() {
   const f = form.value
+  triedSave.value = true
   if (!f.employeeId) { formError.value = 'Choose an employee'; return }
   saving.value    = true
   formError.value = null
   try {
-    const body = {
-      employeeId: f.employeeId, date: f.date, startTime: f.startTime, endTime: f.endTime,
-      position: f.position || null, notes: f.notes || null,
-    }
     const saved = await apiFetch(f.id ? `/api/admin/shifts/${f.id}` : '/api/admin/shifts', {
       method: f.id ? 'PUT' : 'POST',
-      body,
+      body: shiftBody(f),
     })
-    const shifts = data.value.shifts.filter(s => s.id !== saved.id)
-    data.value.shifts = [...shifts, saved].sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime))
-    form.value = null
+    putShift(saved)
+    formOpen.value = false
+    snackbar.show(`${f.id ? 'Shift saved' : 'Shift added'}: ${employeeName(saved.employeeId)}, ${shiftWhen(saved)}`)
   } catch (e) {
     formError.value = e.message
   } finally {
@@ -468,20 +684,57 @@ async function saveShift() {
 }
 
 async function deleteShift() {
+  const f = form.value
   const who = formEmployee.value ? `${formEmployee.value.firstName} ${formEmployee.value.lastName}'s` : 'this'
-  const day = formatLocalDate(form.value.date, { weekday: 'short', month: 'short', day: 'numeric' })
-  if (!window.confirm(`Delete ${who} shift on ${day} (${form.value.startTime}–${form.value.endTime})? This can't be undone.`)) return
+  // Close the form first so only the confirmation dialog is open (reopened if the delete is cancelled)
+  formOpen.value = false
+  const ok = await confirm({
+    title: 'Delete shift?',
+    message: `Delete ${who} shift on ${shiftWhen(f)}?`,
+    confirmLabel: 'Delete',
+    destructive: true,
+    icon: IconDelete,
+  })
+  if (!ok) { formOpen.value = true; return }
   saving.value    = true
   formError.value = null
   try {
-    await apiFetch(`/api/admin/shifts/${form.value.id}`, { method: 'DELETE' })
-    data.value.shifts = data.value.shifts.filter(s => s.id !== form.value.id)
-    form.value = null
+    await apiFetch(`/api/admin/shifts/${f.id}`, { method: 'DELETE' })
+    data.value.shifts = data.value.shifts.filter(s => s.id !== f.id)
+    snackbar.show({
+      message: `Shift deleted: ${employeeName(f.employeeId)}, ${shiftWhen(f)}`,
+      actionLabel: 'Undo',
+      onAction: () => restoreShift(f),
+    })
   } catch (e) {
     formError.value = e.message
+    formOpen.value  = true
   } finally {
     saving.value = false
   }
+}
+
+// Undo a delete: add the same shift back (it gets a new id)
+async function restoreShift(f) {
+  try {
+    putShift(await apiFetch('/api/admin/shifts', { method: 'POST', body: shiftBody(f) }))
+    snackbar.show('Shift restored')
+  } catch (e) {
+    snackbar.show({ message: `Couldn't restore the shift: ${e.message}`, tone: 'error' })
+  }
+}
+
+// ─── Copy / email ───────────────────────────────────────────────────────────
+
+function openCopy() {
+  formError.value = null
+  copying.value   = true
+}
+
+function openEmail() {
+  formError.value   = null
+  emailResult.value = null
+  emailing.value    = true
 }
 
 // Active employees with shifts in the period itself (a month's padding days aren't emailed)
@@ -492,12 +745,26 @@ const emailRecipients = computed(() => {
   return new Set(data.value.shifts.filter(s => s.date >= start && s.date <= end && active.has(s.employeeId)).map(s => s.employeeId)).size
 })
 
+function emailSummary(r) {
+  const parts = [`Sent ${r.sent} email${r.sent === 1 ? '' : 's'}.`]
+  if (r.skippedNoEmail || r.skippedInactive) {
+    parts.push(`Skipped ${r.skippedNoEmail} without an email address and ${r.skippedInactive} inactive.`)
+  }
+  return parts.join(' ')
+}
+
 async function emailSchedule() {
   saving.value    = true
   formError.value = null
   try {
     const { start, end } = data.value.period
-    emailResult.value = await apiFetch('/api/admin/shifts/email', { method: 'POST', body: { from: start, to: end } })
+    const result = await apiFetch('/api/admin/shifts/email', { method: 'POST', body: { from: start, to: end } })
+    if (result.failed?.length) {
+      emailResult.value = result     // keep the dialog open with the failures listed
+    } else {
+      emailing.value = false
+      snackbar.show(emailSummary(result))
+    }
   } catch (e) {
     formError.value = e.message
   } finally {
@@ -510,10 +777,15 @@ async function copyPrevious() {
   formError.value = null
   try {
     const { from, days } = copySource.value
-    copyResult.value = await apiFetch('/api/admin/shifts/copy', {
+    const r = await apiFetch('/api/admin/shifts/copy', {
       method: 'POST',
       body: { from, to: data.value.period.start, days },
     })
+    copying.value = false
+    const skipped = r.skippedExisting || r.skippedInactive
+      ? ` Skipped ${r.skippedExisting} already scheduled and ${r.skippedInactive} for inactive employees.`
+      : ''
+    snackbar.show(`Copied ${r.created} shift${r.created === 1 ? '' : 's'}.${skipped}`)
     await load()
   } catch (e) {
     formError.value = e.message
@@ -522,11 +794,3 @@ async function copyPrevious() {
   }
 }
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent; }
-</style>

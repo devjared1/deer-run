@@ -647,20 +647,20 @@ dialogs. Receipts and slips aren't redesigned.
       the tee date
 
 ### Phase 5: Admin panel migration
-- [ ] Migrate every admin view to the shared components and tokens (removes the copied `.modal-*`, `.btn-*`,
+- [x] Migrate every admin view to the shared components and tokens (removes the copied `.modal-*`, `.btn-*`,
       `.input-field`, `.badge`, `.th` CSS and the raw `gray-*`/`red-*`/`green-*` classes); `apiFetch` everywhere
-- [ ] `DataTable` everywhere: cards below md, `more_vert` row menus, keyboard-reachable clickable rows (Sales,
+- [x] `DataTable` everywhere: cards below md, `more_vert` row menus, keyboard-reachable clickable rows (Sales,
       HouseAccounts, Timesheets)
-- [ ] One filter behavior (reload on change, debounce text), filter chips + `DateRangeField`; Sales filters in a
+- [x] One filter behavior (reload on change, debounce text), filter chips + `DateRangeField`; Sales filters in a
       bottom sheet on mobile
-- [ ] Snackbar feedback on every save (Undo for deactivations); confirmations through `useConfirm()`
-- [ ] Friendly labels everywhere: status chips, 12-hour times, formatted dates, `$1,234.56`
-- [ ] Settings: tabbed/sectioned cards (Booking / Payroll / Point of Sale / Tipping / On Course / House Accounts),
+- [x] Snackbar feedback on every save (Undo for deactivations); confirmations through `useConfirm()`
+- [x] Friendly labels everywhere: status chips, 12-hour times, formatted dates, `$1,234.56`
+- [x] Settings: tabbed/sectioned cards (Booking / Payroll / Point of Sale / Tipping / On Course / House Accounts),
       sticky save bar, unsaved-changes guard, money in dollars, stacking grids, hole-time grid that fits at 360px
-- [ ] Dashboard: date-context header, StatCards with trends/sparklines, quick actions
-- [ ] Tee Times: bulk generate / close slots
-- [ ] Schedule: agenda list instead of the month grid on phones, keyboard-reachable cells, visible legend
-- [ ] Time Off: red Deny/Revoke; House account detail: scroll to the shown statement, busy labels on saves
+- [x] Dashboard: date-context header, StatCards with trends/sparklines, quick actions
+- [x] Tee Times: bulk generate / close slots
+- [x] Schedule: agenda list instead of the month grid on phones, keyboard-reachable cells, visible legend
+- [x] Time Off: red Deny/Revoke; House account detail: scroll to the shown statement, busy labels on saves
 
 ### Phase 6: Staff portal and POS
 - [ ] Register layout: Total `text-3xl`, Charge as an xl filled button, icon toolbar + overflow for Recent sales / No

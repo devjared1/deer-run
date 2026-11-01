@@ -1,7 +1,7 @@
 <template>
   <Menu as="div" class="inline-flex">
     <div ref="anchor" class="inline-flex">
-      <MenuButton :as="IconButton" :icon="IconMoreVert" :label="label" :size="size" />
+      <MenuButton :as="IconButton" :icon="icon || IconMoreVert" :label="label" :size="size" />
     </div>
     <Transition
       enter-active-class="transition duration-short-4 ease-emphasized-decelerate"
@@ -54,13 +54,15 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue'
 import IconButton from './IconButton.vue'
-import IconMoreVert from '~icons/material-symbols/more-vert'
+import IconMoreVert from '~icons/material-symbols/more-vert-rounded'
 
 const props = defineProps({
   items: { type: Array, required: true },
   label: { type: String, required: true },
   align: { type: String, default: 'end', validator: v => ['start', 'end'].includes(v) },
   size:  { type: String, default: 'md', validator: v => ['sm', 'md'].includes(v) },
+  // Trigger icon (default more_vert), e.g. a download icon for an export menu
+  icon:  { type: [Object, Function], default: null },
 })
 
 const anchor = ref(null)

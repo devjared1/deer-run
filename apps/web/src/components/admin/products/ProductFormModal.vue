@@ -1,175 +1,166 @@
 <template>
-  <div class="modal-overlay">
-    <div class="modal-box max-w-3xl overflow-y-auto max-h-[92vh]">
-      <h2 class="font-display font-bold text-bark mb-4">{{ product ? 'Edit Product' : 'New Product' }}</h2>
+  <AppDialog
+    v-model:open="open"
+    :title="product ? 'Edit product' : 'New product'"
+    size="lg"
+    persistent
+    fullscreen-on-mobile
+    :confirm-label="product ? 'Save' : 'Create'"
+    :confirm-loading="saving"
+    @confirm="save"
+    @after-leave="$emit('close')"
+  >
+    <form id="product-form" novalidate class="space-y-4 pt-2 pb-2 text-on-surface" @submit.prevent="save">
+      <div class="grid sm:grid-cols-2 gap-x-3 gap-y-1">
+        <TextField v-model="form.name" label="Name" required placeholder="Deer Run Polo" autocomplete="off" data-autofocus />
+        <SelectField
+          v-model="form.categoryId"
+          label="Category"
+          required
+          placeholder="Select a category"
+          :options="categories.map(c => ({ value: c.id, label: c.name }))"
+        />
+      </div>
+      <TextField v-model="form.description" label="Description" autocomplete="off" />
 
-      <div class="space-y-3">
-        <div class="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label class="label-sm">Name *</label>
-            <input v-model="form.name" type="text" class="input-field w-full" placeholder="Deer Run Polo" />
-          </div>
-          <div>
-            <label class="label-sm">Category *</label>
-            <select v-model="form.categoryId" class="input-field w-full">
-              <option value="" disabled>Select a category</option>
-              <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
-            </select>
-          </div>
-        </div>
-        <div>
-          <label class="label-sm">Description</label>
-          <input v-model="form.description" type="text" class="input-field w-full" />
-        </div>
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div>
-            <label class="label-sm">Price ($) *</label>
-            <input v-model="form.price" type="number" min="0" step="0.01" class="input-field w-full" />
-          </div>
-          <div>
-            <label class="label-sm">Member Price ($)</label>
-            <input v-model="form.memberPrice" type="number" min="0" step="0.01" class="input-field w-full" placeholder="Same" />
-          </div>
-          <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer sm:mt-5">
-            <input v-model="form.trackInventory" type="checkbox" class="rounded" /> Track stock
-          </label>
-          <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer sm:mt-5">
-            <input v-model="form.active" type="checkbox" class="rounded" /> Active
-          </label>
-        </div>
+      <div class="grid sm:grid-cols-2 gap-x-3 gap-y-1">
+        <MoneyField v-model="form.priceCents" label="Price" required :min="0" />
+        <MoneyField v-model="form.memberPriceCents" label="Member price" :min="0" helper="Leave empty for the same price" />
+      </div>
+      <div class="flex flex-wrap gap-x-6">
+        <Checkbox v-model="form.trackInventory" label="Track stock" />
+        <Checkbox v-model="form.active" label="Active (shows on the register)" />
+      </div>
 
-        <!-- Membership -->
-        <div class="grid sm:grid-cols-[auto,1fr,1fr] gap-3 items-end">
-          <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer pb-2">
-            <input v-model="form.isMembership" type="checkbox" class="rounded" /> Selling this makes the customer a member
-          </label>
-          <div v-if="form.isMembership">
-            <label class="label-sm">Membership length (months) *</label>
-            <input v-model="form.membershipMonths" type="number" min="1" max="60" step="1" class="input-field w-full" placeholder="12" />
-          </div>
-          <div v-if="form.isMembership">
-            <label class="label-sm">Tier</label>
-            <select v-model="form.membershipTier" class="input-field w-full">
-              <option value="">—</option>
-              <option v-for="t in membershipTiers" :key="t.name" :value="t.name">{{ t.name }}</option>
-            </select>
-          </div>
-          <p v-if="form.isMembership" class="sm:col-span-3 text-xs text-gray-400 font-body -mt-1">
-            The register asks for the customer's account and adds the months to their membership (renewals extend it).
-          </p>
-        </div>
-
-        <!-- Variants -->
-        <div class="border-t border-gray-100 pt-4">
-          <label class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer mb-3">
-            <input v-model="form.hasOptions" type="checkbox" class="rounded" />
-            This product comes in sizes and/or colors
-          </label>
-
-          <!-- Single (default) variant -->
-          <div v-if="!form.hasOptions" class="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div>
-              <label class="label-sm">SKU</label>
-              <input v-model="form.single.sku" type="text" class="input-field w-full" />
-            </div>
-            <div>
-              <label class="label-sm">Barcode</label>
-              <input v-model="form.single.barcode" type="text" class="input-field w-full" placeholder="Scan or type" />
-            </div>
-            <div v-if="form.trackInventory && !form.single.id">
-              <label class="label-sm">Starting Stock</label>
-              <input v-model="form.single.initialStock" type="number" min="0" step="1" class="input-field w-full" />
-            </div>
-          </div>
-
-          <!-- Sizes / colors -->
-          <template v-else>
-            <div class="bg-gray-50 rounded-lg p-3 mb-3 grid sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
-              <div>
-                <label class="label-sm">Sizes (comma separated)</label>
-                <input v-model="sizesInput" type="text" class="input-field w-full" placeholder="S, M, L, XL, XXL" />
-              </div>
-              <div>
-                <label class="label-sm">Colors (comma separated)</label>
-                <input v-model="colorsInput" type="text" class="input-field w-full" placeholder="Navy, White" />
-              </div>
-              <button class="btn-outline-sm" @click="generateVariants">Add Combinations</button>
-            </div>
-
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm font-body">
-                <thead>
-                  <tr class="text-left text-xs text-gray-500 uppercase tracking-wider">
-                    <th class="py-1 pr-2">Size</th>
-                    <th class="py-1 pr-2">Color</th>
-                    <th class="py-1 pr-2">SKU</th>
-                    <th class="py-1 pr-2">Barcode</th>
-                    <th class="py-1 pr-2">Price ($)</th>
-                    <th v-if="form.trackInventory" class="py-1 pr-2">Stock</th>
-                    <th class="py-1 pr-2">Active</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(v, i) in form.variants" :key="v.key">
-                    <td class="py-1 pr-2"><input v-model="v.size" type="text" class="input-field w-20" /></td>
-                    <td class="py-1 pr-2"><input v-model="v.color" type="text" class="input-field w-24" /></td>
-                    <td class="py-1 pr-2"><input v-model="v.sku" type="text" class="input-field w-28" /></td>
-                    <td class="py-1 pr-2"><input v-model="v.barcode" type="text" class="input-field w-32" /></td>
-                    <td class="py-1 pr-2">
-                      <input v-model="v.price" type="number" min="0" step="0.01" class="input-field w-24" :placeholder="form.price || '—'" />
-                    </td>
-                    <td v-if="form.trackInventory" class="py-1 pr-2">
-                      <input
-                        v-if="!v.id"
-                        v-model="v.initialStock"
-                        type="number"
-                        min="0"
-                        step="1"
-                        class="input-field w-20"
-                        title="Starting stock"
-                      />
-                      <span v-else class="text-gray-600 tabular-nums">{{ v.stockQty }}</span>
-                    </td>
-                    <td class="py-1 pr-2 text-center"><input v-model="v.active" type="checkbox" class="rounded" /></td>
-                    <td class="py-1">
-                      <button class="text-red-400 hover:text-red-600 text-xs px-1" aria-label="Remove variant" @click="form.variants.splice(i, 1)">✕</button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <p v-if="!form.variants.length" class="text-gray-400 text-xs font-body">
-              Enter sizes and/or colors above and click Add Combinations.
-            </p>
-            <p class="text-gray-400 text-xs font-body mt-2">
-              Leave a variant's price empty to use the product price. Stock for existing variants is changed
-              from the Stock button, not here. Removing a variant with stock history deactivates it instead.
-            </p>
-          </template>
-          <p v-if="switchingToOptions" class="text-gold text-xs font-body mt-2">
-            The current single variant will be removed (or deactivated if it has stock history) when you save.
-          </p>
+      <!-- Membership -->
+      <div class="rounded-shape-md border border-outline-variant p-3">
+        <Checkbox
+          v-model="form.isMembership"
+          label="Selling this makes the customer a member"
+          helper="The register asks for the customer's account and adds the months to their membership (renewals extend it)."
+        />
+        <div v-if="form.isMembership" class="grid sm:grid-cols-2 gap-x-3 gap-y-1 mt-3">
+          <TextField
+            v-model="form.membershipMonths"
+            label="Membership length (months)"
+            type="number"
+            inputmode="numeric"
+            min="1"
+            max="60"
+            step="1"
+            required
+            placeholder="12"
+          />
+          <SelectField
+            v-model="form.membershipTier"
+            label="Tier"
+            placeholder="No tier"
+            :options="membershipTiers.map(t => ({ value: t.name, label: t.name }))"
+          />
         </div>
       </div>
 
-      <div class="flex justify-end gap-3 mt-5">
-        <button class="btn-outline-sm" @click="$emit('close')">Cancel</button>
-        <button :disabled="saving" class="btn-amber px-4 py-2 text-sm disabled:opacity-50" @click="save">
-          {{ saving ? 'Saving…' : (product ? 'Save Changes' : 'Create Product') }}
-        </button>
+      <!-- Variants -->
+      <div class="border-t border-outline-variant pt-4">
+        <Checkbox v-model="form.hasOptions" label="This product comes in sizes and/or colors" />
+
+        <!-- Single (default) variant -->
+        <div v-if="!form.hasOptions" class="grid sm:grid-cols-3 gap-x-3 gap-y-1 mt-3">
+          <TextField v-model="form.single.sku" label="SKU" autocomplete="off" />
+          <TextField v-model="form.single.barcode" label="Barcode" autocomplete="off" placeholder="Scan or type" />
+          <TextField
+            v-if="form.trackInventory && !form.single.id"
+            v-model="form.single.initialStock"
+            label="Starting stock"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            step="1"
+          />
+        </div>
+
+        <!-- Sizes / colors -->
+        <template v-else>
+          <div class="mt-3 rounded-shape-md bg-surface-container p-3 grid sm:grid-cols-[1fr_1fr_auto] gap-x-3 gap-y-1 items-start">
+            <TextField v-model="sizesInput" label="Sizes (comma separated)" placeholder="S, M, L, XL, XXL" autocomplete="off" />
+            <TextField v-model="colorsInput" label="Colors (comma separated)" placeholder="Navy, White" autocomplete="off" />
+            <AppButton variant="tonal" :icon="IconAdd" class="sm:mt-2" @click="generateVariants">Add combinations</AppButton>
+          </div>
+
+          <ul v-if="form.variants.length" class="mt-3 space-y-2" aria-label="Variants">
+            <li
+              v-for="(v, i) in form.variants"
+              :key="v.key"
+              class="rounded-shape-md border border-outline-variant p-3"
+            >
+              <div class="flex items-center gap-2 mb-2">
+                <span class="flex-1 min-w-0 truncate text-title-s text-on-surface">{{ variantName(v) }}</span>
+                <span v-if="v.id && form.trackInventory" class="text-body-s text-on-surface-variant tabular-nums">{{ v.stockQty }} in stock</span>
+                <IconButton :icon="IconDelete" :label="`Remove ${variantName(v)}`" size="sm" @click="form.variants.splice(i, 1)" />
+              </div>
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1">
+                <TextField v-model="v.size" label="Size" autocomplete="off" />
+                <TextField v-model="v.color" label="Color" autocomplete="off" />
+                <MoneyField v-model="v.priceCents" label="Price" :min="0" :helper="form.priceCents !== null ? `Empty: ${money(form.priceCents)}` : 'Empty: product price'" />
+                <TextField v-model="v.sku" label="SKU" autocomplete="off" />
+                <TextField v-model="v.barcode" label="Barcode" autocomplete="off" />
+                <TextField
+                  v-if="form.trackInventory && !v.id"
+                  v-model="v.initialStock"
+                  label="Starting stock"
+                  type="number"
+                  inputmode="numeric"
+                  min="0"
+                  step="1"
+                />
+              </div>
+              <Checkbox v-model="v.active" label="Active" />
+            </li>
+          </ul>
+          <p v-else class="mt-3 text-body-s text-on-surface-variant">
+            Enter sizes and/or colors above and choose Add combinations.
+          </p>
+          <p class="mt-2 text-body-s text-on-surface-variant">
+            Leave a variant's price empty to use the product price. Stock for existing variants is changed
+            from Stock in the product's menu, not here. Removing a variant with stock history deactivates it instead.
+          </p>
+        </template>
+        <p v-if="switchingToOptions" class="mt-2 flex items-start gap-2 text-body-s text-on-warning-container">
+          <IconWarning class="w-5 h-5 flex-none" aria-hidden="true" />
+          The current single variant will be removed (or deactivated if it has stock history) when you save.
+        </p>
       </div>
-      <p v-if="error" class="text-red-500 text-xs mt-2">{{ error }}</p>
-    </div>
-  </div>
+
+      <ErrorBanner v-if="error" :message="error" />
+    </form>
+
+    <template #actions="{ close }">
+      <AppButton variant="text" :disabled="saving" @click="close">Cancel</AppButton>
+      <AppButton type="submit" form="product-form" :loading="saving">
+        {{ saving ? 'Saving…' : (product ? 'Save changes' : 'Create product') }}
+      </AppButton>
+    </template>
+  </AppDialog>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
 import { apiFetch } from '@/lib/api'
-import { centsToDollars, dollarsToCents } from '@/lib/money'
 import { membershipTiers } from '@/data/membershipTiers'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import Checkbox from '@/components/ui/Checkbox.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import MoneyField from '@/components/ui/MoneyField.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import TextField from '@/components/ui/TextField.vue'
+import IconAdd from '~icons/material-symbols/add-rounded'
+import IconDelete from '~icons/material-symbols/delete-rounded'
+import IconWarning from '~icons/material-symbols/warning-rounded'
 
+// Mount with v-if; the dialog closes itself (Cancel, or after a save) and emits `close` once its exit animation ends.
+// `saved` (with the API's product, incl. `warnings`) fires as soon as the save succeeds.
 const props = defineProps({
   product: { type: Object, default: null },
   categories: { type: Array, required: true },
@@ -177,8 +168,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['close', 'saved'])
 
+const open = ref(true)
+
 let keySeq = 0
 const nextKey = () => `k${keySeq++}`
+
+const money = (cents) => `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 const toRow = (v) => ({
   key: nextKey(),
@@ -187,8 +182,8 @@ const toRow = (v) => ({
   color: v.color ?? '',
   sku: v.sku ?? '',
   barcode: v.barcode ?? '',
-  price: centsToDollars(v.priceCents ?? null),
-  memberPrice: centsToDollars(v.memberPriceCents ?? null),
+  priceCents: v.priceCents ?? null,
+  memberPriceCents: v.memberPriceCents ?? null,
   active: v.active ?? true,
   stockQty: v.stockQty ?? 0,
   initialStock: '',
@@ -198,16 +193,16 @@ function initialForm(p) {
   const variants = p?.variants ?? []
   const isDefaultOnly = variants.length <= 1 && !variants[0]?.size && !variants[0]?.color
   return {
-    categoryId: p?.categoryId ?? props.defaultCategoryId ?? '',
+    categoryId: p?.categoryId ?? (props.defaultCategoryId || null),
     name: p?.name ?? '',
     description: p?.description ?? '',
-    price: centsToDollars(p?.priceCents ?? null),
-    memberPrice: centsToDollars(p?.memberPriceCents ?? null),
+    priceCents: p?.priceCents ?? null,
+    memberPriceCents: p?.memberPriceCents ?? null,
     trackInventory: p?.trackInventory ?? false,
     active: p?.active ?? true,
     isMembership: !!p?.membershipMonths,
     membershipMonths: p?.membershipMonths ?? '',
-    membershipTier: p?.membershipTier ?? '',
+    membershipTier: p?.membershipTier ?? null,
     hasOptions: !isDefaultOnly,
     single: isDefaultOnly && variants[0] ? toRow(variants[0]) : toRow({}),
     variants: isDefaultOnly ? [] : variants.map(toRow),
@@ -221,6 +216,8 @@ const saving      = ref(false)
 const error       = ref(null)
 
 const switchingToOptions = computed(() => form.value.hasOptions && !!form.value.single.id)
+
+const variantName = (v) => [v.size, v.color].filter(Boolean).join(' / ') || 'New variant'
 
 const splitList = (s) => s.split(',').map(x => x.trim()).filter(Boolean)
 
@@ -244,14 +241,15 @@ function variantPayload(v) {
     color: v.color,
     sku: v.sku,
     barcode: v.barcode,
-    priceCents: dollarsToCents(v.price),
-    memberPriceCents: dollarsToCents(v.memberPrice),
+    priceCents: v.priceCents ?? null,
+    memberPriceCents: v.memberPriceCents ?? null,
     active: v.active,
     initialStock: v.id ? undefined : (v.initialStock === '' ? undefined : Number(v.initialStock)),
   }
 }
 
 async function save() {
+  if (saving.value) return
   const f = form.value
   if (f.hasOptions && !f.variants.length) {
     error.value = 'Add at least one size or color, or uncheck "comes in sizes and/or colors"'
@@ -268,8 +266,8 @@ async function save() {
       categoryId: f.categoryId,
       name: f.name,
       description: f.description,
-      priceCents: dollarsToCents(f.price),
-      memberPriceCents: dollarsToCents(f.memberPrice),
+      priceCents: f.priceCents,
+      memberPriceCents: f.memberPriceCents,
       trackInventory: f.trackInventory,
       active: f.active,
       membershipMonths: f.isMembership ? Number(f.membershipMonths) || null : null,
@@ -283,6 +281,7 @@ async function save() {
       body,
     })
     emit('saved', saved)
+    open.value = false
   } catch (e) {
     error.value = e.message
   } finally {
@@ -290,11 +289,3 @@ async function save() {
   }
 }
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>
