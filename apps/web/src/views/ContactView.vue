@@ -1,173 +1,328 @@
 <template>
-  <div class="page-enter">
+  <div>
     <PageHero
-      label="Get in Touch"
+      label="Get in touch"
       title-html="Contact <em>Us</em>"
-      description="Pro Shop staff are on-site daily. For the fastest response, call us at (256) 974-7384."
+      description="Pro Shop staff are on-site daily. For the fastest answer, give us a call."
       photo="course-5"
-    />
+      height="360px"
+    >
+      <div class="mt-6 flex flex-col sm:flex-row gap-3">
+        <AppButton variant="gold" size="lg" :href="`tel:${site.phone.tel}`" :icon="IconCall">
+          Call {{ site.phone.display }}
+        </AppButton>
+        <AppButton
+          variant="outlined"
+          size="lg"
+          :href="site.mapsDirectionsUrl"
+          target="_blank"
+          rel="noopener"
+          :icon="IconDirections"
+          class="!text-on-primary !border-inverse-primary"
+        >
+          Get directions<span class="sr-only"> in Google Maps (opens in a new tab)</span>
+        </AppButton>
+      </div>
+    </PageHero>
 
-    <section class="topo py-14">
-      <div class="max-w-7xl mx-auto px-5">
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-10">
-
-          <!-- Contact form -->
-          <div>
-            <SectionLabel text="Send a Message" class="mb-5" />
-            <div class="card rounded-lg p-8">
-              <div v-if="sent" class="text-center py-6">
-                <div class="text-4xl mb-4">✅</div>
-                <h3 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:#1E3D2F;margin-bottom:8px;">Message Sent!</h3>
-                <p style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(61,43,26,.5);">We'll be in touch within one business day.</p>
-                <button @click="sent = false" class="btn-outline-pine mt-5 inline-flex">Send Another</button>
+    <div class="bg-surface">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-20 grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12">
+        <!-- Contact form -->
+        <section class="lg:col-span-7" aria-labelledby="contact-form-title">
+          <Card padding="none">
+            <div class="p-6 md:p-8">
+              <div v-if="sent" class="text-center py-4" role="status">
+                <span class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success-container text-on-success-container mb-4" aria-hidden="true">
+                  <IconCheckCircle class="w-9 h-9" />
+                </span>
+                <h2 id="contact-form-title" ref="successHeading" tabindex="-1" class="font-display text-headline-s text-on-surface">Message sent</h2>
+                <p class="mt-2 text-body-l text-on-surface-variant">Thanks, {{ sentName }}. We’ll be in touch within one business day.</p>
+                <AppButton variant="outlined" class="mt-6" @click="reset">Send another message</AppButton>
               </div>
 
-              <form v-else @submit.prevent="submit" class="space-y-4">
-                <div v-if="error" class="p-3 rounded text-sm" style="background:rgba(140,74,47,.1);color:#6B3820;font-family:'Lato',sans-serif;">{{ error }}</div>
-                <div>
-                  <label class="field-label">Your Name</label>
-                  <input v-model="form.name" type="text" placeholder="John Smith" class="field rounded-sm" required />
+              <form v-else ref="formEl" novalidate aria-labelledby="contact-form-title" @submit.prevent="submit">
+                <h2 id="contact-form-title" class="font-display text-headline-m text-on-surface">Send a message</h2>
+                <p class="mt-2 mb-6 text-body-m text-on-surface-variant">Fields marked * are required.</p>
+
+                <ErrorBanner v-if="error" class="mb-5" :message="error" @dismiss="error = ''" />
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <TextField
+                    ref="firstField"
+                    v-model.trim="form.name"
+                    class="sm:col-span-2"
+                    label="Your name"
+                    name="name"
+                    autocomplete="name"
+                    required
+                    :error="shown('name')"
+                    @blur="touch('name')"
+                  />
+                  <TextField
+                    v-model.trim="form.email"
+                    label="Email"
+                    type="email"
+                    name="email"
+                    autocomplete="email"
+                    inputmode="email"
+                    required
+                    :error="shown('email')"
+                    @blur="touch('email')"
+                  />
+                  <TextField
+                    v-model.trim="form.phone"
+                    label="Phone"
+                    type="tel"
+                    name="phone"
+                    autocomplete="tel"
+                    inputmode="tel"
+                    helper="Optional"
+                    :error="shown('phone')"
+                    @blur="touch('phone')"
+                  />
+                  <SelectField
+                    v-model="form.subject"
+                    class="sm:col-span-2"
+                    label="Subject"
+                    name="subject"
+                    placeholder="Choose a subject"
+                    :options="subjectOptions"
+                    required
+                    :error="shown('subject')"
+                    @blur="touch('subject')"
+                  />
+                  <TextArea
+                    v-model="form.message"
+                    class="sm:col-span-2"
+                    label="Message"
+                    name="message"
+                    :rows="5"
+                    :maxlength="5000"
+                    auto-grow
+                    required
+                    :error="shown('message')"
+                    @blur="touch('message')"
+                  />
                 </div>
-                <div>
-                  <label class="field-label">Email Address</label>
-                  <input v-model="form.email" type="email" placeholder="john@example.com" class="field rounded-sm" required />
-                </div>
-                <div>
-                  <label class="field-label">Phone (optional)</label>
-                  <input v-model="form.phone" type="tel" placeholder="(256) 555-0100" class="field rounded-sm" />
-                </div>
-                <div>
-                  <label class="field-label">Subject</label>
-                  <select v-model="form.subject" class="field rounded-sm" required>
-                    <option value="">Choose a subject…</option>
-                    <option>Tee Time / Booking Question</option>
-                    <option>Tournament Information</option>
-                    <option>Group Outing / Corporate Event</option>
-                    <option>Membership Inquiry</option>
-                    <option>Pro Shop</option>
-                    <option>Other</option>
-                  </select>
-                </div>
-                <div>
-                  <label class="field-label">Message</label>
-                  <textarea v-model="form.message" rows="4" class="field rounded-sm resize-none" required></textarea>
-                </div>
-                <button
-                  type="submit"
-                  :disabled="loading"
-                  class="btn-amber w-full justify-center"
-                  :style="loading ? 'opacity:.6;cursor:not-allowed;' : ''"
-                >
-                  {{ loading ? 'Sending…' : 'Send Message' }}
-                </button>
+
+                <AppButton type="submit" variant="gold" size="lg" block class="mt-6" :loading="loading" :icon="IconSend">
+                  {{ loading ? 'Sending…' : 'Send message' }}
+                </AppButton>
               </form>
             </div>
-          </div>
+          </Card>
+        </section>
 
-          <!-- Info panel -->
-          <div class="space-y-6">
-            <div>
-              <SectionLabel text="Pro Shop" class="mb-5" />
-              <div class="card rounded-lg p-7 space-y-5">
-                <div v-for="info in contactInfo" :key="info.label" class="flex items-start gap-4">
-                  <div class="w-9 h-9 rounded flex items-center justify-center flex-shrink-0" style="background:rgba(30,61,47,.1);">
-                    <span class="text-lg">{{ info.icon }}</span>
-                  </div>
-                  <div>
-                    <div style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;color:rgba(61,43,26,.4);margin-bottom:3px;">{{ info.label }}</div>
-                    <div style="font-family:'Lato',sans-serif;font-size:14px;color:#3D2B1A;" v-html="info.value"></div>
+        <!-- Visit -->
+        <section class="lg:col-span-5 space-y-6" aria-labelledby="visit-title">
+          <h2 id="visit-title" class="font-display text-headline-m text-on-surface">Pro Shop</h2>
+
+          <ul class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+            <li class="sm:col-span-2 lg:col-span-1">
+              <Card variant="outlined">
+                <div class="flex items-start gap-4">
+                  <span class="tile-icon" aria-hidden="true"><IconLocation class="w-6 h-6" /></span>
+                  <div class="min-w-0 flex-1">
+                    <h3 class="text-label-l text-on-surface-variant">Address</h3>
+                    <address class="not-italic text-body-l text-on-surface">
+                      <span v-for="line in site.addressLines" :key="line" class="block">{{ line }}</span>
+                    </address>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                      <AppButton variant="tonal" :href="site.mapsDirectionsUrl" target="_blank" rel="noopener" :icon="IconDirections">
+                        Google Maps<span class="sr-only"> directions (opens in a new tab)</span>
+                      </AppButton>
+                      <AppButton variant="outlined" :href="site.appleMapsUrl" target="_blank" rel="noopener" :icon="IconMap">
+                        Apple Maps<span class="sr-only"> directions (opens in a new tab)</span>
+                      </AppButton>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            <div>
-              <SectionLabel text="Hours of Operation" class="mb-5" />
-              <div class="card rounded-lg p-7">
-                <div
-                  v-for="h in hours"
-                  :key="h.day"
-                  class="flex justify-between py-2.5"
-                  style="border-bottom:1px solid rgba(61,43,26,.07);"
-                >
-                  <span style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.55);">{{ h.day }}</span>
-                  <span style="font-family:'Lato',sans-serif;font-size:13px;font-weight:700;color:#1E3D2F;">{{ h.hours }}</span>
+              </Card>
+            </li>
+            <li>
+              <Card variant="outlined" class="h-full">
+                <div class="flex items-start gap-4">
+                  <span class="tile-icon" aria-hidden="true"><IconCall class="w-6 h-6" /></span>
+                  <div class="min-w-0">
+                    <h3 class="text-label-l text-on-surface-variant">Phone</h3>
+                    <a :href="`tel:${site.phone.tel}`" class="tile-link">{{ site.phone.display }}</a>
+                  </div>
                 </div>
-                <p class="mt-4 text-xs" style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.35);line-height:1.6;">
-                  * Closed Christmas Eve and Christmas Day. Last tee time 5:00 PM daily. Hours subject to seasonal change.
-                </p>
-              </div>
-            </div>
+              </Card>
+            </li>
+            <li>
+              <Card variant="outlined" class="h-full">
+                <div class="flex items-start gap-4">
+                  <span class="tile-icon" aria-hidden="true"><IconMail class="w-6 h-6" /></span>
+                  <div class="min-w-0">
+                    <h3 class="text-label-l text-on-surface-variant">Email</h3>
+                    <a :href="`mailto:${site.email}`" class="tile-link break-all">{{ site.email }}</a>
+                  </div>
+                </div>
+              </Card>
+            </li>
+            <li class="sm:col-span-2 lg:col-span-1">
+              <Card variant="outlined">
+                <div class="flex items-start gap-4">
+                  <span class="tile-icon" aria-hidden="true"><IconSchedule class="w-6 h-6" /></span>
+                  <div class="min-w-0 flex-1">
+                    <h3 class="text-label-l text-on-surface-variant">Hours</h3>
+                    <dl class="mt-1">
+                      <div
+                        v-for="h in site.hoursByDay"
+                        :key="h.days"
+                        class="flex items-baseline justify-between gap-x-3 py-2 border-b border-outline-variant last:border-b-0"
+                      >
+                        <dt class="text-body-m text-on-surface-variant">{{ h.days }}</dt>
+                        <dd class="text-body-m font-bold text-on-surface text-right whitespace-nowrap">{{ h.hours }}</dd>
+                      </div>
+                    </dl>
+                    <ul class="mt-3 space-y-1 text-body-s text-on-surface-variant">
+                      <li v-for="n in site.hoursNotes" :key="n">{{ n }}</li>
+                    </ul>
+                  </div>
+                </div>
+              </Card>
+            </li>
+          </ul>
 
-            <!-- Static map -->
-            <div class="card rounded-lg overflow-hidden" style="height:230px;">
-              <iframe
-                title="Deer Run Golf Course"
-                width="100%"
-                height="100%"
-                style="border:0;"
-                loading="lazy"
-                allowfullscreen
-                referrerpolicy="no-referrer-when-downgrade"
-                src="https://maps.google.com/maps?q=1175+County+Road+100+Moulton+AL+35650&output=embed"
-              ></iframe>
-            </div>
+          <!-- Map: only with a Maps Embed API key; otherwise the directions buttons above do the job -->
+          <div v-if="mapEmbedUrl" class="rounded-shape-md overflow-hidden border border-outline-variant aspect-[4/3]">
+            <iframe
+              :title="`Map: ${site.courseName}`"
+              class="w-full h-full border-0"
+              loading="lazy"
+              allowfullscreen
+              referrerpolicy="no-referrer-when-downgrade"
+              :src="mapEmbedUrl"
+            />
           </div>
-
-        </div>
+        </section>
       </div>
-    </section>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+// Contact form → POST /api/inquiries/contact { name, email, phone, subject, message } (all but phone required).
+// Prefills: ?event=<name> (tournament registration until events have their own form) and ?subject=<key>
+// (group | membership | tournament | teetime | proshop).
+import { computed, nextTick, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import PageHero     from '@/components/layout/PageHero.vue'
-import SectionLabel from '@/components/ui/SectionLabel.vue'
+import PageHero    from '@/components/layout/PageHero.vue'
+import AppButton   from '@/components/ui/AppButton.vue'
+import Card        from '@/components/ui/Card.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import TextArea    from '@/components/ui/TextArea.vue'
+import TextField   from '@/components/ui/TextField.vue'
+import * as site   from '@/data/site.js'
+import IconCall from '~icons/material-symbols/call-rounded'
+import IconCheckCircle from '~icons/material-symbols/check-circle-rounded'
+import IconDirections from '~icons/material-symbols/directions-rounded'
+import IconLocation from '~icons/material-symbols/location-on-rounded'
+import IconMail from '~icons/material-symbols/mail-rounded'
+import IconMap from '~icons/material-symbols/map-rounded'
+import IconSchedule from '~icons/material-symbols/schedule-rounded'
+import IconSend from '~icons/material-symbols/send-rounded'
 
-const route   = useRoute()
-const sent    = ref(false)
-const loading = ref(false)
-const error   = ref('')
+const route = useRoute()
 
-const form = reactive({ name: '', email: '', phone: '', subject: '', message: '' })
-
-// Tournament "Register" links here with ?event=<name> until events have their own page
-if (route.query.event) {
-  form.subject = 'Tournament Information'
-  form.message = `I'd like to register for ${String(route.query.event).slice(0, 200)}.\n\nPlayers / team: `
+const SUBJECTS = {
+  teetime:    'Tee Time / Booking Question',
+  tournament: 'Tournament Information',
+  group:      'Group Outing / Corporate Event',
+  membership: 'Membership Inquiry',
+  proshop:    'Pro Shop',
+  other:      'Other',
 }
+const subjectOptions = Object.values(SUBJECTS).map(s => ({ value: s, label: s }))
 
-const contactInfo = [
-  { icon: '📍', label: 'Address', value: '1175 County Road 100<br>Moulton, AL 35650' },
-  { icon: '📞', label: 'Phone',   value: '<a href="tel:2569747384" style="color:#1E3D2F;text-decoration:none;">(256) 974-7384</a>' },
-  { icon: '✉️', label: 'Email',   value: '<a href="mailto:proshop@deerrun.golf" style="color:#1E3D2F;text-decoration:none;">proshop@deerrun.golf</a>' },
-]
+const EMPTY = { name: '', email: '', phone: '', subject: null, message: '' }
+const form = reactive({ ...EMPTY })
+const touched = reactive({})
+const submitted = ref(false)
+const sent = ref(false)
+const sentName = ref('')
+const loading = ref(false)
+const error = ref('')
+const firstField = ref(null)
+const formEl = ref(null)
+const successHeading = ref(null)
 
-const hours = [
-  { day: 'Monday – Friday', hours: '7:30 AM – 5:00 PM' },
-  { day: 'Saturday',        hours: '7:00 AM – 5:00 PM' },
-  { day: 'Sunday',          hours: '7:30 AM – 5:00 PM' },
-  { day: 'Holidays',        hours: '8:00 AM – 4:00 PM' },
-]
+function prefill() {
+  // Tournament "Register" links here with ?event=<name> until events have their own registration form
+  if (route.query.event) {
+    form.subject = SUBJECTS.tournament
+    form.message = `I'd like to register for ${String(route.query.event).slice(0, 200)}.\n\nPlayers / team: `
+  } else if (SUBJECTS[route.query.subject]) {
+    form.subject = SUBJECTS[route.query.subject]
+  }
+}
+prefill()
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const errors = computed(() => ({
+  name:    form.name ? '' : 'Enter your name.',
+  email:   !form.email ? 'Enter your email address.' : EMAIL_RE.test(form.email) ? '' : 'Enter an email address like name@example.com.',
+  phone:   !form.phone || form.phone.replace(/\D/g, '').length >= 10 ? '' : 'Enter a 10-digit phone number, or leave it blank.',
+  subject: form.subject ? '' : 'Choose a subject.',
+  message: form.message.trim() ? '' : 'Enter your message.',
+}))
+
+function touch(field) { touched[field] = true }
+function shown(field) { return (touched[field] || submitted.value) ? errors.value[field] : '' }
+
+// Only embed the map with a real key (the .env.example placeholder starts with "your")
+const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
+const mapEmbedUrl = mapsKey && !/^your/i.test(mapsKey)
+  ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(mapsKey)}&q=${encodeURIComponent(site.mapsQuery)}`
+  : ''
 
 async function submit() {
-  error.value   = ''
+  submitted.value = true
+  error.value = ''
+  if (Object.values(errors.value).some(Boolean)) {
+    await nextTick()
+    formEl.value?.querySelector('[aria-invalid="true"]')?.focus()
+    return
+  }
   loading.value = true
   try {
     const res = await fetch('/api/inquiries/contact', {
-      method:  'POST',
+      method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(form),
+      body: JSON.stringify({ ...form, phone: form.phone || null, message: form.message.trim() }),
     })
-    if (!res.ok) throw new Error()
+    // A non-JSON answer (e.g. the SPA's index.html) is a failure too, not a success
+    const data = await res.json().catch(() => null)
+    if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`)
+    sentName.value = form.name.split(/\s+/)[0]
     sent.value = true
-    Object.assign(form, { name: '', email: '', phone: '', subject: '', message: '' })
+    await nextTick()
+    successHeading.value?.focus()
   } catch {
-    error.value = 'Something went wrong. Please call us at (256) 974-7384.'
+    error.value = `We couldn’t send your message. Please try again, or call the Pro Shop at ${site.phone.display}.`
   } finally {
     loading.value = false
   }
 }
+
+function reset() {
+  Object.assign(form, EMPTY)
+  for (const k of Object.keys(touched)) delete touched[k]
+  submitted.value = false
+  sent.value = false
+  nextTick(() => firstField.value?.focus())
+}
 </script>
+
+<style scoped>
+.tile-icon {
+  @apply w-12 h-12 flex-shrink-0 inline-flex items-center justify-center rounded-full bg-primary-container text-on-primary-container;
+}
+.tile-link {
+  @apply inline-flex items-center min-h-[48px] text-title-m text-primary underline-offset-4 rounded-shape-xs;
+}
+.tile-link:hover { @apply underline; }
+</style>

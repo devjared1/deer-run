@@ -1,6 +1,24 @@
 /**
  * 18-hole scorecard data for Deer Run Golf Course.
- * yards index: [0]=Black, [1]=Blue, [2]=Red, [3]=Gold
+ * yards index: [0]=Black, [1]=Blue, [2]=Red, [3]=Gold (the order of data/teeSets.js)
+ *
+ * Shape of a hole (fields marked ? are optional and only rendered when present, so the course can fill them in):
+ *   hole        1–18
+ *   name        hole name (❓ to confirm with the course, see TODO.md → Housekeeping)
+ *   par         3 | 4 | 5
+ *   hdcp        stroke index (men's)
+ *   hdcpLadies? ladies' stroke index; the scorecard shows a second handicap row only when every hole has it
+ *   yards       yardage per tee, in teeSets order
+ *   water       water in play
+ *   bunkers     number of bunkers (0 = none)
+ *   mountain    elevated terrain / elevation change
+ *   signature   one of the course's signature holes
+ *   dogleg?     'left' | 'right': drawn on the hole diagram
+ *   tip?        a short playing tip from the pro (plain text)
+ *   description? a sentence or two about the hole (plain text)
+ *   photo?      a photo name from data/photos.js (rendered with ResponsivePicture)
+ *
+ * Imported by src/lib/pace.js (shared with the Functions), so no '@/' imports here.
  */
 export const holes = [
   { hole: 1,  name: 'Opening Act',    par: 4, hdcp: 7,  yards: [420, 385, 345, 320], water: false, bunkers: 2, mountain: false, signature: false },
@@ -25,3 +43,25 @@ export const holes = [
 
 export const frontNine = holes.slice(0, 9)
 export const backNine  = holes.slice(9)
+
+/** The hole with this number (1–18), or null. */
+export const getHole = n => holes[Number(n) - 1] ?? null
+
+/** Total par of a list of holes (all 18 by default). */
+export const totalPar = (list = holes) => list.reduce((sum, h) => sum + h.par, 0)
+
+/** Total yards of a list of holes from one tee (index into teeSets). */
+export const totalYards = (teeIndex, list = holes) => list.reduce((sum, h) => sum + (h.yards[teeIndex] ?? 0), 0)
+
+/** True when every hole has a ladies' handicap (hdcpLadies). */
+export const hasLadiesHandicap = holes.every(h => h.hdcpLadies != null)
+
+/** The hazards / features on a hole, in legend order: [{ key, label }]. */
+export function holeFeatures(h) {
+  const list = []
+  if (h.water) list.push({ key: 'water', label: 'Water hazard' })
+  if (h.bunkers > 0) list.push({ key: 'bunker', label: h.bunkers === 1 ? '1 bunker' : `${h.bunkers} bunkers` })
+  if (h.mountain) list.push({ key: 'mountain', label: 'Elevated terrain' })
+  if (h.signature) list.push({ key: 'signature', label: 'Signature hole' })
+  return list
+}

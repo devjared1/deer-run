@@ -67,6 +67,36 @@ export const useAuthStore = defineStore('auth', () => {
     await fetchProfile()
   }
 
+  // Create an account. The name goes into the Supabase user metadata (user_metadata.name). Returns
+  // { needsConfirmation: true } when the project requires an email confirmation (no session yet).
+  async function signUp({ email, password, name, emailRedirectTo }) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name }, emailRedirectTo },
+    })
+    if (error) throw error
+    if (!data.session) return { needsConfirmation: true }
+    session.value = data.session
+    await fetchProfile()
+    return { needsConfirmation: false }
+  }
+
+  // Email a password reset link that comes back to `redirectTo` with a recovery session
+  async function requestPasswordReset(email, redirectTo) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo })
+    if (error) throw error
+  }
+
+  // Set a new password for the signed-in (or recovering) user
+  async function updatePassword(password) {
+    const { error } = await supabase.auth.updateUser({ password })
+    if (error) throw error
+    const { data } = await supabase.auth.getSession()
+    session.value = data.session
+    await fetchProfile()
+  }
+
   async function logout() {
     await supabase.auth.signOut()
     session.value = null
@@ -79,6 +109,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     session, profile, isLoggedIn, isMember, isAdmin, employee, isStaff, canUseRegister, isRegisterManager, canTrackCourse, maxBookDays,
-    init, fetchProfile, login, logout, getToken,
+    init, fetchProfile, login, signUp, requestPasswordReset, updatePassword, logout, getToken,
   }
 })

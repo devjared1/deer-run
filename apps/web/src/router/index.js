@@ -3,6 +3,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 // meta.title → "<title> · Deer Run Golf Course" (App.vue, via @unhead/vue); meta.description → the description meta
 // (public pages). meta.noindex keeps a page out of search results (the portals are noindex automatically).
+// meta.ogImage: the page's share image (a name from data/photos.js; default course-5-wide). meta.sitemap: false leaves
+// an indexable page out of sitemap.xml. src/lib/seo.js builds the head tags from these, and scripts/prerender.mjs
+// writes them into each public page's HTML at build time (it reads this file's routes, so keep public routes here).
 const routes = [
   {
     path: '/',
@@ -10,35 +13,36 @@ const routes = [
     meta: {
       title: 'Home',
       description: '18-hole public golf course nestled at the entrance to the Bankhead National Forest in Moulton, Alabama. Earl Stone design, open since 1980.',
+      ogImage: 'course-hero',
     },
   },
   {
     path: '/scorecard',
     component: () => import('@/views/ScorecardView.vue'),
-    meta: { title: 'The Course', description: 'Hole-by-hole scorecard for Deer Run Golf Course: par, handicap and yardage from every tee.' },
+    meta: { title: 'The Course', description: 'Hole-by-hole scorecard for Deer Run Golf Course: par, handicap and yardage from every tee.', ogImage: 'course-hero' },
   },
   { path: '/course', redirect: '/scorecard' },
   {
     // Hole-by-hole pages, 1–18 (other numbers go to the 404 page)
     path: '/course/hole/:n(\\d+)',
     component: () => import('@/views/HoleView.vue'),
-    meta: { title: 'Hole', description: 'Hole-by-hole guide to Deer Run Golf Course: par, handicap and yardage from every tee.' },
+    meta: { title: 'Hole', description: 'Hole-by-hole guide to Deer Run Golf Course: par, handicap and yardage from every tee.', ogImage: 'course-4' },
     beforeEnter: to => (Number(to.params.n) >= 1 && Number(to.params.n) <= 18 ? true : { path: '/not-found' }),
   },
   {
     path: '/rates',
     component: () => import('@/views/RatesView.vue'),
-    meta: { title: 'Rates', description: 'Green fees, cart fees and course policies at Deer Run Golf Course in Moulton, Alabama.' },
+    meta: { title: 'Rates', description: 'Green fees, cart fees and course policies at Deer Run Golf Course in Moulton, Alabama.', ogImage: 'course-3' },
   },
   {
     path: '/memberships',
     component: () => import('@/views/MembershipsView.vue'),
-    meta: { title: 'Memberships', description: 'Compare Deer Run Golf Course membership options and benefits, and ask about joining.' },
+    meta: { title: 'Memberships', description: 'Compare Deer Run Golf Course membership options and benefits, and ask about joining.', ogImage: 'course-4' },
   },
   {
     path: '/tournaments',
     component: () => import('@/views/TournamentsView.vue'),
-    meta: { title: 'Tournaments', description: 'Upcoming tournaments and events at Deer Run Golf Course, and results from past ones.' },
+    meta: { title: 'Tournaments', description: 'Upcoming tournaments and events at Deer Run Golf Course, and results from past ones.', ogImage: 'course-2-wide' },
   },
   {
     path: '/tournaments/:id',
@@ -53,12 +57,12 @@ const routes = [
   {
     path: '/contact',
     component: () => import('@/views/ContactView.vue'),
-    meta: { title: 'Contact', description: 'Directions, hours, phone and email for Deer Run Golf Course, 1175 County Road 100, Moulton, Alabama.' },
+    meta: { title: 'Contact', description: 'Directions, hours, phone and email for Deer Run Golf Course, 1175 County Road 100, Moulton, Alabama.', ogImage: 'course-5-wide' },
   },
   {
     path: '/book',
     component: () => import('@/views/BookView.vue'),
-    meta: { title: 'Book a Tee Time', description: 'Book a tee time online at Deer Run Golf Course: pick a day, a time and your group size.' },
+    meta: { title: 'Book a Tee Time', description: 'Book a tee time online at Deer Run Golf Course: pick a day, a time and your group size.', ogImage: 'course-5-wide' },
   },
   {
     path: '/confirmation',
@@ -68,7 +72,7 @@ const routes = [
   {
     path: '/login',
     component: () => import('@/views/LoginView.vue'),
-    meta: { title: 'Sign In', description: 'Sign in to your Deer Run Golf Course account.' },
+    meta: { title: 'Sign In', description: 'Sign in to your Deer Run Golf Course account.', sitemap: false },
   },
   {
     path: '/account',

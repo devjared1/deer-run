@@ -1,23 +1,30 @@
 <template>
-  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-    <div v-for="s in stats" :key="s.label" class="card rounded-lg p-4 text-center">
-      <div style="font-family:'Playfair Display',serif;font-size:30px;font-weight:900;color:#1E3D2F;">{{ s.val }}</div>
-      <div style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(61,43,26,.45);margin-top:2px;">{{ s.label }}</div>
+  <dl class="grid grid-cols-4 rounded-shape-md bg-surface-container-low shadow-elevation-1 divide-x divide-outline-variant">
+    <div v-for="s in stats" :key="s.label" class="flex flex-col-reverse items-center justify-center px-1 py-3 text-center min-w-0">
+      <dt class="text-label-m text-on-surface-variant uppercase tracking-wider">{{ s.label }}</dt>
+      <dd class="font-display text-headline-s sm:text-headline-m text-on-surface tabular-nums">{{ s.value }}</dd>
     </div>
-  </div>
+  </dl>
 </template>
 
 <script setup>
+// Compact course stats for one tee set: par and yards computed from data/holes.js (not the tee set's published
+// total), course rating and slope from data/teeSets.js.
 import { computed } from 'vue'
+import { totalPar, totalYards } from '@/data/holes'
+import { teeSets } from '@/data/teeSets'
 
 const props = defineProps({
-  teeSet: { type: Object, required: true },
+  teeIndex: { type: Number, required: true },
 })
 
-const stats = computed(() => [
-  { label: 'Total Yards',    val: props.teeSet.total.toLocaleString() },
-  { label: 'Par',            val: '72' },
-  { label: 'Course Rating',  val: props.teeSet.rating },
-  { label: 'Slope Rating',   val: props.teeSet.slope },
-])
+const stats = computed(() => {
+  const tee = teeSets[props.teeIndex]
+  return [
+    { label: 'Par', value: totalPar() },
+    { label: 'Yards', value: totalYards(props.teeIndex).toLocaleString('en-US') },
+    { label: 'Rating', value: tee.rating },
+    { label: 'Slope', value: tee.slope },
+  ]
+})
 </script>

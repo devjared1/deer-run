@@ -1,5 +1,6 @@
 // Greens fee and cart prices aren't here: they come from GET /api/rates (the rate products, edited in
 // Admin → Settings → Rates). See src/lib/rates.js.
+import { phone } from './site.js'
 
 export const rateIncludes = [
   'Weekday rates Monday – Friday',
@@ -15,7 +16,7 @@ export const additionalFees = [
 ]
 
 export const policies = [
-  'Tee times required every day. Book online or call (256) 974-7384.',
+  `Tee times required every day. Book online or call ${phone.display}.`,
   'Collared shirts required. No denim on the course.',
   'Metal spikes not permitted on bent-grass greens.',
   'Pace of play is 4 hours 30 minutes for 18 holes.',

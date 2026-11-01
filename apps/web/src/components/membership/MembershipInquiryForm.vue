@@ -1,93 +1,167 @@
 <template>
-  <div class="card-pine rounded-lg p-8 max-w-2xl mx-auto">
-    <template v-if="!sent">
-      <SectionLabel text="Get Started" dark class="mb-4" />
-      <h2 style="font-family:'Playfair Display',serif;font-weight:700;font-size:26px;color:#F2EBD9;margin-bottom:6px;">Membership Inquiry</h2>
-      <p style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(242,235,217,.5);margin-bottom:24px;">
-        Fill out the form below and our Pro Shop staff will contact you within one business day.
-      </p>
-
-      <div v-if="error" class="mb-4 p-3 rounded" style="background:rgba(140,74,47,.3);color:#F2EBD9;font-family:'Lato',sans-serif;font-size:13px;">
-        {{ error }}
+  <Card padding="none" class="max-w-2xl mx-auto">
+    <div class="p-6 md:p-8">
+      <!-- Success -->
+      <div v-if="sent" class="text-center py-4" role="status">
+        <span class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-success-container text-on-success-container mb-4" aria-hidden="true">
+          <IconCheckCircle class="w-9 h-9" />
+        </span>
+        <h2 ref="successHeading" tabindex="-1" class="font-display text-headline-s text-on-surface">Inquiry received</h2>
+        <p class="mt-2 text-body-l text-on-surface-variant max-w-md mx-auto">
+          Thanks, {{ sentName }}. Our Pro Shop staff will contact you within one business day.
+          We look forward to welcoming you to Deer Run.
+        </p>
+        <AppButton variant="outlined" class="mt-6" @click="reset">Send another inquiry</AppButton>
       </div>
 
-      <div class="space-y-4">
-        <div class="grid grid-cols-2 gap-4">
-          <div>
-            <label class="field-label" style="color:rgba(242,235,217,.45);">First Name</label>
-            <input v-model="form.firstName" type="text" placeholder="John" class="field rounded-sm" />
-          </div>
-          <div>
-            <label class="field-label" style="color:rgba(242,235,217,.45);">Last Name</label>
-            <input v-model="form.lastName" type="text" placeholder="Smith" class="field rounded-sm" />
-          </div>
-        </div>
-        <div>
-          <label class="field-label" style="color:rgba(242,235,217,.45);">Email Address</label>
-          <input v-model="form.email" type="email" placeholder="john@example.com" class="field rounded-sm" />
-        </div>
-        <div>
-          <label class="field-label" style="color:rgba(242,235,217,.45);">Phone</label>
-          <input v-model="form.phone" type="tel" placeholder="(256) 555-0100" class="field rounded-sm" />
-        </div>
-        <div>
-          <label class="field-label" style="color:rgba(242,235,217,.45);">Interested In</label>
-          <select v-model="form.tier" class="field rounded-sm">
-            <option value="">Select a membership tier…</option>
-            <option v-for="t in tiers" :key="t.name" :value="t.name">{{ t.name }} — ${{ t.annual }}/yr</option>
-          </select>
-        </div>
-        <div>
-          <label class="field-label" style="color:rgba(242,235,217,.45);">Message (optional)</label>
-          <textarea v-model="form.message" rows="3" placeholder="Questions, family plan needs, etc." class="field rounded-sm resize-none"></textarea>
-        </div>
-        <button @click="submit" :disabled="loading" class="btn-amber w-full justify-center" :style="loading ? 'opacity:.6;cursor:not-allowed;' : ''">
-          {{ loading ? 'Sending…' : 'Submit Inquiry' }}
-        </button>
-      </div>
-    </template>
+      <!-- Form -->
+      <form v-else novalidate aria-labelledby="membership-inquiry-title" @submit.prevent="submit">
+        <p class="text-label-l uppercase tracking-[.2em] text-gold-text mb-2">Get started</p>
+        <h2 id="membership-inquiry-title" class="font-display text-headline-m text-on-surface">Membership inquiry</h2>
+        <p class="mt-2 mb-6 text-body-m text-on-surface-variant">
+          Tell us a little about you and our Pro Shop staff will contact you within one business day.
+          Fields marked * are required.
+        </p>
 
-    <div v-else class="text-center">
-      <div class="text-4xl mb-4">🏌️</div>
-      <h3 style="font-family:'Playfair Display',serif;font-weight:700;font-size:24px;color:#F2EBD9;margin-bottom:10px;">Inquiry Received!</h3>
-      <p style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(242,235,217,.5);">
-        Our Pro Shop team will be in touch within one business day. We look forward to welcoming you to Deer Run.
-      </p>
-      <button @click="sent = false" class="btn-outline mt-6 inline-flex">Submit Another</button>
+        <ErrorBanner v-if="error" class="mb-5" :message="error" @dismiss="error = ''" />
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-4">
+          <TextField
+            ref="firstField"
+            v-model.trim="form.firstName"
+            label="First name"
+            name="firstName"
+            autocomplete="given-name"
+            required
+            :error="shown('firstName')"
+            @blur="touch('firstName')"
+          />
+          <TextField
+            v-model.trim="form.lastName"
+            label="Last name"
+            name="lastName"
+            autocomplete="family-name"
+            required
+            :error="shown('lastName')"
+            @blur="touch('lastName')"
+          />
+          <TextField
+            v-model.trim="form.email"
+            class="sm:col-span-2"
+            label="Email"
+            type="email"
+            name="email"
+            autocomplete="email"
+            inputmode="email"
+            required
+            :error="shown('email')"
+            @blur="touch('email')"
+          />
+          <TextField
+            v-model.trim="form.phone"
+            class="sm:col-span-2"
+            label="Phone"
+            type="tel"
+            name="phone"
+            autocomplete="tel"
+            inputmode="tel"
+            helper="Optional, if you'd rather we call"
+            :error="shown('phone')"
+            @blur="touch('phone')"
+          />
+          <SelectField
+            v-model="form.tier"
+            class="sm:col-span-2"
+            label="Membership plan"
+            name="tier"
+            placeholder="Choose a plan"
+            :options="tierOptions"
+            required
+            :error="shown('tier')"
+            @blur="touch('tier')"
+          />
+          <TextArea
+            v-model="form.message"
+            class="sm:col-span-2"
+            label="Message"
+            name="message"
+            helper="Optional: questions, family plan needs, a good time to call"
+            :rows="3"
+            :maxlength="2000"
+            auto-grow
+          />
+        </div>
+
+        <AppButton type="submit" variant="gold" size="lg" block class="mt-6" :loading="loading" :icon="IconSend">
+          {{ loading ? 'Sending…' : 'Send inquiry' }}
+        </AppButton>
+      </form>
     </div>
-  </div>
+  </Card>
 </template>
 
 <script setup>
-import { ref, reactive, watch } from 'vue'
-import SectionLabel from '@/components/ui/SectionLabel.vue'
-import { membershipTiers as tiers } from '@/data/membershipTiers'
+// Membership inquiry → POST /api/inquiries/membership { firstName, lastName, email, phone, tier, message }
+// (firstName, lastName, email and tier are required by the API). Validates inline (after a field is left, and all
+// at once on submit, focusing the first problem). The parent preselects a tier with `preSelectedTier` and calls
+// the exposed focus() after scrolling here.
+import { computed, nextTick, reactive, ref, watch } from 'vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import Card from '@/components/ui/Card.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import TextArea from '@/components/ui/TextArea.vue'
+import TextField from '@/components/ui/TextField.vue'
+import { membershipTiers } from '@/data/membershipTiers'
+import { phone as coursePhone } from '@/data/site.js'
+import IconCheckCircle from '~icons/material-symbols/check-circle-rounded'
+import IconSend from '~icons/material-symbols/send-rounded'
 
 const props = defineProps({
   preSelectedTier: { type: String, default: '' },
 })
 
-const sent    = ref(false)
-const loading = ref(false)
-const error   = ref('')
+const tierOptions = membershipTiers.map(t => ({
+  value: t.name,
+  label: `${t.name} · $${t.annual.toLocaleString('en-US')}/yr`,
+}))
 
-const form = reactive({
-  firstName: '',
-  lastName:  '',
-  email:     '',
-  phone:     '',
-  tier:      '',
-  message:   '',
-})
+const EMPTY = { firstName: '', lastName: '', email: '', phone: '', tier: null, message: '' }
+const form = reactive({ ...EMPTY })
+const touched = reactive({})
+const submitted = ref(false)
+const sent = ref(false)
+const sentName = ref('')
+const loading = ref(false)
+const error = ref('')
+const firstField = ref(null)
+const successHeading = ref(null)
 
 watch(() => props.preSelectedTier, (val) => {
   if (val) form.tier = val
-})
+}, { immediate: true })
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const errors = computed(() => ({
+  firstName: form.firstName ? '' : 'Enter your first name.',
+  lastName:  form.lastName ? '' : 'Enter your last name.',
+  email:     !form.email ? 'Enter your email address.' : EMAIL_RE.test(form.email) ? '' : 'Enter an email address like name@example.com.',
+  phone:     !form.phone || form.phone.replace(/\D/g, '').length >= 10 ? '' : 'Enter a 10-digit phone number, or leave it blank.',
+  tier:      form.tier ? '' : 'Choose the plan you’re interested in.',
+}))
+const ORDER = ['firstName', 'lastName', 'email', 'phone', 'tier']
+
+function touch(field) { touched[field] = true }
+function shown(field) { return (touched[field] || submitted.value) ? errors.value[field] : '' }
 
 async function submit() {
+  submitted.value = true
   error.value = ''
-  if (!form.firstName || !form.email) {
-    error.value = 'Please fill in your name and email.'
+  const firstBad = ORDER.find(f => errors.value[f])
+  if (firstBad) {
+    // aria-invalid fields in DOM order: focus the first one so screen readers hear its message
+    await nextTick()
+    document.querySelector('[aria-labelledby="membership-inquiry-title"] [aria-invalid="true"]')?.focus()
     return
   }
   loading.value = true
@@ -95,14 +169,31 @@ async function submit() {
     const res = await fetch('/api/inquiries/membership', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, phone: form.phone || null, message: form.message.trim() || null }),
     })
-    if (!res.ok) throw new Error('Server error')
+    // A non-JSON answer (e.g. the SPA's index.html) is a failure too, not a success
+    const data = await res.json().catch(() => null)
+    if (!res.ok || !data?.success) throw new Error(data?.error || `HTTP ${res.status}`)
+    sentName.value = form.firstName
     sent.value = true
-  } catch (e) {
-    error.value = 'Something went wrong. Please call us at (256) 974-7384.'
+    await nextTick()
+    successHeading.value?.focus()
+  } catch {
+    error.value = `We couldn’t send your inquiry. Please try again, or call the Pro Shop at ${coursePhone.display}.`
   } finally {
     loading.value = false
   }
 }
+
+function reset() {
+  Object.assign(form, EMPTY, { tier: props.preSelectedTier || null })
+  for (const k of Object.keys(touched)) delete touched[k]
+  submitted.value = false
+  sent.value = false
+  nextTick(() => firstField.value?.focus())
+}
+
+defineExpose({
+  focus: () => (sent.value ? successHeading.value?.focus() : firstField.value?.focus()),
+})
 </script>
