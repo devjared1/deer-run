@@ -37,6 +37,7 @@ deer-run/
 │   │   │   │   ├── booking/   # BookingWizard + 4 step components
 │   │   │   │   ├── layout/    # AppNav, AppFooter, PageHero
 │   │   │   │   ├── membership/# MembershipInquiryForm, MembershipTierCard
+│   │   │   │   ├── oncourse/  # RoundSetupFields (carts, start hole, 9/18) + roundSetup.js helpers
 │   │   │   │   ├── pos/       # Register modals, receipts/slips (incl. ZReportSlip), SalesReport
 │   │   │   │   ├── schedule/  # ScheduleGrid, ScheduleMonth, schedule/time off display helpers
 │   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
@@ -264,6 +265,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/drawer-sessions?from=&to=&registerId=` | GET | Cash drawer sessions in a range (open ones with running totals) |
 | `/api/admin/drawer-sessions/:id` | POST | `{ action: 'close', countedCents, note }` — close a stuck drawer |
 | `/api/admin/users/:id` | PUT | `{ role?, memberUntil?, membershipTier? }` |
+| `/api/admin/pace` | POST | Recalculate the learned per-hole times now (`_pace.js` → `recalculateHoleTimes`) |
 | `/api/admin/house-accounts` | GET, POST | Accounts with balances; open one `{ userId, creditLimitCents }` |
 | `/api/admin/house-accounts/:id[?from=&to=]` | GET, PUT, POST | Account, entries, statements (+ on-demand statement); PUT `{ status, creditLimitCents, resetPin }`; POST `adjust` / `email_statement` |
 
@@ -281,7 +283,9 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/register/report?registerId=&date=` | GET | Z report for one register and day (register managers only) |
 | `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session + its paid-ins/outs (expected only for managers); `open` with a float / `close` with a count / `movement` (`PAID_IN\|PAID_OUT\|SAFE_DROP`, manager approval) |
 | `/api/staff/teesheet?date=` | GET | Tee sheet: slots, bookings, check-in, receipts |
-| `/api/staff/teesheet/:bookingId` | POST | `{ action: 'check_in' \| 'undo_check_in' \| 'cancel' \| 'move', teeTimeSlotId? }` (check-in: paid only; cancel/move: not checked in; no money moves) |
+| `/api/staff/teesheet/:bookingId` | POST | `{ action: 'check_in' \| 'undo_check_in' \| 'cancel' \| 'move', teeTimeSlotId? }` (check-in: paid only, also takes `cartNumbers`, `ownCart`, `startHole`, `roundHoles`; cancel/move: not checked in; no money moves) |
+| `/api/staff/oncourse` | GET | Today's tee sheet (same shape) for the On Course page (`requireCourse`) |
+| `/api/staff/oncourse/:bookingId` | POST | `{ action: 'setup' \| 'tee_off' \| 'undo_tee_off' \| 'position' \| 'finish' \| 'undo_finish', hole?, stage? }` for a checked-in group (`requireCourse`); `position` also adds a `PositionReport` |
 | `/api/staff/sales` | GET, POST | Today's/searched sales; create a sale (`create_sale()`). With a `CARD_TERMINAL` payment it charges the card first → 202 `{ cardCheckout }`. Items can be products, custom amounts, a checked-in `booking` ($0) or a `newBooking` (walk-in/phone, created with the sale). Cash needs an open drawer (409 `DRAWER_CLOSED`); membership products need a customer |
 | `/api/staff/sales/:id` | GET, POST | Sale detail; `email`, `void`, `refund` actions (`refund_sale()`; `method` CARD_TERMINAL refunds through Stripe, CASH needs an open drawer) |
 | `/api/staff/account-payments` | POST | A member pays toward their house account: CASH (drawer) → 201, CARD → 202 `{ cardCheckout }` |
@@ -294,6 +298,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/internal/memberships` | POST | Daily: renewal reminders (30/7 days, ended) + lapsed members → GUEST |
 | `/api/internal/statements` | POST | Daily: last month's house account statements (only creates missing ones) + autopay + emails with PDF, then overdue statements: one reminder + optional late fee each |
 | `/api/internal/bookings` | POST | Daily: release unpaid online bookings past their 30-minute hold (cancel PaymentIntent → CANCELLED) |
+| `/api/internal/pace` | POST | Daily: learn per-hole times from the last 60 days of position reports → `CourseSettings.holeSeconds` |
 
 **Member** (`authenticate`: any signed-in user, their own data only)
 
@@ -319,6 +324,7 @@ export async function onRequestGet({ request, env }) {
 - `requireAdmin` — `dbUser.role === 'ADMIN'`
 - `requireStaff` — active `Employee` linked to the user → adds `employee` (admins need one too)
 - `requireRegister` — `requireStaff` + position in `CourseSettings.registerPositions` (managers and admins always allowed)
+- `requireCourse` — `requireStaff` + register access or a position in `CourseSettings.coursePositions` (On Course page)
 
 Public endpoints with optional auth use a local `getOptionalUser(request, supabase)` that returns the DB user or null.
 
@@ -354,8 +360,9 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 |------|-------|------------|
 | Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`, `memberUntil?` (last day; null = no expiry), `membershipTier?`, `renewalReminderKey?` |
 | | `TeeTimeSlot` | `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
-| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy) |
-| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range, pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off) |
+| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy); on-course: `cartNumbers`, `ownCart`, `startHole`, `roundHoles`, `teedOffAt?`, `positionHole?`/`positionStage?` (`HoleStage`)/`positionAt?` (latest report), `finishedAt?` |
+| | `PositionReport` | Every on-course report: `bookingId`, `hole`, `stage`, `reportedAt`, `employeeId?` (history the hole times are learned from) |
+| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range, pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off), on-course (`roundMinutes`, `coursePositions`, learned `holeSeconds`/`holeTimesUpdatedAt`/`holeTimesRounds`) |
 | | `TournamentEvent`, `Inquiry`, `ContactMessage` | Events and form submissions |
 | Staff | `Employee` | `userId?` (linked by email), names, `email`, `position` (`EmployeePosition`), `hourlyRateCents`, `active`, manager PIN hash/lockout |
 | | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
@@ -401,6 +408,11 @@ reach the database. `TODO.md` → Housekeeping tracks which migrations still nee
 
 `prisma/seed-pos.sql` adds 12 product categories, the "Pro Shop" register and starter products (some placeholder prices).
 
+`prisma/seed-demo.sql` (demo/staging databases only, after the two above) adds a full demo dated relative to the day
+it runs: Supabase Auth sign-ins (`gm@`, `pro@`, `shop@`, `crew@`, `member@`, `guest@example.com`, password and PINs in
+the file header), 17 employees, schedules, punches, time off, ~75 days of bookings, sales, drawers and refunds, a Grill
+register, house accounts with statements, events and inquiries. It skips itself if `gm@example.com` already exists.
+
 ---
 
 ## Frontend Routes & Views
@@ -418,6 +430,7 @@ reach the database. `TODO.md` → Housekeeping tracks which migrations still nee
 | `/staff`        | `staff/StaffLayout.vue` + `TimeClockView` | `requiresStaff` |
 | `/staff/timesheet`, `/staff/schedule`, `/staff/time-off` | `MyTimesheetView`, `MyScheduleView`, `TimeOffView` | `requiresStaff` |
 | `/staff/register`, `/staff/teesheet` | `RegisterView.vue`, `TeeSheetView.vue` | `requiresStaff` + `requiresRegister` |
+| `/staff/oncourse` | `OnCourseView.vue`  | `requiresStaff` + `requiresCourse` |
 | `/staff/pin`    | `ManagerPinView.vue`  | `requiresStaff` + `requiresRegisterManager` |
 
 The router guard awaits `auth.init()` (session + profile) before checking roles, so a page reload doesn't look
@@ -439,6 +452,7 @@ When adding a page to a portal, also add it to the layout's `navItems` and `titl
 - `isAdmin` — computed, `profile.role === 'ADMIN'`
 - `employee`, `isStaff` — linked employee record (from `/api/auth/me`) and whether it's active
 - `canUseRegister`, `isRegisterManager` — POS access flags from `/api/auth/me`
+- `canTrackCourse` — On Course page access from `/api/auth/me`
 - `maxBookDays` — 14 for members/admins, 7 for public
 - `init()` — restores the session and fetches the profile once per page load (memoized; App.vue and the router guard both await it)
 - `login(email, password)` — Supabase sign-in + fetches profile from `/api/auth/me`
@@ -461,7 +475,7 @@ message (plus `status` and optional `code`).
 
 ## Shared libraries (`src/lib/`)
 
-`timeclock.js`, `schedule.js`, `pricing.js`, `membership.js` and `teesheet.js` are imported by **both** the Vue app and the Functions (by relative
+`timeclock.js`, `schedule.js`, `pricing.js`, `membership.js`, `teesheet.js` and `pace.js` are imported by **both** the Vue app and the Functions (by relative
 path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports or browser-only APIs.
 
 | File | Contents |
@@ -470,6 +484,7 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 | `schedule.js` | Shift length (overnight wrap), overlaps, `scheduleWarnings()`, week/2-week/month `schedulePeriod()` |
 | `membership.js` | `isActiveMember()`, `isLapsedMember()`, `extendMembership()`, `shortenMembership()` (shared: register pricing, tee times, sales, refunds) |
 | `teesheet.js` | Tee time labels (`teeTime`, `teeTimeLabel`) used on the tee sheet and on receipt lines, and the unpaid-hold rule (`UNPAID_HOLD_MINUTES`, `isExpiredHold`, `holdsSpot`, `bookedPlayers`, `HOLD_COLUMNS`) used wherever slot capacity is counted |
+| `pace.js` | On-course estimates: round plan from the pace profile `{ roundMinutes, holeSeconds }` (learned hole times, else split by par: `paceProfile`, `perHoleMinutes`, `roundPlan`, `holeOrder`, `stagesFor`), `learnHoleSeconds()` (fit from past rounds), `trackGroup()` (where a checked-in group probably is, ahead/behind its tee time), `trackedGroups`, `coursePace`, `openHolesAhead`, `cartsInUse` (imports `../data/holes.js`) |
 | `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
 | `pricing.js` | Register line/tax/total math incl. the member Pro Shop discount (`memberDiscountBps`; imports `../data/membershipTiers.js`), shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
@@ -529,6 +544,10 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
   (not on products with a member price); manager discounts still need approval. **Tips** (setting, off by default) are
   asked for on the reader, stored on the card payment (`Payment.tipCents`) and kept out of sales and tax; POS refunds
   never return them. **Paid-ins, paid-outs and safe drops** need a manager and print a slip.
+  **On-course tracking**: check-in records cart numbers, own cart, start hole and 9/18; the starter and marshals record
+  tee-offs, positions (hole + tee/fairway/green; every report kept in `PositionReport`) and finishes on `/staff/oncourse`,
+  and `src/lib/pace.js` estimates where every group is and whether it's ahead of or behind its tee time, using per-hole
+  times learned nightly from the reports. Information only: it never changes booking (see `TODO.md` → Feature 3).
   Reporting lives on `/admin/sales` (sales list, receipts, CSV, end-of-day report, drawers) and the dashboard; managers print
   the end-of-day (Z) slip from the register. Sales count on the day they're rung up and voids/refunds on the day they
   happen. Supabase returns at most 1,000 rows per request, so reports and exports page through with `fetchAll()`.
@@ -617,7 +636,7 @@ Pure JS modules in `apps/web/src/data/` — no API calls needed:
 Pages has no cron triggers, so a separate Worker runs daily (11:15 UTC) and POSTs to each `/api/internal/*` job
 with `Authorization: Bearer <CRON_SECRET>`. Today: `/api/internal/memberships` (renewal reminders, lapsed members →
 GUEST), `/api/internal/statements` (monthly statements, autopay, overdue reminders and late fees) and
-`/api/internal/bookings` (release expired unpaid bookings). Deploy: `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy`. Add new jobs to `JOBS` in
+`/api/internal/bookings` (release expired unpaid bookings) and `/api/internal/pace` (learned hole times). Deploy: `cd apps/cron && npx wrangler secret put CRON_SECRET && npm run deploy`. Add new jobs to `JOBS` in
 `apps/cron/src/index.js`.
 
 ### Stripe Webhook

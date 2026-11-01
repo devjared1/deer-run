@@ -133,6 +133,65 @@
         </div>
       </div>
 
+      <div v-if="hasCourse" class="border-t border-gray-100 pt-5">
+        <h2 class="font-display font-bold text-bark text-sm mb-3">On Course</h2>
+        <div>
+          <label class="label-sm">Expected 18-Hole Round</label>
+          <div class="flex items-center gap-2">
+            <select v-model.number="course.hours" class="input-field w-24">
+              <option v-for="h in [2, 3, 4, 5, 6]" :key="h" :value="h">{{ h }} h</option>
+            </select>
+            <select v-model.number="course.minutes" class="input-field w-28">
+              <option v-for="m in [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]" :key="m" :value="m">{{ m }} min</option>
+            </select>
+          </div>
+          <p class="text-gray-400 text-xs mt-1 font-body">
+            Used until there's history: split across the holes by par (a 9-hole round takes that nine's share). Each
+            night every hole's time is learned from the last {{ LEARN_DAYS }} days of tee-offs, position reports and
+            finishes, and the On Course page estimates with those.
+          </p>
+        </div>
+        <div class="mt-4">
+          <div class="flex items-center justify-between gap-3 mb-2">
+            <label class="label-sm mb-0">Learned Hole Times (minutes)</label>
+            <button type="button" class="text-xs text-pine hover:underline font-body disabled:opacity-50" :disabled="relearning" @click="relearn">
+              {{ relearning ? 'Recalculating…' : 'Recalculate now' }}
+            </button>
+          </div>
+          <div class="grid grid-cols-9 gap-1 text-center text-xs font-body">
+            <div v-for="h in holeTimes" :key="h.hole" class="rounded border border-gray-200 py-1">
+              <div class="text-gray-400">{{ h.hole }} · P{{ h.par }}</div>
+              <div class="font-semibold text-bark">{{ h.minutes.toFixed(1) }}</div>
+            </div>
+          </div>
+          <p class="text-gray-400 text-xs mt-1 font-body">
+            <template v-if="learnedTimes.updatedAt">
+              From {{ learnedTimes.rounds }} round{{ learnedTimes.rounds === 1 ? '' : 's' }}, updated
+              {{ new Date(learnedTimes.updatedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }) }}.
+              18 holes ≈ {{ formatMinutes(learnedTotal) }}.
+            </template>
+            <template v-else>Not learned yet: showing the par split of the expected round.</template>
+            <span v-if="relearnError" class="text-red-500"> {{ relearnError }}</span>
+          </p>
+        </div>
+        <div class="mt-4">
+          <label class="label-sm">Can Update Groups on the Course</label>
+          <p class="text-gray-400 text-xs mb-2 font-body">
+            Besides everyone who can use the register: record tee-offs, where groups are, and finishes.
+          </p>
+          <div class="space-y-1 max-h-56 overflow-y-auto border border-gray-200 rounded-lg p-2 sm:w-1/2">
+            <label
+              v-for="p in employeePositions"
+              :key="p.value"
+              class="flex items-center gap-2 text-sm font-body text-bark cursor-pointer"
+            >
+              <input v-model="course.positions" type="checkbox" :value="p.value" class="rounded" />
+              {{ p.label }}
+            </label>
+          </div>
+        </div>
+      </div>
+
       <div v-if="hasLateFee" class="border-t border-gray-100 pt-5">
         <h2 class="font-display font-bold text-bark text-sm mb-3">House Accounts</h2>
         <div>
@@ -176,6 +235,9 @@ import {
   DEFAULT_PAY_PERIOD, isValidYmd, localDate, payPeriodContaining, formatLocalDate,
 } from '@/lib/timeclock'
 import { employeePositions } from '@/data/employeePositions'
+import { DEFAULT_ROUND_MINUTES, LEARN_DAYS, formatMinutes, perHoleMinutes } from '@/lib/pace'
+import { holes } from '@/data/holes'
+import { apiFetch } from '@/lib/api'
 
 const positionGroups = [
   { field: 'registerPositions', label: 'Can Use the Register', help: 'Employees in these positions can ring sales.' },
@@ -209,6 +271,35 @@ const hasLateFee = ref(false)
 const hasTipping  = ref(false)
 const tipping     = ref({ enabled: false, percentages: [15, 18, 20], preTax: true })
 const saveWarning = ref(null)
+// On-course tracking: only shown (and saved) once the database has CourseSettings.roundMinutes
+const hasCourse = ref(false)
+const course    = ref({ hours: 4, minutes: 15, positions: [] })
+const learnedTimes = ref({ holeSeconds: [], rounds: 0, updatedAt: null })
+const relearning   = ref(false)
+const relearnError = ref(null)
+
+// Learned times if there are any, otherwise the par split of the round length being edited
+const holeTimes = computed(() => {
+  const minutes = perHoleMinutes({
+    roundMinutes: course.value.hours * 60 + course.value.minutes,
+    holeSeconds: learnedTimes.value.holeSeconds,
+  })
+  return holes.map((h, i) => ({ hole: h.hole, par: h.par, minutes: minutes[i] }))
+})
+const learnedTotal = computed(() => holeTimes.value.reduce((s, h) => s + h.minutes, 0))
+
+async function relearn() {
+  relearning.value = true
+  relearnError.value = null
+  try {
+    const data = await apiFetch('/api/admin/pace', { method: 'POST' })
+    learnedTimes.value = { holeSeconds: data.holeSeconds, rounds: data.rounds, updatedAt: data.updatedAt }
+  } catch (e) {
+    relearnError.value = e.message
+  } finally {
+    relearning.value = false
+  }
+}
 
 const periodPreview = computed(() => {
   const { payPeriodAnchor: anchor, payPeriodDays: lengthDays } = form.value
@@ -247,6 +338,10 @@ async function load() {
     hasTipping.value = data.tippingEnabled !== undefined
     const percentages = [...(data.tipPercentages?.length ? data.tipPercentages : [15, 18, 20])]
     tipping.value = { enabled: !!data.tippingEnabled, percentages, preTax: data.tipPreTax !== false }
+    hasCourse.value = data.roundMinutes !== undefined
+    const roundMinutes = data.roundMinutes ?? DEFAULT_ROUND_MINUTES
+    course.value = { hours: Math.floor(roundMinutes / 60), minutes: roundMinutes % 60, positions: data.coursePositions ?? [] }
+    learnedTimes.value = { holeSeconds: data.holeSeconds ?? [], rounds: data.holeTimesRounds ?? 0, updatedAt: data.holeTimesUpdatedAt ?? null }
   } catch (e) {
     error.value = e.message
   } finally {
@@ -262,6 +357,9 @@ function settingsPayload() {
     salesTaxBps: Math.round(Number(salesTaxPercent || 0) * 100),
     ...(hasLateFee.value ? { lateFeeCents: Math.round(Number(lateFeeDollars || 0) * 100) } : {}),
     ...(hasTipping.value ? tippingPayload() : {}),
+    ...(hasCourse.value
+      ? { roundMinutes: course.value.hours * 60 + course.value.minutes, coursePositions: course.value.positions }
+      : {}),
   }
 }
 

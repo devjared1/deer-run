@@ -20,6 +20,12 @@
           {{ totals.players }} golfers booked · {{ totals.checkedIn }} checked in · {{ totals.open }} open spots
           <span v-if="refreshedAt" class="text-gray-400"> · updated {{ refreshedAt }}</span>
         </div>
+        <div v-if="paceSummary" class="text-xs mt-0.5">
+          <span :class="paceClass(paceSummary.pace)">{{ paceSummary.text }}</span>
+          <RouterLink v-if="authStore.canTrackCourse" to="/staff/oncourse" class="text-pine hover:underline ml-2">
+            On Course →
+          </RouterLink>
+        </div>
       </div>
     </div>
 
@@ -71,6 +77,15 @@
             <span v-if="b.customer?.isMember" class="badge bg-lake/15 text-lake">Member</span>
             <span :class="['badge', statusBadge(b).class]">{{ statusBadge(b).label }}</span>
             <span v-if="b.checkedInAt" class="badge bg-pine text-parch">✓ Checked in {{ formatClockTime(b.checkedInAt) }}</span>
+            <template v-if="b.checkedInAt && b.status === 'CONFIRMED'">
+              <span v-if="cartsLabel(b)" class="badge bg-gray-100 text-gray-600">🛺 {{ cartsLabel(b) }}</span>
+              <span v-if="b.startHole === 10 || b.roundHoles === 9" class="badge bg-gray-100 text-gray-600">
+                {{ b.roundHoles }} holes{{ b.startHole === 10 ? ' from 10' : '' }}
+              </span>
+              <span v-if="date === today && courseNote(b)" :class="['text-xs', paceClass(courseNote(b).pace)]">
+                {{ courseNote(b).text }}
+              </span>
+            </template>
             <span v-for="r in b.receipts" :key="r.id" class="text-xs text-gray-400">#{{ r.number }}</span>
             <span class="ml-auto flex gap-2">
               <template v-if="b.status === 'CONFIRMED'">
@@ -79,13 +94,16 @@
                   class="btn-pine-sm"
                   :disabled="busy === b.id"
                   title="Check the group in and open a register sale for add-ons"
-                  @click="checkIn(b, slot)"
+                  @click="openCheckIn(b, slot)"
                 >
                   Check in
                 </button>
                 <template v-else>
                   <button class="btn-outline-xs" @click="openOnRegister(b, slot)">
                     Ring up add-ons
+                  </button>
+                  <button class="btn-outline-xs" title="Cart numbers, starting hole, 9 or 18 holes" @click="openCheckIn(b, slot)">
+                    Carts
                   </button>
                   <button class="btn-outline-xs text-gray-400" :disabled="busy === b.id" @click="undoCheckIn(b)">
                     Undo
@@ -125,11 +143,42 @@
       </div>
     </div>
     <p class="text-gray-400 text-xs font-body mt-3">
-      Refreshes every 30 seconds. "Check in" opens the register with the prepaid greens fee at $0, so carts, range
-      balls and drinks go on the same ticket. Walk-ins and phone bookings are paid at the register; the booking is
+      Refreshes every 30 seconds. "Check in" records the group's cart numbers and opens the register with the prepaid
+      greens fee at $0, so carts, range balls and drinks go on the same ticket. Where checked-in groups are is
+      estimated from their tee time until the starter or a marshal updates them on the On Course page. Walk-ins and phone bookings are paid at the register; the booking is
       saved when the sale completes. Unfinished online payments hold their spots for {{ UNPAID_HOLD_MINUTES }} minutes.
       Cancelling or moving a booking never moves money.
     </p>
+
+    <!-- Check in (or change the carts / round of a checked-in group) -->
+    <div v-if="checkingIn" class="modal-overlay" @click.self="checkingIn = null">
+      <div class="modal-box">
+        <h2 class="font-display font-bold text-bark mb-1">
+          {{ checkingIn.booking.checkedInAt ? 'Carts and round' : 'Check in' }} — {{ checkingIn.booking.name }}
+        </h2>
+        <p class="text-gray-500 text-sm font-body mb-4">
+          {{ teeTimeLabel(checkingIn.slot.date, checkingIn.slot.startTime) }} ·
+          {{ checkingIn.booking.players }} player{{ checkingIn.booking.players === 1 ? '' : 's' }}
+        </p>
+        <RoundSetupFields v-model="checkingIn.form" :carts-out="cartsInUse(groups, checkingIn.booking.id)" />
+        <p v-if="checkingIn.error" class="text-red-500 text-sm font-body mt-3">
+          {{ checkingIn.error }}
+        </p>
+        <div class="flex justify-end gap-3 mt-5">
+          <button class="btn-outline-sm" @click="checkingIn = null">
+            Back
+          </button>
+          <button class="btn-amber px-4 py-2 text-sm" :disabled="busy === checkingIn.booking.id" @click="confirmCheckIn">
+            <template v-if="checkingIn.booking.checkedInAt">
+              {{ busy === checkingIn.booking.id ? 'Saving…' : 'Save' }}
+            </template>
+            <template v-else>
+              {{ busy === checkingIn.booking.id ? 'Checking in…' : 'Check in and open register' }}
+            </template>
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- Cancel a booking -->
     <div v-if="cancelling" class="modal-overlay" @click.self="cancelling = null">
@@ -276,6 +325,10 @@ import { localDate, addDays, formatLocalDate, formatClockTime, isValidYmd, local
 import { teeTime, teeTimeLabel, UNPAID_HOLD_MINUTES } from '@/lib/teesheet'
 import { formatCents } from '@/lib/money'
 import { setRegisterHandoff } from '@/lib/registerHandoff'
+import { cartsInUse, coursePace, paceLabel, paceOf, paceProfile, trackedGroups } from '@/lib/pace'
+import { useAuthStore } from '@/stores/auth'
+import RoundSetupFields from '@/components/oncourse/RoundSetupFields.vue'
+import { cartsLabel, setupForm, setupPayload } from '@/components/oncourse/roundSetup'
 
 const SOURCES = [
   { value: 'POS',   label: 'Walk-in' },
@@ -297,9 +350,69 @@ const refreshedAt = ref(null)
 const notice      = ref(null)
 const cancelling  = ref(null)   // { booking, slot }
 const moving      = ref(null)   // { booking, slot, date, slots, loading, error, selected }
+const checkingIn  = ref(null)   // { booking, slot, form, error }
+const now         = ref(new Date())
+const authStore   = useAuthStore()
 let timer = null
 
 const date = computed(() => (isValidYmd(route.query.date) ? route.query.date : today))
+
+// On-course estimates for the checked-in groups (src/lib/pace.js); only meaningful for today
+const groups = computed(() => trackedGroups(sheet.value?.slots, paceProfile(sheet.value), now.value))
+const trackById = computed(() => new Map(groups.value.map(g => [g.booking.id, g.track])))
+
+const paceSummary = computed(() => {
+  if (date.value !== today || !groups.value.length) return null
+  const pace = coursePace(groups.value.map(g => g.track), now.value)
+  const parts = [`${pace.groupsOut} group${pace.groupsOut === 1 ? '' : 's'} on the course`]
+  if (pace.deltaMinutes != null) parts.push(`running ${paceLabel(pace.deltaMinutes).toLowerCase()}`)
+  if (pace.firstTeeLateMinutes > 0) parts.push(`first tee ${pace.firstTeeLateMinutes} min late`)
+  return { text: parts.join(' · '), pace: pace.deltaMinutes == null ? null : paceOf(pace.deltaMinutes) }
+})
+
+// Short on-course note for a checked-in group: where it probably is, or when it finished
+function courseNote(b) {
+  const t = trackById.value.get(b.id)
+  if (!t) return null
+  if (t.state === 'FINISHED') return { text: `Finished ${formatClockTime(b.finishedAt)}`, pace: null }
+  if (t.state === 'DONE') return { text: 'Probably finished', pace: null }
+  if (t.state === 'WAITING') return { text: 'Waiting to tee off', pace: null }
+  return { text: `Hole ${t.hole}${t.basis === 'REPORTED' ? '' : ' (est.)'} · ${paceLabel(t.deltaMinutes)}`, pace: t.pace }
+}
+
+function paceClass(pace) {
+  if (pace === 'BEHIND') return 'text-clay font-semibold'
+  if (pace === 'AHEAD') return 'text-lake'
+  return 'text-gray-500'
+}
+
+function openCheckIn(b, slot) {
+  checkingIn.value = { booking: b, slot, form: setupForm(b), error: null }
+}
+
+// New check-in: saves the carts with the check-in and opens the register. Already checked in: just the carts / round.
+async function confirmCheckIn() {
+  const { booking: b, slot, form } = checkingIn.value
+  busy.value = b.id
+  checkingIn.value.error = null
+  actionError.value = null
+  try {
+    if (b.checkedInAt) {
+      await apiFetch(`/api/staff/oncourse/${b.id}`, { method: 'POST', body: { action: 'setup', ...setupPayload(form) } })
+      checkingIn.value = null
+      load({ quiet: true })
+    } else {
+      await apiFetch(`/api/staff/teesheet/${b.id}`, { method: 'POST', body: { action: 'check_in', ...setupPayload(form) } })
+      checkingIn.value = null
+      openOnRegister(b, slot)
+    }
+  } catch (e) {
+    if (checkingIn.value) checkingIn.value.error = e.message
+    load({ quiet: true })
+  } finally {
+    busy.value = null
+  }
+}
 
 const totals = computed(() => {
   const active = (sheet.value?.slots ?? []).flatMap(activeBookings)
@@ -442,6 +555,7 @@ async function load({ quiet = false } = {}) {
   error.value = null
   try {
     sheet.value = await apiFetch(`/api/staff/teesheet?date=${date.value}`)
+    now.value = new Date()
     refreshedAt.value = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   } catch (e) {
     if (!quiet) error.value = e.message
@@ -470,20 +584,6 @@ function openOnRegister(b, slot) {
     customer: handoffCustomer(b),
   })
   router.push('/staff/register')
-}
-
-async function checkIn(b, slot) {
-  busy.value = b.id
-  actionError.value = null
-  try {
-    await apiFetch(`/api/staff/teesheet/${b.id}`, { method: 'POST', body: { action: 'check_in' } })
-    openOnRegister(b, slot)
-  } catch (e) {
-    actionError.value = e.message
-    load({ quiet: true })
-  } finally {
-    busy.value = null
-  }
 }
 
 async function undoCheckIn(b) {

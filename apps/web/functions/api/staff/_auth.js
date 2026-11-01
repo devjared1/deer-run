@@ -45,6 +45,30 @@ export async function isManagerPosition(supabase, position) {
   return (data?.managerPositions ?? []).includes(position)
 }
 
+/**
+ * Whether the employee can use the On Course page (see where groups are, record tee-offs and positions):
+ * everyone with register access, plus the positions in CourseSettings.coursePositions (marshals, cart staff…).
+ * Pass the registerAccess() result if you already have it.
+ */
+export async function courseAccess(supabase, dbUser, employee, register = null) {
+  if (!employee?.active) return false
+  const { canUseRegister } = register ?? await registerAccess(supabase, dbUser, employee)
+  if (canUseRegister) return true
+  // Before migration 10 the column doesn't exist: the select errors and only register staff get in
+  const { data } = await supabase.from('CourseSettings').select('coursePositions').eq('id', 'singleton').maybeSingle()
+  return (data?.coursePositions ?? []).includes(employee.position)
+}
+
+/** requireStaff + on-course tracking access (courseAccess). */
+export async function requireCourse(request, env) {
+  const result = await requireStaff(request, env)
+  if (result instanceof Response) return result
+  const access = await registerAccess(result.supabase, result.dbUser, result.employee)
+  const canTrackCourse = await courseAccess(result.supabase, result.dbUser, result.employee, access)
+  if (!canTrackCourse) return json({ error: 'Your position is not set up for on-course tracking' }, 403)
+  return { ...result, ...access, canTrackCourse }
+}
+
 /** requireStaff + the employee's position must be allowed to use the register. */
 export async function requireRegister(request, env) {
   const result = await requireStaff(request, env)

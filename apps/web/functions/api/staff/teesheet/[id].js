@@ -6,6 +6,7 @@ import { serializeBooking, TEESHEET_BOOKING_COLUMNS } from './index.js'
 import { loadSlots } from '../sales/_save.js'
 import { stopPendingPayment } from '../../bookings/_holds.js'
 import { sendBookingEmail, slotWhen } from '../../bookings/_email.js'
+import { CLEAR_TRACKING, dropStalePosition, parseRoundSetup } from '../_oncourse.js'
 
 const BOOKING_SELECT = `${TEESHEET_BOOKING_COLUMNS}, ` +
   'slot:TeeTimeSlot(id, date, startTime), user:User(id, name, email, role, memberUntil, membershipTier), ' +
@@ -16,6 +17,8 @@ const ACTIONS = ['check_in', 'undo_check_in', 'cancel', 'move']
 // POST /api/staff/teesheet/:bookingId — { action: 'check_in' | 'undo_check_in' | 'cancel' | 'move', teeTimeSlotId? }
 // Check-in records the time the group arrived. Only paid (CONFIRMED) bookings can be checked in; the
 // register then opens a sale with the prepaid greens fee at $0 so add-ons go on the same ticket.
+// check_in also takes the round setup: { cartNumbers?: string[], ownCart?, startHole?: 1 | 10, roundHoles?: 9 | 18 }.
+// undo_check_in also clears the tee-off, position and finish, and deletes the position reports (the carts are kept).
 // cancel: sets CANCELLED (frees the spots). Checked-in groups must be un-checked-in first. An unpaid online
 //   booking has its PaymentIntent cancelled first (409 BOOKING_PAID if the payment just went through).
 //   No money moves: a paid booking's online payment is refunded in Stripe by an admin, and greens fees paid at
@@ -56,14 +59,20 @@ export async function onRequestPost({ request, env, params }) {
           : `This booking is ${booking.status.toLowerCase()}`,
       }, 409)
     }
+    const setup = parseRoundSetup(body)
+    if (setup.error) return json({ error: setup.error }, 400)
     // Keep the first check-in time if the button is pressed twice
-    if (!booking.checkedInAt) {
-      const { error: updateError } = await supabase.from('Booking').update({ checkedInAt: new Date().toISOString() }).eq('id', booking.id)
+    const update = dropStalePosition(booking, { ...setup.fields, ...(booking.checkedInAt ? {} : { checkedInAt: new Date().toISOString() }) })
+    if (Object.keys(update).length) {
+      const { error: updateError } = await supabase.from('Booking').update(update).eq('id', booking.id)
       if (updateError) return json({ error: updateError.message }, 500)
     }
   } else {
-    const { error: updateError } = await supabase.from('Booking').update({ checkedInAt: null }).eq('id', booking.id)
+    // Whatever was recorded on the course goes too; the carts stay for the next check-in
+    const { error: updateError } = await supabase.from('Booking').update({ checkedInAt: null, ...CLEAR_TRACKING }).eq('id', booking.id)
     if (updateError) return json({ error: updateError.message }, 500)
+    const { error: deleteError } = await supabase.from('PositionReport').delete().eq('bookingId', booking.id)
+    if (deleteError) return json({ error: deleteError.message }, 500)
   }
 
   const { data: fresh } = await supabase.from('Booking').select(BOOKING_SELECT).eq('id', booking.id).single()

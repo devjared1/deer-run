@@ -61,6 +61,41 @@ model Booking {
   checkedInAt     DateTime? // set when the group checks in at the pro shop
   saleItems       SaleItem[]
   createdAt       DateTime      @default(now())
+
+  // On-course tracking: carts and the round are set at check-in; the starter and marshals record the
+  // tee-off, where the group is (latest report only) and the finish. Estimates are in src/lib/pace.js.
+  cartNumbers     String[]         @default([])
+  ownCart         Boolean          @default(false) // some or all of the group brought their own cart or are walking
+  startHole       Int              @default(1) // 1 or 10
+  roundHoles      Int              @default(18) // 9 or 18
+  teedOffAt       DateTime?
+  positionHole    Int?
+  positionStage   HoleStage?
+  positionAt      DateTime? // latest of positionReports, kept here for the tee sheet
+  finishedAt      DateTime?
+  positionReports PositionReport[]
+}
+
+// Every position a starter or marshal reported. The daily pace job learns per-hole times from these
+// (with the tee-offs and finishes) into CourseSettings.holeSeconds.
+model PositionReport {
+  id         String    @id @default(cuid())
+  booking    Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId  String
+  hole       Int
+  stage      HoleStage
+  reportedAt DateTime  @default(now())
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeId String?
+
+  @@index([bookingId])
+  @@index([reportedAt])
+}
+
+enum HoleStage {
+  TEE
+  FAIRWAY
+  GREEN
 }
 
 enum BookingSource {
@@ -102,6 +137,16 @@ model CourseSettings {
 
   // House accounts: fee added once to each overdue statement still owing (0 = no late fees)
   lateFeeCents Int @default(0)
+
+  // On-course tracking: expected 18-hole round (9 holes take that nine's share), and the positions that can
+  // update where groups are besides register staff (who always can)
+  roundMinutes       Int                @default(255)
+  coursePositions    EmployeePosition[] @default([STARTER, PLAYER_ASSISTANT, OUTSIDE_SERVICES, BEVERAGE_CART_ATTENDANT])
+  // Per-hole times learned from position reports (18 values, seconds, hole 1 first; empty = not learned yet, so the
+  // par split of roundMinutes is used), when they were worked out, and how many rounds they came from
+  holeSeconds        Int[]              @default([])
+  holeTimesUpdatedAt DateTime?
+  holeTimesRounds    Int                @default(0)
 }
 
 model TournamentEvent {
@@ -206,6 +251,7 @@ model Employee {
   drawersClosed            CashDrawerSession[]  @relation("DrawerClosedBy")
   drawerMovements          CashDrawerMovement[] @relation("DrawerMovementBy")
   cardCheckouts            CardCheckout[]
+  positionReports          PositionReport[]
 }
 
 // One clock-in/clock-out pair. clockOut is null while the employee is on the clock;

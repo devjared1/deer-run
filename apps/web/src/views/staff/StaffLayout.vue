@@ -96,6 +96,7 @@ const navItems = computed(() => [
     { to: '/staff/teesheet', label: 'Tee Sheet', icon: '⛳' },
     { to: '/staff/register', label: 'Register', icon: '🧾' },
   ] : []),
+  ...(authStore.canTrackCourse ? [{ to: '/staff/oncourse', label: 'On Course', icon: '🏌' }] : []),
   ...(authStore.isRegisterManager ? [{ to: '/staff/pin', label: 'Manager PIN', icon: '🔑' }] : []),
 ])
 
@@ -106,6 +107,7 @@ const titles = {
   '/staff/time-off':  'Time Off',
   '/staff/register':  'Register',
   '/staff/teesheet':  'Tee Sheet',
+  '/staff/oncourse':  'On Course',
   '/staff/pin':       'Manager PIN',
 }
 

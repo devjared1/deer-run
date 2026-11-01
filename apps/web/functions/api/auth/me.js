@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { registerAccess } from '../staff/_auth.js'
+import { courseAccess, registerAccess } from '../staff/_auth.js'
 import { downgradeIfLapsed } from '../admin/_membership.js'
 import { localDate } from '../../../src/lib/timeclock.js'
 
@@ -65,9 +65,11 @@ export async function onRequestGet({ request, env }) {
     .eq('userId', user.id)
     .maybeSingle()
 
+  const register = employee ? await registerAccess(supabase, user, employee) : { canUseRegister: false, isRegisterManager: false }
   return json({
     ...user,
     employee: employee ?? null,
-    ...(employee ? await registerAccess(supabase, user, employee) : { canUseRegister: false, isRegisterManager: false }),
+    ...register,
+    canTrackCourse: employee ? await courseAccess(supabase, user, employee, register) : false,
   })
 }

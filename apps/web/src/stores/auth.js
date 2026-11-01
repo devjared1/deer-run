@@ -14,6 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isStaff     = computed(() => !!employee.value?.active)
   const canUseRegister    = computed(() => !!profile.value?.canUseRegister)
   const isRegisterManager = computed(() => !!profile.value?.isRegisterManager)
+  const canTrackCourse    = computed(() => !!profile.value?.canTrackCourse)
   const maxBookDays = computed(() => (isMember.value || isAdmin.value) ? 14 : 7)
 
   async function fetchProfile() {
@@ -77,7 +78,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    session, profile, isLoggedIn, isMember, isAdmin, employee, isStaff, canUseRegister, isRegisterManager, maxBookDays,
+    session, profile, isLoggedIn, isMember, isAdmin, employee, isStaff, canUseRegister, isRegisterManager, canTrackCourse, maxBookDays,
     init, fetchProfile, login, logout, getToken,
   }
 })

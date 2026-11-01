@@ -1,6 +1,7 @@
 # TODO
 
-Roadmap for two large features: **Employee Time Management** and a **Point of Sale (POS)** system.
+Roadmap for two large features: **Employee Time Management** and a **Point of Sale (POS)** system, plus
+**On-course tracking** built on the tee sheet.
 Employee Time Management comes first. The POS depends on it, because every sale is rung up by an
 employee and the register lives in the staff portal.
 
@@ -400,7 +401,10 @@ manager can print a statement for any member **on demand**.
 - [ ] Run `apps/api/prisma/sql/9_guest_default_discounts_tips_drawers.sql` together with the deploy that needs it (the
       drawer, drawer close, admin drawer list, sales report and time entry corrections fail until it runs), then
       `prisma migrate resolve --applied 9_guest_default_discounts_tips_drawers`
-- [ ] Redeploy the cron Worker (`cd apps/cron && npm run deploy`): it now also calls `/api/internal/bookings`
+- [ ] Run `apps/api/prisma/sql/10_on_course_tracking.sql` after 9, together with the deploy that needs it (the tee
+      sheet and On Course pages fail until it runs), then `prisma migrate resolve --applied 10_on_course_tracking`
+- [ ] Redeploy the cron Worker (`cd apps/cron && npm run deploy`): it now also calls `/api/internal/bookings` and
+      `/api/internal/pace`
 - [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
       Membership comes from buying a membership product or an admin setting it in Admin → Users. Accounts created
       before this as MEMBER stay members: review them in Admin → Users
@@ -409,3 +413,55 @@ manager can print a statement for any member **on demand**.
       warnings are template formatting rules that `lint:fix` would rewrite
 - [x] Update `CLAUDE.md`: new models, endpoints and routes, auth helpers, shared libraries, migrations workflow,
       and the PaymentIntents / `payment_intent.succeeded` booking flow (was still describing Stripe Checkout)
+
+
+## Feature 3: On-course tracking (pace of play)
+
+Decisions: pace is **information for the pro shop** (call-ins, walk-ins, marshals); it never changes booking or tee
+time spacing. Estimates are worked out in the browser from the tee sheet (`src/lib/pace.js`, shared with the
+Functions). **Every report is stored** (`PositionReport`) and each hole's time is learned from them nightly; the latest
+is also kept on the booking. Ahead / behind is measured against the **booked tee time** and the learned hole times, so
+"behind" means slower than the course usually plays (a group that went off late and kept pace still shows behind).
+Groups with no tee-off recorded are assumed to have gone off on time.
+
+- [x] Schema (SQL `apps/api/prisma/sql/10_on_course_tracking.sql`): `Booking.cartNumbers` (text, several per group),
+      `ownCart` (some or all brought their own / walking), `startHole` (1 or 10), `roundHoles` (9 or 18), `teedOffAt`,
+      `positionHole` + `positionStage` (`HoleStage`: TEE / FAIRWAY / GREEN) + `positionAt`, `finishedAt`;
+      `CourseSettings.roundMinutes` (expected 18-hole round, default 4 h 15) and `coursePositions`
+- [x] Estimation (`src/lib/pace.js`): the round is split across the holes by par (par 3 : 4 : 5 = 10 : 14 : 17; a 9-hole
+      round takes that nine's share; a round from 10 plays 10–18 then 1–9). From the latest report (or the tee-off, or
+      the tee time) the group is assumed to keep the planned pace. Within 10 minutes counts as on pace. Course pace =
+      average of groups reported in the last hour; "first tee late" = average delay of tee-offs in the last 90 minutes;
+      open holes between a group and the one ahead
+- [x] Check-in on the tee sheet asks for cart numbers, own cart / walking, starting hole and 9 or 18 (warns when a cart
+      is still out with another group), then opens the register as before. **Carts** edits them later. Checked-in groups
+      show their carts, round and estimated hole / pace; the header shows the course's pace (today)
+      (`POST /api/staff/teesheet/:id { action: 'check_in', cartNumbers, ownCart, startHole, roundHoles }`; undo check-in
+      clears the tee-off, position and finish)
+- [x] Staff **On Course** page (`/staff/oncourse`): course pace, first tee delay, groups / golfers / carts out, when the
+      last group should be in, and the **next open tee time with when it'll likely go off and finish** at today's pace
+      (for call-ins and walk-ins); a map of the 18 holes with each group's chip (solid = reported in the last 30 min,
+      dashed = estimated, coloured by pace); **Up next** (checked in, not off: **Teed off**), **On the course**
+      (where, how it's known, ahead / behind, "should be on", open holes ahead, estimated finish: **Update**, **Finished**,
+      **Carts**, undo tee-off) and **Finished today** (time, round length, pace; undo)
+      (`GET /api/staff/oncourse`, `POST /api/staff/oncourse/:id { action: setup | tee_off | undo_tee_off | position |
+      finish | undo_finish }`)
+- [x] Access: register staff plus the positions in **Admin → Settings → On Course** (default Starter, Player Assistant /
+      Marshal, Outside Services, Beverage Cart), so marshals and cart staff can update groups without the register
+      (`requireCourse`, `/api/auth/me` → `canTrackCourse`). The expected round length is set there too
+- [x] Position history: every report is a `PositionReport` row (hole, stage, time, employee). A report within 3 minutes
+      of the group's previous one replaces it (a correction); undoing the tee-off or the check-in deletes the group's
+      reports
+- [x] Learned per-hole times: `learnHoleSeconds()` takes the last 60 days of rounds; each stretch between two known
+      points (tee-off, reports, finish) says how long those holes took, and an iterative fit finds the hole times that
+      explain all the stretches, so a slow hole stands out from its neighbours. Stretches played at under 0.4× or over
+      2.5× the plan are dropped as mistakes; each hole is pulled toward the par split by 3 rounds' worth. Saved to
+      `CourseSettings.holeSeconds` nightly (`POST /api/internal/pace`, in `apps/cron`) or on **Admin → Settings → On
+      Course → Recalculate now** (`POST /api/admin/pace`), which also shows the 18 learned times. Until then the par
+      split of the expected round is used
+- [x] Demo seed: carts, tee-offs, finishes and marshal reports (about a third of the holes per round, ~75 days, with
+      slow holes at 6, 10, 11, 12, 15) for checked-in groups, and groups waiting on the tee. Run **Recalculate now**
+      after seeding
+- [x] Decision: pace stays information for the pro shop; it doesn't change booking or tee time spacing
+- [ ] Pace by time of day / day of week (mornings play faster than a Saturday afternoon), if the single profile isn't
+      good enough

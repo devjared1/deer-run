@@ -6,6 +6,7 @@ const JOBS = [
   '/api/internal/statements', // house account statements for last month (only creates what's missing) + autopay,
   //                             then overdue reminders and late fees
   '/api/internal/bookings', // release unpaid online bookings past their 30-minute hold that nobody viewed
+  '/api/internal/pace', // learn per-hole times from the last 60 days of position reports
 ]
 
 async function runJobs(env) {

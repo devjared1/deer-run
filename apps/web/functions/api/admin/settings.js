@@ -2,6 +2,7 @@ import { requireAdmin, json } from './_auth.js'
 import { isValidYmd } from '../../../src/lib/timeclock.js'
 import { POSITIONS } from './employees/_validate.js'
 import { makeStripe, syncTerminalTipping, stripeMessage } from '../staff/_stripe.js'
+import { MAX_ROUND_MINUTES, MIN_ROUND_MINUTES } from '../../../src/lib/pace.js'
 
 const PAY_PERIOD_LENGTHS = [7, 14]
 const MAX_TAX_BPS = 2000 // 20%
@@ -63,7 +64,14 @@ export async function onRequestPut({ request, env }) {
     }
     allowed.lateFeeCents = fee
   }
-  for (const f of ['registerPositions', 'managerPositions']) {
+  if (body.roundMinutes !== undefined) {
+    const minutes = Number(body.roundMinutes)
+    if (!Number.isInteger(minutes) || minutes < MIN_ROUND_MINUTES || minutes > MAX_ROUND_MINUTES) {
+      return json({ error: `The expected round must be between ${MIN_ROUND_MINUTES / 60} and ${MAX_ROUND_MINUTES / 60} hours` }, 400)
+    }
+    allowed.roundMinutes = minutes
+  }
+  for (const f of ['registerPositions', 'managerPositions', 'coursePositions']) {
     if (body[f] === undefined) continue
     if (!Array.isArray(body[f]) || body[f].some(p => !POSITIONS.includes(p))) {
       return json({ error: `${f} must be a list of positions` }, 400)

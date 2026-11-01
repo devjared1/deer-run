@@ -50,6 +50,7 @@ const routes = [
       { path: 'time-off',  component: () => import('@/views/staff/TimeOffView.vue') },
       { path: 'register',  component: () => import('@/views/staff/RegisterView.vue'), meta: { requiresRegister: true } },
       { path: 'teesheet',  component: () => import('@/views/staff/TeeSheetView.vue'), meta: { requiresRegister: true } },
+      { path: 'oncourse',  component: () => import('@/views/staff/OnCourseView.vue'), meta: { requiresCourse: true } },
       { path: 'pin',       component: () => import('@/views/staff/ManagerPinView.vue'), meta: { requiresRegisterManager: true } },
     ],
   },
@@ -65,11 +66,6 @@ router.beforeEach(async (to) => {
   const auth = useAuthStore()
   // Wait for the session and profile to load so a page refresh doesn't look signed out
   await auth.init()
-  console.log('Logged in: ', auth.isLoggedIn)
-  console.log('Is Admin: ', auth.isAdmin)
-  console.log('Is Staff: ', auth.isStaff)
-  console.log('Can Use Register: ', auth.canUseRegister)
-  console.log('Is Register Manager: ', auth.isRegisterManager)
   if (to.meta.requiresAdmin) {
     if (!auth.isLoggedIn) return { path: '/login', query: { redirect: to.fullPath } }
     if (!auth.isAdmin) return { path: '/' }
@@ -79,6 +75,7 @@ router.beforeEach(async (to) => {
     if (!auth.isStaff) return { path: '/' }
     if (to.meta.requiresRegister && !auth.canUseRegister) return { path: '/staff' }
     if (to.meta.requiresRegisterManager && !auth.isRegisterManager) return { path: '/staff' }
+    if (to.meta.requiresCourse && !auth.canTrackCourse) return { path: '/staff' }
   }
   if (to.meta.requiresAuth && !auth.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
