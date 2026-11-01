@@ -63,14 +63,17 @@
 <script setup>
 import { useBookingStore } from '@/stores/booking'
 import { computed, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import StepDate from './StepDate.vue'
 import StepDetails from './StepDetails.vue'
 import StepPayment from './StepPayment.vue'
 import StepTime from './StepTime.vue'
 
 const steps = ['Date', 'Tee Time', 'Details', 'Payment']
-const currentStep = ref(1)
 const bookingStore = useBookingStore()
+const route = useRoute()
+// Back from signing in (StepDetails → /login?redirect=/book?resume=details): pick up at Details if a time is still chosen
+const currentStep = ref(route.query.resume === 'details' && bookingStore.selectedSlot ? 3 : 1)
 
 const stepMap = { 1: StepDate, 2: StepTime, 3: StepDetails, 4: StepPayment }
 const currentStepComponent = computed(() => stepMap[currentStep.value])
