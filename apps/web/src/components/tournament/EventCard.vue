@@ -35,7 +35,7 @@
 
       <!-- CTA -->
       <div class="flex-shrink-0 self-center">
-        <RouterLink v-if="!event.past" to="/book" class="btn-primary whitespace-nowrap" style="padding:10px 20px;font-size:12px;">
+        <RouterLink v-if="!event.past" :to="{ path: '/contact', query: { event: event.name } }" class="btn-primary whitespace-nowrap" style="padding:10px 20px;font-size:12px;">
           {{ event.memberOnly ? 'Member Sign-Up' : 'Register' }}
         </RouterLink>
         <span v-else style="font-family:'Lato',sans-serif;font-size:12px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(61,43,26,.3);">Completed</span>

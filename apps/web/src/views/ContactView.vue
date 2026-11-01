@@ -122,14 +122,22 @@
 
 <script setup>
 import { ref, reactive } from 'vue'
+import { useRoute } from 'vue-router'
 import PageHero     from '@/components/layout/PageHero.vue'
 import SectionLabel from '@/components/ui/SectionLabel.vue'
 
+const route   = useRoute()
 const sent    = ref(false)
 const loading = ref(false)
 const error   = ref('')
 
 const form = reactive({ name: '', email: '', phone: '', subject: '', message: '' })
+
+// Tournament "Register" links here with ?event=<name> until events have their own page
+if (route.query.event) {
+  form.subject = 'Tournament Information'
+  form.message = `I'd like to register for ${String(route.query.event).slice(0, 200)}.\n\nPlayers / team: `
+}
 
 const contactInfo = [
   { icon: '📍', label: 'Address', value: '1175 County Road 100<br>Moulton, AL 35650' },
