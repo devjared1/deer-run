@@ -80,7 +80,7 @@
     <p v-if="readersError" class="text-red-500 text-xs font-body mt-2">{{ readersError }}</p>
 
     <!-- Pair a reader -->
-    <div v-if="pairing" class="modal-overlay" @click.self="pairing = null">
+    <div v-if="pairing" class="modal-overlay">
       <div class="modal-box">
         <h2 class="font-display font-bold text-bark mb-1">Pair a card reader</h2>
         <p class="text-gray-500 text-sm font-body mb-4">
@@ -107,7 +107,7 @@
       </div>
     </div>
 
-    <div v-if="form" class="modal-overlay" @click.self="form = null">
+    <div v-if="form" class="modal-overlay">
       <div class="modal-box">
         <h2 class="font-display font-bold text-bark mb-4">{{ form.id ? 'Edit Register' : 'New Register' }}</h2>
         <div class="space-y-3">

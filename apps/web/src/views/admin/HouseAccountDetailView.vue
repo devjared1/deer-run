@@ -158,7 +158,7 @@
     </template>
 
     <!-- Edit status / limit -->
-    <div v-if="editing" class="modal-overlay print:hidden" @click.self="editing = null">
+    <div v-if="editing" class="modal-overlay print:hidden">
       <div class="modal-box">
         <h2 class="font-display font-bold text-bark mb-4">
           Edit account
@@ -192,7 +192,7 @@
     </div>
 
     <!-- Adjust -->
-    <div v-if="adjusting" class="modal-overlay print:hidden" @click.self="adjusting = null">
+    <div v-if="adjusting" class="modal-overlay print:hidden">
       <div class="modal-box">
         <h2 class="font-display font-bold text-bark mb-1">
           Adjust balance
