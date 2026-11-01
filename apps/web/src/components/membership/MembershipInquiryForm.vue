@@ -1,5 +1,5 @@
 <template>
-  <div id="inquiry-form" class="card-pine rounded-lg p-8 max-w-2xl mx-auto">
+  <div class="card-pine rounded-lg p-8 max-w-2xl mx-auto">
     <template v-if="!sent">
       <SectionLabel text="Get Started" dark class="mb-4" />
       <h2 style="font-family:'Playfair Display',serif;font-weight:700;font-size:26px;color:#F2EBD9;margin-bottom:6px;">Membership Inquiry</h2>
