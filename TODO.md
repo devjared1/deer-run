@@ -404,6 +404,10 @@ manager can print a statement for any member **on demand**.
       `prisma migrate resolve --applied 9_guest_default_discounts_tips_drawers`
 - [ ] Run `apps/api/prisma/sql/10_on_course_tracking.sql` after 9, together with the deploy that needs it (the tee
       sheet and On Course pages fail until it runs), then `prisma migrate resolve --applied 10_on_course_tracking`
+- [ ] Run `apps/api/prisma/sql/11_rates.sql` after 10, together with the deploy that needs it (the tee sheet fails
+      until it runs; Settings hides Rates until then), then `prisma migrate resolve --applied 11_rates`. It sets the
+      starting rates and deactivates the old Twilight / 9 Holes products; check Admin → Products for other old
+      greens fee products (Walking, Junior, Senior Rate) the course no longer sells
 - [ ] Redeploy the cron Worker (`cd apps/cron && npm run deploy`): it now also calls `/api/internal/bookings` and
       `/api/internal/pace`
 - [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
@@ -484,46 +488,57 @@ seed pine `#1E3D2F`; the brand `amber` token is renamed `gold`. MD3 shape scale:
 dialogs. Receipts and slips aren't redesigned.
 
 ### Phase 0: Quick wins and bugs found in the review
-- [ ] Move `.btn-*`, `.field`, `.card` in `main.css` into `@layer components` (they currently override Tailwind
+- [x] Move `.btn-*`, `.field`, `.card` in `main.css` into `@layer components` (they currently override Tailwind
       utilities, so every primary button, incl. the register's Charge/Complete Sale, renders at the wrong size) and
       add `:disabled` styles
-- [ ] Booking wizard full width on mobile (`BookingWizard.vue:2` `w-2/3` → `w-full`; `BookView.vue:16` padding)
-- [ ] Payment step creates a new PENDING booking + PaymentIntent every time it mounts (Back → Next = a second
+- [x] Booking wizard full width on mobile (`BookingWizard.vue:2` `w-2/3` → `w-full`; `BookView.vue:16` padding)
+- [x] Payment step creates a new PENDING booking + PaymentIntent every time it mounts (Back → Next = a second
       30-minute hold): create once per selection and reuse (`StepPayment.vue:100`)
-- [ ] Show the API's error message when a booking fails ("slot just filled") instead of "Booking failed"
-- [ ] Logo visible at every size in `AppNav` (hidden below `sm` today) plus a compact Book button on mobile
-- [ ] Missing files: `/favicon.svg` (404 in `index.html`), `/images/course-1.jpg` (Tournaments hero 404); remove the
+- [x] Show the API's error message when a booking fails ("slot just filled") instead of "Booking failed"
+- [x] Logo visible at every size in `AppNav` (hidden below `sm` today) plus a compact Book button on mobile
+- [x] Missing files: `/favicon.svg` (404 in `index.html`), `/images/course-1.jpg` (Tournaments hero 404); remove the
       near-duplicate `course-2-edited.jpg` / `course-5-copy.jpg` (or pick them as the keepers)
-- [ ] Tournament **Register** goes to `/book` (the tee time flow): link to a contact/inquiry with the event name until
+      (interim `favicon.svg` until Phase 1's logo mark; the two are landscape crops of the portrait originals, kept
+      as `course-2-wide.jpg` / `course-5-wide.jpg` for wide heroes; Tournaments uses `course-2-wide.jpg`)
+- [x] Tournament **Register** goes to `/book` (the tee time flow): link to a contact/inquiry with the event name until
       the event page exists (Phase 3)
-- [ ] Admin Tee Times "today" uses UTC (tomorrow after 7 pm Central): use `localDate()` (`admin/TeeTimesView.vue:124`)
-- [ ] Customer cancel window counts from UTC midnight of the slot date, not the tee time (`AccountView.vue:148`)
-- [ ] Booking "Member / Sign In" keeps the flow (`/login?redirect=/book`); don't say "Signed in as member" to guests
-- [ ] Confirmation page: Processing state that polls while the webhook is pending, handle Stripe
+- [x] Admin Tee Times "today" uses UTC (tomorrow after 7 pm Central): use `localDate()` (`admin/TeeTimesView.vue:124`)
+- [x] Customer cancel window counts from UTC midnight of the slot date, not the tee time (`AccountView.vue:148`)
+- [x] Booking "Member / Sign In" keeps the flow (`/login?redirect=/book`); don't say "Signed in as member" to guests
+- [x] Confirmation page: Processing state that polls while the webhook is pending, handle Stripe
       `redirect_status=failed|processing`, only say "confirmation sent" once CONFIRMED
-- [ ] `PageHero`: `classes` prop optional with a sensible default, `min-height` instead of a fixed height that clips text
-- [ ] Define the missing `price-featured` / `price-card` / `event-row` / `event-past` styles (Best Value emphasis, past
+- [x] `PageHero`: `classes` prop optional with a sensible default, `min-height` instead of a fixed height that clips text
+- [x] Define the missing `price-featured` / `price-card` / `event-row` / `event-past` styles (Best Value emphasis, past
       events dimmed); fix the duplicate `id="inquiry-form"`
-- [ ] Footer dead links (Privacy Policy, Accessibility, City of Moulton) → real pages/links or removed
-- [ ] Confirm before destructive actions: delete register/category/shift, deactivate employee/product, reset PIN,
+- [x] Footer dead links (Privacy Policy, Accessibility, City of Moulton) → real pages/links or removed
+      (removed; Accessibility comes back with its page in Phase 3)
+- [x] Confirm before destructive actions: delete register/category/shift, deactivate employee/product, reset PIN,
       promote to ADMIN, customer booking cancel; relabel admin booking REFUNDED/CANCELLED as "status only, no money moves"
-- [ ] Dialogs with typed input (Tender, Refund, Cash movement, product/employee/tournament forms) stop closing on a
+- [x] Dialogs with typed input (Tender, Refund, Cash movement, product/employee/tournament forms) stop closing on a
       backdrop tap
-- [ ] A failed row action shows a message instead of replacing the whole table (Employees, Products, Registers)
-- [ ] Wrap the tables that scroll the whole page sideways in `overflow-x-auto` (HouseAccounts, Registers,
+- [x] A failed row action shows a message instead of replacing the whole table (Employees, Products, Registers)
+- [x] Wrap the tables that scroll the whole page sideways in `overflow-x-auto` (HouseAccounts, Registers,
       HouseAccountDetail, CategoryManagerModal, SalesReport, Memberships comparison)
-- [ ] Register scanner: select the search text on a missed scan so the next scan replaces it; scroll to and highlight
+- [x] Register scanner: select the search text on a missed scan so the next scan replaces it; scroll to and highlight
       the added line
-- [ ] Sign out in the admin and staff shells
-- [ ] ❓ Online price vs rate card: booking always charges $45 (`stores/booking.js:13`, server
+- [x] Sign out in the admin and staff shells
+- [x] ❓ Online price vs rate card: booking always charges $45 (`stores/booking.js:13`, server
       `pricePerPlayerCents`) while Rates shows weekend $50 / twilight $30. Decide what's sold online
       Answer: see if you can find the actual rates for Deer Run online. If you can, add those rates to the Admin portal so they can be changed whenever. In-store and online should pull those rates to charge. If nothing online found default to:
             - Weekday 9/18 Green Fee: $20/$30
             - Weekend/Holiday 9/18 Green Fee: $30/$40
             - Cart: $12
+      Done: no rate sheet is published online (the city's page says to call; Golf Digest lists a $45 guide price),
+      so the defaults above are used. Rates are the POS products tagged `Product.rateKey` (weekday/weekend × 9/18,
+      cart per rider), edited in **Admin → Settings → Rates** with holiday dates; online booking (`/api/rates`,
+      `POST /api/bookings` with `roundHoles` + `cart`) and the register charge the same prices. Migration
+      `sql/11_rates.sql`. Online, members still pay the regular rate (as before); in-store their greens fee is the
+      product's member price ($0)
 - [ ] ❓ Copy to confirm with the course: hours (footer vs Contact), twilight / 9-hole / tee-time policies on Rates,
       member events by tier, hole names in `data/holes.js`
       Answer: Deer Run does not have any twilight rates. See above about trying to find actual rates online.
+      Done so far: twilight removed everywhere (Rates page, products), 9-hole / walking / junior / senior lines
+      replaced by the live rates. Still open: hours (footer vs Contact), member events by tier, hole names
 
 ### Phase 1: Design system foundation
 - [ ] Logo assets: ask the course for the original vector file. Meanwhile, export the emblem from

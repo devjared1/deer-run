@@ -226,7 +226,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 |--------|------|------|-------------|
 | GET | `/api/auth/me` | Required | Upsert + return DB user, linked `employee`, `canUseRegister`, `isRegisterManager` |
 | GET | `/api/teetimes?date=YYYY-MM-DD` | Optional | Available slots (member-only slots hidden from guests) |
-| POST | `/api/bookings` | Optional | Create PENDING booking + Stripe PaymentIntent → `{ bookingId, clientSecret }` |
+| GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates }` (cents, from the rate products) |
+| POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent → `{ bookingId, clientSecret }` |
 | GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
 | GET | `/api/bookings/my` | Required | Signed-in user's bookings |
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
@@ -243,7 +244,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/bookings[/:id]` | GET / PUT | Bookings list, status changes |
 | `/api/admin/events[/:id]` | GET, POST / PUT, DELETE | Tournaments |
 | `/api/admin/users[/:id]` | GET / PUT | Users, role changes |
-| `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS, tipping, late fee); PUT returns `warning` if the tip percentages didn't reach Stripe |
+| `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS, tipping, late fee) + `rates` (saved onto the rate products) and `holidayDates`; PUT returns `warning` if the tip percentages didn't reach Stripe |
 | `/api/admin/employees[/:id]` | GET, POST / PUT, DELETE | Employees (`resetManagerPin`; delete refused with clock history) |
 | `/api/admin/timeclock` | GET | Who's on the clock / on break / forgot to clock out |
 | `/api/admin/timesheets?date=` | GET | All employees' hours for a pay period |
@@ -361,15 +362,15 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 |------|-------|------------|
 | Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`, `memberUntil?` (last day; null = no expiry), `membershipTier?`, `renewalReminderKey?` |
 | | `TeeTimeSlot` | `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
-| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy); on-course: `cartNumbers`, `ownCart`, `startHole`, `roundHoles`, `teedOffAt?`, `positionHole?`/`positionStage?` (`HoleStage`)/`positionAt?` (latest report), `finishedAt?` |
+| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy), `roundHoles`, `cartIncluded` (online booking paid the cart fee); on-course: `cartNumbers`, `ownCart`, `startHole`, `roundHoles`, `teedOffAt?`, `positionHole?`/`positionStage?` (`HoleStage`)/`positionAt?` (latest report), `finishedAt?` |
 | | `PositionReport` | Every on-course report: `bookingId`, `hole`, `stage`, `reportedAt`, `employeeId?` (history the hole times are learned from) |
-| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, price, tee time range, pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off), on-course (`roundMinutes`, `coursePositions`, learned `holeSeconds`/`holeTimesUpdatedAt`/`holeTimesRounds`) |
+| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, `holidayDates` (weekend rates), tee time range (`pricePerPlayerCents` is unused since migration 11), pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off), on-course (`roundMinutes`, `coursePositions`, learned `holeSeconds`/`holeTimesUpdatedAt`/`holeTimesRounds`) |
 | | `TournamentEvent`, `Inquiry`, `ContactMessage` | Events and form submissions |
 | Staff | `Employee` | `userId?` (linked by email), names, `email`, `position` (`EmployeePosition`), `hourlyRateCents`, `active`, manager PIN hash/lockout |
 | | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
 | | `Shift` | `employeeId`, `date`, `startTime`/`endTime` ("HH:MM"; end ≤ start = overnight), `position?` override, `notes?` |
 | | `TimeOffRequest` | `startDate`/`endDate` (inclusive), `type`, `reason?`, `status` (PENDING/APPROVED/DENIED/CANCELLED), `reviewedById` (User.id), `reviewedAt`, `reviewNote` |
-| POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant; `Product.membershipMonths?`/`membershipTier?` mark membership products; `ProductCategory.memberDiscount` gets the member Pro Shop discount |
+| POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant; `Product.rateKey?` marks the greens fee / cart rate products (`src/lib/rates.js`; online booking charges their prices too); `Product.membershipMonths?`/`membershipTier?` mark membership products; `ProductCategory.memberDiscount` gets the member Pro Shop discount |
 | | `InventoryAdjustment` | Stock change log (`InventoryReason`) |
 | | `Register` | Physical register; `stripeReaderId` |
 | | `Sale`, `SaleItem`, `Payment` | Sales with tax/discount snapshots per line; `SaleItem.bookingId?` links tee time lines; `SaleItem.discountCents` = member + manager, `memberDiscountCents` = member part; `Payment.tipCents` (on-reader tip, on top of `amountCents`) |
@@ -403,11 +404,13 @@ reach the database. `TODO.md` → Housekeeping tracks which migrations still nee
 
 ### Seed data
 `npm run db:seed` (or `prisma/seed.sql` in the SQL Editor) creates:
-- A singleton `CourseSettings` record (7-day public / 14-day member booking window, $45/player, 07:30–17:00 tee times at 10-min intervals)
+- A singleton `CourseSettings` record (7-day public / 14-day member booking window, 07:30–17:00 tee times at 10-min intervals)
 - `TeeTimeSlot` records for the next 30 days
 - 8 `TournamentEvent` records (6 upcoming, 2 past) — only if none exist yet
 
 `prisma/seed-pos.sql` adds 12 product categories, the "Pro Shop" register and starter products (some placeholder prices).
+The greens fee / cart rate products come from `prisma/sql/11_rates.sql` (weekday 9/18 $20/$30, weekend/holiday
+$30/$40, cart $12 per rider), priced afterwards in Admin → Settings → Rates.
 
 `prisma/seed-demo.sql` (demo/staging databases only, after the two above) adds a full demo dated relative to the day
 it runs: Supabase Auth sign-ins (`gm@`, `pro@`, `shop@`, `crew@`, `member@`, `guest@example.com`, password and PINs in
@@ -461,10 +464,12 @@ When adding a page to a portal, also add it to the layout's `navItems` and `titl
 - `getToken()` — returns current `access_token` or null
 
 ### `useBookingStore` (`stores/booking.js`)
-- `selectedDate`, `selectedSlot`, `players`, `guestName`, `guestEmail` — booking state
-- `totalPrice` — computed: `players * 45` (frontend display only; authoritative price is `CourseSettings.pricePerPlayerCents` on the server)
+- `selectedDate`, `selectedSlot`, `players`, `roundHoles` (9/18), `cart` (riding), `guestName`, `guestEmail` — booking state
+- `rates`, `holidayDates`, `loadRates()` — from GET `/api/rates` (defaults until loaded)
+- `price` / `totalPrice` — computed with `bookingPrice()` (display only; the server prices the booking from the rates)
 - `fetchAvailableSlots(date)` — GET `/api/teetimes?date=<date>`
-- `createBooking()` — POST `/api/bookings` → returns `{ bookingId, clientSecret }`
+- `createBooking()` — POST `/api/bookings` → returns `{ bookingId, clientSecret }`; reuses the booking already made for
+  the same selection (within 25 min), so Back → Payment doesn't place a second hold; throws the API's error message
 - `reset()` — clears all booking state
 
 API calls use **relative paths** (`/api/...`) — same origin as the static site on Cloudflare
@@ -476,7 +481,7 @@ message (plus `status` and optional `code`).
 
 ## Shared libraries (`src/lib/`)
 
-`timeclock.js`, `schedule.js`, `pricing.js`, `membership.js`, `teesheet.js` and `pace.js` are imported by **both** the Vue app and the Functions (by relative
+`timeclock.js`, `schedule.js`, `pricing.js`, `membership.js`, `teesheet.js`, `pace.js` and `rates.js` are imported by **both** the Vue app and the Functions (by relative
 path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports or browser-only APIs.
 
 | File | Contents |
@@ -486,6 +491,7 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 | `membership.js` | `isActiveMember()`, `isLapsedMember()`, `extendMembership()`, `shortenMembership()` (shared: register pricing, tee times, sales, refunds) |
 | `teesheet.js` | Tee time labels (`teeTime`, `teeTimeLabel`) used on the tee sheet and on receipt lines, and the unpaid-hold rule (`UNPAID_HOLD_MINUTES`, `isExpiredHold`, `holdsSpot`, `bookedPlayers`, `HOLD_COLUMNS`) used wherever slot capacity is counted |
 | `pace.js` | On-course estimates: round plan from the pace profile `{ roundMinutes, holeSeconds }` (learned hole times, else split by par: `paceProfile`, `perHoleMinutes`, `roundPlan`, `holeOrder`, `stagesFor`), `learnHoleSeconds()` (fit from past rounds), `trackGroup()` (where a checked-in group probably is, ahead/behind its tee time), `trackedGroups`, `coursePace`, `openHolesAhead`, `cartsInUse` (imports `../data/holes.js`) |
+| `rates.js` | Greens fee / cart rates: `RATE_KEYS`, `DEFAULT_RATES`, `isWeekendRate()` (Sat/Sun or a holiday), `greensRateKey()`, `bookingPrice()` (greens + cart per rider × players). Server side, `functions/api/_rates.js` → `loadRates()` reads the rate products |
 | `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
 | `pricing.js` | Register line/tax/total math incl. the member Pro Shop discount (`memberDiscountBps`; imports `../data/membershipTiers.js`), shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
@@ -501,7 +507,8 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 
 1. **StepDate** — calendar date picker
 2. **StepTime** — fetches `/api/teetimes?date=...`, shows available slots with `available` count
-3. **StepDetails** — player count; guest name/email if not logged in
+3. **StepDetails** — 9/18 holes, riding/walking and the price breakdown; guest name/email if not logged in (Sign In
+   returns to this step via `/book?resume=details`)
 4. **StepPayment** — calls `/api/bookings`, which creates a PENDING booking and a Stripe PaymentIntent
    (`metadata.bookingId`), then mounts the Stripe **Payment Element** with the returned `clientSecret` and
    confirms the payment on the page, returning to `/confirmation?booking_id=…`
@@ -567,6 +574,10 @@ Custom palette in `tailwind.config.js`:
 | `bark`  | `#3D2B1A`   | Dark brown text                     |
 | `parch` | `#F2EBD9`   | Warm off-white background           |
 | `amber` | `#C4873A`   | Gold accent, active states          |
+
+Shared classes in `src/assets/main.css` (`.btn-*`, `.card*`, `.field`, `.price-*`, `.event-*`) are in
+`@layer components`, so Tailwind utilities on the same element (`px-4 py-2 text-sm`) override them. The UI/UX overhaul
+(`docs/ui-ux-review.md`, `TODO.md` → Feature 4) replaces them with MD3 tokens and `src/components/ui/` in Phase 1.
 
 Custom font families (Google Fonts):
 - `font-display` → Playfair Display (headings)
