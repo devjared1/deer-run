@@ -59,6 +59,16 @@
   .state-layer[data-dragging]::before { opacity: var(--md-sys-state-dragged); }
   .state-layer:disabled::before,
   .state-layer[aria-disabled="true"]::before { opacity: 0; }
+
+  /* An invisible hit area at least 48px tall/wide around a smaller control (40px buttons, chips) */
+  .touch-target { position: relative; }
+  .touch-target::after {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    width: max(100%, 48px); height: max(100%, 48px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* ── Topo texture background ── */
