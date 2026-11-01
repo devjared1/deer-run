@@ -1,240 +1,300 @@
 <template>
   <div>
-    <!-- Toolbar -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap items-center gap-3">
-      <button class="btn-outline-sm" :disabled="!sheet" @click="load(sheet.period.prevStart)">← Previous</button>
-      <button class="btn-outline-sm" :disabled="!sheet || isCurrent" @click="load(null)">Current Period</button>
-      <button class="btn-outline-sm" :disabled="!sheet || isCurrent" @click="load(sheet.period.nextStart)">Next →</button>
-      <div v-if="sheet" class="font-display font-bold text-bark">{{ periodLabel }}</div>
-      <div class="ml-auto flex flex-wrap gap-2">
-        <button class="btn-outline-sm" :disabled="!sheet || downloading" @click="downloadCsv('summary')">Export Summary CSV</button>
-        <button class="btn-outline-sm" :disabled="!sheet || downloading" @click="downloadCsv('entries')">Export Entries CSV</button>
-        <button class="btn-amber px-4 py-2 text-sm" :disabled="!sheet" @click="openCreate(null)">+ Add Entry</button>
+    <Teleport to="#admin-page-actions" defer>
+      <AppButton :icon="IconMoreTime" :disabled="!sheet" class="hidden sm:inline-flex" @click="openCreate(null)">Add entry</AppButton>
+      <IconButton :icon="IconMoreTime" variant="filled" label="Add entry" :disabled="!sheet" class="sm:hidden" @click="openCreate(null)" />
+    </Teleport>
+
+    <!-- Toolbar: pay period stepper + exports -->
+    <div class="mb-6 flex flex-wrap items-center gap-x-2 gap-y-3">
+      <DateStepper
+        v-if="sheet"
+        :model-value="sheet.period.start"
+        :step="sheet.period.lengthDays || 14"
+        :format-title="periodTitle"
+        :max="currentStart || undefined"
+        :disabled="loading"
+        @update:model-value="load"
+      />
+      <Skeleton v-else-if="loading" width="16rem" height="48px" />
+      <AppButton v-if="sheet && !isCurrent" variant="text" :disabled="loading" class="print:hidden" @click="load(null)">
+        Current period
+      </AppButton>
+      <div class="flex flex-wrap gap-2 sm:ml-auto print:hidden">
+        <AppButton variant="outlined" :icon="IconDownload" :disabled="!sheet || downloading" @click="downloadCsv('summary')">
+          Summary CSV
+        </AppButton>
+        <AppButton variant="outlined" :icon="IconDownload" :disabled="!sheet || downloading" @click="downloadCsv('entries')">
+          Entries CSV
+        </AppButton>
       </div>
     </div>
-    <p v-if="downloadError" class="text-red-500 text-sm mb-4">{{ downloadError }}</p>
+    <ErrorBanner v-if="downloadError" class="mb-4" :message="downloadError" @dismiss="downloadError = null" />
 
-    <div v-if="loading && !sheet" class="text-gray-400 text-sm">Loading…</div>
-    <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
+    <ErrorBanner v-if="error && !sheet" :message="error" @retry="load()" />
 
-    <template v-else-if="sheet">
+    <template v-else>
+      <ErrorBanner v-if="error" class="mb-4" :message="error" @retry="load()" />
+
       <!-- Totals -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div class="stat-card">
-          <div class="stat-label">Total Hours</div>
-          <div class="stat-value">{{ formatHours(sheet.totals.workedMinutes) }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Overtime</div>
-          <div class="stat-value" :class="sheet.totals.overtime > 0 ? 'text-clay' : ''">{{ formatHours(sheet.totals.overtime) }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">On the Clock</div>
-          <div class="stat-value">{{ sheet.totals.openEntries }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Missed Clock-Outs</div>
-          <div class="stat-value" :class="sheet.totals.longOpenEntries > 0 ? 'text-red-600' : ''">{{ sheet.totals.longOpenEntries }}</div>
-          <div class="text-gray-400 text-xs mt-1">open 14+ hours</div>
-        </div>
+        <StatCard label="Total hours" :value="sheet ? formatHours(sheet.totals.workedMinutes) : ''" :icon="IconClock" :loading="!sheet" />
+        <StatCard label="Overtime" :icon="IconTimer" :loading="!sheet">
+          <template #value>
+            <span :class="sheet?.totals.overtime > 0 ? 'text-tertiary' : ''">{{ sheet ? formatHours(sheet.totals.overtime) : '' }}</span>
+          </template>
+        </StatCard>
+        <StatCard label="On the clock" :value="sheet ? String(sheet.totals.openEntries) : ''" :icon="IconPerson" :loading="!sheet" />
+        <StatCard label="Missed clock-outs" :icon="IconWarning" :loading="!sheet">
+          <template #value>
+            <span :class="sheet?.totals.longOpenEntries > 0 ? 'text-error' : ''">{{ sheet?.totals.longOpenEntries ?? '' }}</span>
+          </template>
+          <p class="text-body-s text-on-surface-variant">Open 14+ hours</p>
+        </StatCard>
       </div>
 
-      <!-- Employees -->
-      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm font-body">
-            <thead>
-              <tr class="bg-gray-50 border-b border-gray-100 text-left">
-                <th class="th">Employee</th>
-                <th class="th">Position</th>
-                <th class="th text-right">Regular</th>
-                <th class="th text-right">Overtime</th>
-                <th class="th text-right">Total</th>
-                <th class="th" />
-                <th class="th" />
-              </tr>
-            </thead>
-            <tbody>
-              <template v-for="emp in sheet.employees" :key="emp.id">
-                <tr class="border-b border-gray-50 hover:bg-gray-50/50 cursor-pointer" @click="toggle(emp.id)">
-                  <td class="td text-bark font-semibold whitespace-nowrap">
-                    {{ emp.lastName }}, {{ emp.firstName }}
-                    <span v-if="!emp.active" class="ml-1 text-xs font-normal text-gray-400">(inactive)</span>
-                  </td>
-                  <td class="td text-gray-600">{{ positionLabel(emp.position) }}</td>
-                  <td class="td text-right tabular-nums">{{ formatHours(emp.regular) }}</td>
-                  <td class="td text-right tabular-nums" :class="emp.overtime > 0 ? 'text-clay font-semibold' : 'text-gray-400'">
-                    {{ formatHours(emp.overtime) }}
-                  </td>
-                  <td class="td text-right tabular-nums text-bark font-semibold">{{ formatHours(emp.workedMinutes) }}</td>
-                  <td class="td whitespace-nowrap">
-                    <span v-if="emp.longOpenEntries" class="badge bg-red-100 text-red-700">Missed clock-out</span>
-                    <span v-else-if="emp.openEntries" class="badge bg-pine/15 text-pine">On the clock</span>
-                  </td>
-                  <td class="td text-gray-400 text-right">{{ expanded[emp.id] ? '▾' : '▸' }}</td>
-                </tr>
+      <ErrorBanner v-if="actionError" class="mb-4" :message="actionError" @dismiss="actionError = null" />
 
-                <!-- Detail -->
-                <tr v-if="expanded[emp.id]" class="bg-gray-50/60 border-b border-gray-100">
-                  <td colspan="7" class="px-5 py-4">
-                    <div v-for="week in weeksFor(emp)" :key="week.weekStart" class="mb-4 last:mb-0">
-                      <div class="flex items-center justify-between text-xs text-gray-500 uppercase tracking-wider mb-1">
-                        <span>Week of {{ formatLocalDate(week.weekStart, { month: 'short', day: 'numeric' }) }}</span>
-                        <span>
-                          {{ formatHours(week.workedMinutes) }} h
-                          <span v-if="week.overtime > 0" class="text-clay normal-case">· {{ formatHours(week.overtime) }} h overtime</span>
-                        </span>
-                      </div>
-                      <div class="bg-white rounded-lg border border-gray-200 divide-y divide-gray-50">
-                        <div v-for="entry in week.entries" :key="entry.id" class="px-4 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-1">
-                          <div class="w-28 text-bark font-semibold">{{ formatLocalDate(entry.date) }}</div>
-                          <div class="flex-1 min-w-[12rem]">
-                            <span class="text-bark">
-                              {{ formatClockTime(entry.clockIn) }} – {{ entry.clockOut ? formatClockTime(entry.clockOut) : 'still on the clock' }}
-                            </span>
-                            <span v-if="entry.breakMinutes" class="text-gray-400 text-xs ml-2">
-                              {{ formatMinutes(entry.breakMinutes) }} break
-                            </span>
-                            <span v-if="entry.longOpen" class="badge bg-red-100 text-red-700 ml-2">Open 14+ h</span>
-                            <span v-if="entry.editedAt" class="badge bg-gray-100 text-gray-500 ml-2" title="Corrected by a manager">Edited</span>
-                            <div v-if="entry.note" class="text-gray-400 text-xs mt-0.5">{{ entry.note }}</div>
-                          </div>
-                          <div class="w-20 text-right tabular-nums text-bark">{{ formatMinutes(entry.workedMinutes) }}</div>
-                          <div class="space-x-3 text-xs">
-                            <button class="text-lake hover:text-pine" @click="openEdit(emp, entry)">Edit</button>
-                            <button class="text-red-400 hover:text-red-600" @click="confirmDelete(emp, entry)">Delete</button>
-                          </div>
-                        </div>
-                        <div v-if="!week.entries.length" class="px-4 py-3 text-gray-400 text-xs">No time recorded.</div>
-                      </div>
-                    </div>
-                    <button class="text-xs text-lake hover:text-pine font-body" @click="openCreate(emp)">
-                      + Add entry for {{ emp.firstName }}
-                    </button>
-                  </td>
-                </tr>
-              </template>
-              <tr v-if="!sheet.employees.length">
-                <td colspan="7" class="px-5 py-8 text-center text-gray-400">
-                  No employees yet. Add them on the Employees page.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <p class="text-gray-400 text-xs font-body mt-3">
+      <!-- Employees: a row opens that employee's entries below the table -->
+      <DataTable
+        :columns="columns"
+        :rows="sheet?.employees ?? []"
+        :loading="!sheet"
+        caption="Hours per employee"
+        :row-label="emp => `${selectedId === emp.id ? 'Hide' : 'Show'} time entries for ${emp.firstName} ${emp.lastName}`"
+        @row-click="toggle"
+      >
+        <template #cell-name="{ row }">
+          {{ row.lastName }}, {{ row.firstName }}
+          <span v-if="!row.active" class="ml-1 text-body-s font-normal text-on-surface-variant">(inactive)</span>
+        </template>
+        <template #cell-overtime="{ row }">
+          <span :class="row.overtime > 0 ? 'text-tertiary font-bold' : 'text-on-surface-variant'">{{ formatHours(row.overtime) }}</span>
+        </template>
+        <template #cell-workedMinutes="{ row }">
+          <span class="font-bold">{{ formatHours(row.workedMinutes) }}</span>
+        </template>
+        <template #cell-state="{ row }">
+          <span class="inline-flex items-center gap-2">
+            <StatusChip v-if="row.longOpenEntries" label="Missed clock-out" tone="error" icon="warning" size="sm" />
+            <StatusChip v-else-if="row.openEntries" label="On the clock" tone="primary" icon="pending" size="sm" />
+            <span v-else class="text-on-surface-variant">—</span>
+            <component
+              :is="selectedId === row.id ? IconExpandLess : IconExpandMore"
+              class="hidden md:block w-6 h-6 ml-auto text-on-surface-variant print:hidden"
+              aria-hidden="true"
+            />
+          </span>
+        </template>
+        <template #empty>
+          <EmptyState compact :icon="IconBadge" title="No employees yet" message="Add them on the Employees page." action-label="Go to Employees" to="/admin/employees" />
+        </template>
+      </DataTable>
+      <p class="mt-3 text-body-m text-on-surface-variant">
         Hours count toward the day the employee clocked in. Overtime is time over 40 hours in a workweek.
         Estimated gross pay is in the summary CSV (overtime at 1.5×).
       </p>
+
+      <!-- Detail -->
+      <Card
+        v-if="selected"
+        ref="detailEl"
+        variant="outlined"
+        padding="lg"
+        tag="section"
+        class="mt-6 scroll-mt-24 break-inside-avoid-page"
+        aria-labelledby="timesheet-detail-heading"
+      >
+        <div class="flex items-start gap-2">
+          <div class="flex-1 min-w-0">
+            <h2 id="timesheet-detail-heading" tabindex="-1" class="font-display text-headline-s text-on-surface focus:outline-none">
+              {{ selected.firstName }} {{ selected.lastName }}
+            </h2>
+            <p class="mt-1 text-body-m text-on-surface-variant">
+              {{ positionLabel(selected.position) }} · {{ formatHours(selected.workedMinutes) }} h
+              <template v-if="selected.overtime > 0">· {{ formatHours(selected.overtime) }} h overtime</template>
+            </p>
+          </div>
+          <IconButton :icon="IconClose" label="Close time entries" class="-mr-2 -mt-2 print:hidden" @click="selectedId = null" />
+        </div>
+
+        <div v-for="week in weeksFor(selected)" :key="week.weekStart" class="mt-6">
+          <div class="flex flex-wrap items-baseline justify-between gap-x-3 mb-2">
+            <h3 class="text-title-s text-on-surface">Week of {{ formatLocalDate(week.weekStart, { month: 'short', day: 'numeric' }) }}</h3>
+            <p class="text-body-m text-on-surface-variant tabular-nums">
+              {{ formatHours(week.workedMinutes) }} h
+              <span v-if="week.overtime > 0" class="text-tertiary">· {{ formatHours(week.overtime) }} h overtime</span>
+            </p>
+          </div>
+          <ul class="rounded-shape-md border border-outline-variant divide-y divide-outline-variant">
+            <li v-for="entry in week.entries" :key="entry.id" class="flex items-start gap-3 pl-4 pr-1 py-2">
+              <div class="flex-1 min-w-0 py-1.5 sm:flex sm:items-start sm:gap-4">
+                <p class="sm:w-32 flex-none text-title-s text-on-surface">{{ formatLocalDate(entry.date) }}</p>
+                <div class="flex-1 min-w-0">
+                  <p class="text-body-m text-on-surface">
+                    {{ formatClockTime(entry.clockIn) }} – {{ entry.clockOut ? formatClockTime(entry.clockOut) : 'still on the clock' }}
+                    <span v-if="entry.breakMinutes" class="text-on-surface-variant">· {{ formatMinutes(entry.breakMinutes) }} break</span>
+                  </p>
+                  <p v-if="entry.longOpen || entry.editedAt" class="mt-1 flex flex-wrap gap-1">
+                    <StatusChip v-if="entry.longOpen" label="Open 14+ h" tone="error" icon="warning" size="sm" />
+                    <span v-if="entry.editedAt" title="Corrected by a manager">
+                      <StatusChip label="Edited" tone="neutral" icon="info" size="sm" />
+                    </span>
+                  </p>
+                  <p v-if="entry.note" class="mt-1 text-body-s text-on-surface-variant">{{ entry.note }}</p>
+                </div>
+                <p class="mt-1 sm:mt-0 sm:w-20 sm:text-right text-body-m text-on-surface tabular-nums">
+                  {{ formatMinutes(entry.workedMinutes) }}
+                </p>
+              </div>
+              <RowActionsMenu
+                class="print:hidden"
+                :label="`Actions for ${formatLocalDate(entry.date)}, ${formatClockTime(entry.clockIn)}`"
+                :items="[
+                  { label: 'Edit', icon: IconEdit, onClick: () => openEdit(selected, entry) },
+                  { label: 'Delete', icon: IconDelete, danger: true, onClick: () => deleteEntry(selected, entry) },
+                ]"
+              />
+            </li>
+            <li v-if="!week.entries.length" class="px-4 py-3 text-body-m text-on-surface-variant">No time recorded.</li>
+          </ul>
+        </div>
+
+        <template #footer>
+          <AppButton variant="tonal" :icon="IconAdd" class="print:hidden" @click="openCreate(selected)">
+            Add entry for {{ selected.firstName }}
+          </AppButton>
+        </template>
+      </Card>
     </template>
 
     <!-- Add / edit entry -->
-    <div v-if="form" class="modal-overlay" @click.self="form = null">
-      <div class="modal-box max-w-lg overflow-y-auto max-h-[90vh]">
-        <h2 class="font-display font-bold text-bark mb-4">{{ form.id ? 'Edit Time Entry' : 'Add Time Entry' }}</h2>
-        <div class="space-y-3">
-          <div>
-            <label class="label-sm">Employee</label>
-            <select v-if="!form.id && !form.lockEmployee" v-model="form.employeeId" class="input-field w-full">
-              <option value="" disabled>Select an employee</option>
-              <option v-for="emp in sheet.employees" :key="emp.id" :value="emp.id">
-                {{ emp.lastName }}, {{ emp.firstName }}
-              </option>
-            </select>
-            <div v-else class="text-bark font-body text-sm py-2">{{ form.employeeName }}</div>
-          </div>
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label class="label-sm">Date</label>
-              <input v-model="form.date" type="date" class="input-field w-full" />
-            </div>
-            <div>
-              <label class="label-sm">Clock In</label>
-              <input v-model="form.clockIn" type="time" class="input-field w-full" />
-            </div>
-            <div>
-              <label class="label-sm">
-                Clock Out
-                <span v-if="nextDay(form.clockOut)" class="text-gold">(next day)</span>
-              </label>
-              <input v-model="form.clockOut" type="time" class="input-field w-full" />
-            </div>
-          </div>
-          <p class="text-gray-400 text-xs font-body">
-            Leave Clock Out empty if the employee is still on the clock. A time earlier than Clock In counts as the next day.
-          </p>
-
-          <div>
-            <div class="flex items-center justify-between mb-1">
-              <label class="label-sm mb-0">Breaks</label>
-              <button class="text-xs text-lake hover:text-pine font-body" @click="form.breaks.push({ start: '', end: '' })">+ Add break</button>
-            </div>
-            <div v-for="(b, i) in form.breaks" :key="i" class="flex items-center gap-2 mb-2">
-              <input v-model="b.start" type="time" class="input-field flex-1" />
-              <span class="text-gray-400 text-sm">to</span>
-              <input v-model="b.end" type="time" class="input-field flex-1" />
-              <button class="text-red-400 hover:text-red-600 text-xs px-2" aria-label="Remove break" @click="form.breaks.splice(i, 1)">✕</button>
-            </div>
-            <p v-if="!form.breaks.length" class="text-gray-400 text-xs font-body">No breaks.</p>
-          </div>
-
-          <div>
-            <label class="label-sm">Note</label>
-            <input v-model="form.note" type="text" class="input-field w-full" placeholder="e.g. Forgot to clock out — confirmed with employee" />
-          </div>
+    <AppDialog
+      :open="!!form"
+      :title="form?.id ? 'Edit time entry' : 'Add time entry'"
+      size="lg"
+      persistent
+      fullscreen-on-mobile
+      :confirm-label="form?.id ? 'Save' : 'Add'"
+      :confirm-loading="saving"
+      @update:open="v => { if (!v) form = null }"
+      @confirm="submitEntry"
+    >
+      <form v-if="form" id="time-entry-form" ref="entryFormEl" class="space-y-4 pt-2 pb-2" @submit.prevent="submitEntry">
+        <SelectField
+          v-if="!form.id && !form.lockEmployee"
+          v-model="form.employeeId"
+          label="Employee"
+          required
+          placeholder="Select an employee"
+          :options="(sheet?.employees ?? []).map(emp => ({ value: emp.id, label: `${emp.lastName}, ${emp.firstName}` }))"
+        />
+        <div v-else>
+          <p class="text-body-s text-on-surface-variant">Employee</p>
+          <p class="text-body-l text-on-surface">{{ form.employeeName }}</p>
         </div>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="form = null">Cancel</button>
-          <button :disabled="saving" class="btn-amber px-4 py-2 text-sm disabled:opacity-50" @click="saveEntry">
-            {{ saving ? 'Saving…' : (form.id ? 'Save Changes' : 'Add Entry') }}
-          </button>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <TextField v-model="form.date" type="date" label="Date" float-label required />
+          <TextField v-model="form.clockIn" type="time" label="Clock in" float-label required />
+          <TextField
+            v-model="form.clockOut"
+            type="time"
+            label="Clock out"
+            float-label
+            :helper="nextDay(form.clockOut) ? 'Next day' : ''"
+          />
         </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">{{ formError }}</p>
-      </div>
-    </div>
-
-    <!-- Delete confirm -->
-    <div v-if="deleting" class="modal-overlay" @click.self="deleting = null">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-2">Delete Time Entry?</h2>
-        <p class="text-gray-500 text-sm font-body mb-5">
-          {{ deleting.employeeName }} · {{ formatLocalDate(deleting.entry.date) }},
-          {{ formatClockTime(deleting.entry.clockIn) }} –
-          {{ deleting.entry.clockOut ? formatClockTime(deleting.entry.clockOut) : 'still on the clock' }}.
-          This removes the entry and its breaks permanently.
+        <p class="text-body-s text-on-surface-variant">
+          Leave Clock out empty if the employee is still on the clock. A time earlier than Clock in counts as the next day.
         </p>
-        <div class="flex justify-end gap-3">
-          <button class="btn-outline-sm" @click="deleting = null">Cancel</button>
-          <button :disabled="saving" class="bg-red-500 hover:bg-red-600 text-white text-sm px-4 py-2 rounded-lg font-body transition-colors" @click="deleteEntry">
-            {{ saving ? 'Deleting…' : 'Delete' }}
-          </button>
-        </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">{{ formError }}</p>
-      </div>
-    </div>
+
+        <fieldset aria-labelledby="breaks-heading">
+          <div class="flex items-center justify-between gap-2">
+            <h3 id="breaks-heading" class="text-title-s text-on-surface">Breaks</h3>
+            <AppButton variant="text" :icon="IconAdd" @click="form.breaks.push({ start: '', end: '' })">Add break</AppButton>
+          </div>
+          <div v-for="(b, i) in form.breaks" :key="i" class="mt-2 flex items-start gap-2">
+            <TextField v-model="b.start" type="time" :label="`Break ${i + 1} start`" float-label class="flex-1 min-w-0" />
+            <TextField v-model="b.end" type="time" label="End" float-label class="flex-1 min-w-0" />
+            <IconButton :icon="IconDelete" :label="`Remove break ${i + 1}`" class="mt-1" @click="form.breaks.splice(i, 1)" />
+          </div>
+          <p v-if="!form.breaks.length" class="mt-1 text-body-m text-on-surface-variant">No breaks.</p>
+        </fieldset>
+
+        <TextField v-model="form.note" label="Note" placeholder="e.g. Forgot to clock out, confirmed with employee" />
+        <ErrorBanner v-if="formError" :message="formError" />
+      </form>
+      <template #actions="{ close }">
+        <AppButton variant="text" :disabled="saving" @click="close">Cancel</AppButton>
+        <AppButton type="submit" form="time-entry-form" :loading="saving">{{ form?.id ? 'Save changes' : 'Add entry' }}</AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
+import { ref, computed, nextTick, onMounted } from 'vue'
+import { apiDownload, apiFetch } from '@/lib/api'
 import { positionLabel } from '@/data/employeePositions'
 import {
-  localDate, localTime, weekStart, formatMinutes, formatClockTime, formatLocalDate,
+  localDate, localTime, weekStart, addDays, formatMinutes, formatClockTime, formatLocalDate,
 } from '@/lib/timeclock'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import Card from '@/components/ui/Card.vue'
+import DataTable from '@/components/ui/DataTable.vue'
+import DateStepper from '@/components/ui/DateStepper.vue'
+import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
+import StatCard from '@/components/ui/StatCard.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import TextField from '@/components/ui/TextField.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import IconMoreTime from '~icons/material-symbols/more-time-rounded'
+import IconDownload from '~icons/material-symbols/download-rounded'
+import IconClock from '~icons/material-symbols/schedule-rounded'
+import IconTimer from '~icons/material-symbols/timer-rounded'
+import IconPerson from '~icons/material-symbols/punch-clock-rounded'
+import IconWarning from '~icons/material-symbols/warning-rounded'
+import IconBadge from '~icons/material-symbols/badge-rounded'
+import IconExpandMore from '~icons/material-symbols/expand-more-rounded'
+import IconExpandLess from '~icons/material-symbols/expand-less-rounded'
+import IconClose from '~icons/material-symbols/close-rounded'
+import IconEdit from '~icons/material-symbols/edit-rounded'
+import IconDelete from '~icons/material-symbols/delete-rounded'
+import IconAdd from '~icons/material-symbols/add-rounded'
 
-const authStore = useAuthStore()
+const confirm   = useConfirm()
+const snackbar  = useSnackbar()
+
 const sheet     = ref(null)
 const loading   = ref(false)
 const error     = ref(null)
-const expanded  = ref({})
+const actionError = ref(null)
+const selectedId  = ref(null)
+const detailEl  = ref(null)
 const form      = ref(null)
-const deleting  = ref(null)
 const saving    = ref(false)
 const formError = ref(null)
+const entryFormEl = ref(null)
 const downloading   = ref(false)
 const downloadError = ref(null)
+// Start of the pay period containing today: the stepper can't go past it
+const currentStart  = ref(null)
+
+const columns = [
+  { key: 'name', label: 'Employee', primary: true },
+  { key: 'position', label: 'Position', format: v => positionLabel(v) },
+  { key: 'regular', label: 'Regular (h)', align: 'right', class: 'tabular-nums', format: v => formatHours(v) },
+  { key: 'overtime', label: 'Overtime (h)', align: 'right', class: 'tabular-nums' },
+  { key: 'workedMinutes', label: 'Total (h)', align: 'right', class: 'tabular-nums' },
+  { key: 'state', label: 'Status', class: 'whitespace-nowrap' },
+]
 
 const isCurrent = computed(() => {
   if (!sheet.value) return true
@@ -242,10 +302,14 @@ const isCurrent = computed(() => {
   return sheet.value.period.start <= today && today <= sheet.value.period.end
 })
 
-const periodLabel = computed(() => {
-  const { start, end } = sheet.value.period
+const selected = computed(() => sheet.value?.employees.find(e => e.id === selectedId.value) ?? null)
+
+/** "Oct 25 – Nov 7, 2026" for the period starting at `start` */
+function periodTitle(start) {
+  const p = sheet.value?.period
+  const end = p && p.start === start ? p.end : addDays(start, (p?.lengthDays || 14) - 1)
   return `${formatLocalDate(start, { month: 'short', day: 'numeric' })} – ${formatLocalDate(end, { month: 'short', day: 'numeric', year: 'numeric' })}`
-})
+}
 
 function formatHours(minutes) {
   return (minutes / 60).toFixed(2)
@@ -259,12 +323,13 @@ function weeksFor(emp) {
   }))
 }
 
-function toggle(id) {
-  expanded.value = { ...expanded.value, [id]: !expanded.value[id] }
-}
-
-function authHeaders(extra = {}) {
-  return { ...extra, Authorization: `Bearer ${authStore.getToken()}` }
+async function toggle(emp) {
+  selectedId.value = selectedId.value === emp.id ? null : emp.id
+  if (!selectedId.value) return
+  await nextTick()
+  const el = detailEl.value?.$el
+  el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  el?.querySelector('#timesheet-detail-heading')?.focus({ preventScroll: true })
 }
 
 async function load(date = sheet.value?.period.start ?? null) {
@@ -272,9 +337,9 @@ async function load(date = sheet.value?.period.start ?? null) {
   error.value   = null
   try {
     const params = date ? `?${new URLSearchParams({ date })}` : ''
-    const res = await fetch(`/api/admin/timesheets${params}`, { headers: authHeaders() })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-    sheet.value = await res.json()
+    sheet.value = await apiFetch(`/api/admin/timesheets${params}`)
+    const today = localDate()
+    if (sheet.value.period.start <= today && today <= sheet.value.period.end) currentStart.value = sheet.value.period.start
   } catch (e) {
     error.value = e.message
   } finally {
@@ -282,20 +347,13 @@ async function load(date = sheet.value?.period.start ?? null) {
   }
 }
 
+// CSV comes back as a file, not JSON, so it goes through apiDownload
 async function downloadCsv(detail) {
   downloading.value   = true
   downloadError.value = null
   try {
     const params = new URLSearchParams({ date: sheet.value.period.start, format: 'csv', detail })
-    const res = await fetch(`/api/admin/timesheets?${params}`, { headers: authHeaders() })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-    const filename = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] ?? 'timesheet.csv'
-    const url = URL.createObjectURL(await res.blob())
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    await apiDownload(`/api/admin/timesheets?${params}`, 'timesheet.csv')
   } catch (e) {
     downloadError.value = e.message
   } finally {
@@ -314,7 +372,7 @@ function openCreate(emp) {
   const { start, end } = sheet.value.period
   form.value = {
     id: null,
-    employeeId: emp?.id ?? '',
+    employeeId: emp?.id ?? null,
     employeeName: emp ? `${emp.firstName} ${emp.lastName}` : '',
     lockEmployee: !!emp,
     date: today >= start && today <= end ? today : start,
@@ -341,6 +399,11 @@ function openEdit(emp, entry) {
   formError.value = null
 }
 
+function submitEntry() {
+  if (entryFormEl.value && !entryFormEl.value.reportValidity()) return
+  saveEntry()
+}
+
 async function saveEntry() {
   const f = form.value
   if (!f.employeeId) {
@@ -358,14 +421,13 @@ async function saveEntry() {
       breaks: f.breaks.map(b => ({ start: b.start, end: b.end || null })),
       note: f.note,
     }
-    const res = await fetch(f.id ? `/api/admin/time-entries/${f.id}` : '/api/admin/time-entries', {
+    await apiFetch(f.id ? `/api/admin/time-entries/${f.id}` : '/api/admin/time-entries', {
       method: f.id ? 'PUT' : 'POST',
-      headers: authHeaders({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(body),
+      body,
     })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-    expanded.value = { ...expanded.value, [f.employeeId]: true }
+    selectedId.value = f.employeeId
     form.value = null
+    snackbar.show(f.id ? 'Time entry saved' : 'Time entry added')
     await load()
   } catch (e) {
     formError.value = e.message
@@ -376,42 +438,23 @@ async function saveEntry() {
 
 // ─── Delete ─────────────────────────────────────────────────────────────────
 
-function confirmDelete(emp, entry) {
-  deleting.value  = { entry, employeeName: `${emp.firstName} ${emp.lastName}` }
-  formError.value = null
-}
-
-async function deleteEntry() {
-  saving.value    = true
-  formError.value = null
+async function deleteEntry(emp, entry) {
+  actionError.value = null
+  const ok = await confirm({
+    title: 'Delete time entry?',
+    message: `${emp.firstName} ${emp.lastName} · ${formatLocalDate(entry.date)}, ${formatClockTime(entry.clockIn)} – ${entry.clockOut ? formatClockTime(entry.clockOut) : 'still on the clock'}. This removes the entry and its breaks permanently.`,
+    confirmLabel: 'Delete',
+    destructive: true,
+  })
+  if (!ok) return
   try {
-    const res = await fetch(`/api/admin/time-entries/${deleting.value.entry.id}`, {
-      method: 'DELETE',
-      headers: authHeaders(),
-    })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-    deleting.value = null
+    await apiFetch(`/api/admin/time-entries/${entry.id}`, { method: 'DELETE' })
+    snackbar.show('Time entry deleted')
     await load()
   } catch (e) {
-    formError.value = e.message
-  } finally {
-    saving.value = false
+    actionError.value = e.message
   }
 }
 
 onMounted(() => load(null))
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.th             { @apply px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold; }
-.td             { @apply px-5 py-3; }
-.badge          { @apply text-xs px-2 py-0.5 rounded-full font-body; }
-.stat-card      { @apply bg-white rounded-xl border border-gray-200 p-5; }
-.stat-label     { @apply text-gray-400 text-xs font-body uppercase tracking-wider mb-1; }
-.stat-value     { @apply text-3xl font-display font-bold text-bark tabular-nums; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent; }
-</style>

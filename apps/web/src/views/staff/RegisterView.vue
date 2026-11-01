@@ -1,321 +1,111 @@
 <template>
   <div>
-    <div class="print:hidden">
-      <div v-if="loading && !catalog" class="text-gray-400 text-sm">Loading register…</div>
-      <div v-else-if="loadError" class="text-red-500 text-sm">{{ loadError }}</div>
+    <!-- Everything on screen is print-hidden: only the current slip (below) prints -->
+    <div class="print:hidden md:h-[calc(100dvh-4rem)]">
+      <!-- Loading -->
+      <div
+        v-if="loading && !catalog"
+        class="h-full md:grid md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_24rem]"
+      >
+        <div class="p-4 space-y-4">
+          <Skeleton variant="rect" height="56px" label="Loading the register" />
+          <div class="flex gap-2">
+            <Skeleton v-for="n in 4" :key="n" variant="rect" width="96px" height="48px" />
+          </div>
+          <div class="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-3">
+            <Skeleton v-for="n in 12" :key="n" variant="rect" height="96px" />
+          </div>
+        </div>
+        <div class="hidden md:block bg-surface-container-low border-l border-outline-variant p-4">
+          <Skeleton variant="text" :lines="8" />
+        </div>
+      </div>
+
+      <div v-else-if="loadError && !catalog" class="p-4 md:p-8 max-w-xl">
+        <ErrorBanner :message="loadError" title="Couldn't load the register" :retrying="loading" @retry="loadCatalog" />
+      </div>
 
       <!-- Which register is this PC? -->
-      <div v-else-if="catalog && !register" class="max-w-md bg-white rounded-xl border border-gray-200 p-6">
-        <h2 class="font-display font-bold text-bark mb-1">Which register is this?</h2>
-        <p class="text-gray-500 text-sm font-body mb-4">This is saved on this computer, so you only choose once.</p>
-        <div class="space-y-2">
-          <button
-            v-for="r in catalog.registers"
-            :key="r.id"
-            class="w-full text-left border border-gray-200 rounded-lg px-4 py-3 font-body text-bark hover:border-pine hover:bg-pine/5"
-            @click="chooseRegister(r.id)"
-          >
-            {{ r.name }}
-          </button>
-        </div>
-        <p v-if="!catalog.registers.length" class="text-gray-400 text-sm font-body">
-          No registers are set up yet. An admin can add one in Admin → Registers.
-        </p>
-      </div>
-
-      <div v-else-if="catalog" class="grid lg:grid-cols-[1fr_24rem] gap-5 items-start">
-        <!-- Products -->
-        <section>
-          <div class="flex gap-3 mb-2">
-            <input
-              ref="searchInput"
-              v-model="search"
-              type="text"
-              class="input-field flex-1 text-base"
-              placeholder="Scan a barcode or search products"
-              autocomplete="off"
-              @keydown.enter.prevent="onSearchEnter"
-              @input="scanMessage = null"
-            />
-            <button class="btn-outline-sm whitespace-nowrap" @click="openCustom">+ Custom Item</button>
-          </div>
-          <p v-if="scanMessage" class="text-clay text-sm font-body mb-2">{{ scanMessage }}</p>
-
-          <div v-if="!search" class="flex flex-wrap gap-2 mb-4">
-            <button
-              v-for="c in catalog.categories"
-              :key="c.id"
-              :class="['px-3 py-1.5 rounded-lg text-sm font-body transition-colors',
-                c.id === activeCategoryId ? 'bg-pine text-parch' : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50']"
-              @click="activeCategoryId = c.id"
-            >
-              {{ c.name }}
-            </button>
-          </div>
-
-          <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
-            <button
-              v-for="p in visibleProducts"
-              :key="p.id"
-              class="bg-white border border-gray-200 rounded-xl p-3 text-left hover:border-pine hover:shadow-sm transition min-h-[5.5rem] flex flex-col"
-              @click="chooseProduct(p)"
-            >
-              <span class="font-body font-semibold text-bark text-sm leading-snug">{{ p.name }}</span>
-              <span class="mt-auto pt-2 flex items-center justify-between gap-2">
-                <span class="font-body text-gray-600 text-sm tabular-nums">{{ productPriceLabel(p) }}</span>
-                <span v-if="p.variants.length > 1" class="text-xs text-gray-400 font-body">{{ p.variants.length }} options</span>
-                <span v-else-if="isOutOfStock(p)" class="text-xs text-red-600 font-body">Out</span>
-              </span>
-            </button>
-          </div>
-          <p v-if="!visibleProducts.length" class="text-gray-400 text-sm font-body">No products{{ search ? ' match' : ' in this category' }}.</p>
-        </section>
-
-        <!-- Cart -->
-        <aside class="bg-white rounded-xl border border-gray-200 flex flex-col lg:sticky lg:top-20 lg:max-h-[calc(100vh-7rem)]">
-          <div class="px-4 py-3 border-b border-gray-100 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-body text-gray-500">
-            <span class="font-semibold text-bark mr-auto">{{ register.name }}</span>
-            <button class="text-lake hover:text-pine" @click="showRecentSales = true">Recent sales</button>
-            <button class="text-lake hover:text-pine" @click="noSale">No sale</button>
-            <button class="text-lake hover:text-pine" @click="showAccountPayment = true">Account payment</button>
-            <button
-              v-if="authStore.isRegisterManager"
-              class="text-lake hover:text-pine"
-              title="Print today's end-of-day (Z) report for this register"
-              @click="printZReport"
-            >
-              End of day
-            </button>
-            <button class="text-lake hover:text-pine" @click="changeRegister">Change register</button>
-          </div>
-          <p v-if="registerError" class="px-4 pt-2 text-red-500 text-xs font-body">{{ registerError }}</p>
-
-          <!-- Cash drawer -->
-          <div v-if="drawer && !drawer.session" class="mx-4 mt-3 rounded-lg bg-gold/15 border border-gold/40 px-3 py-2 flex items-center gap-3">
-            <span class="text-xs font-body text-bark flex-1">The cash drawer is closed. Count the starting cash and open it to take cash.</span>
-            <button class="btn-amber px-3 py-1.5 text-xs whitespace-nowrap" @click="openDrawerForm">Open drawer</button>
-          </div>
-          <div v-else-if="drawer?.session" class="px-4 pt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-body text-gray-400">
-            <span class="basis-full truncate">
-              Drawer open since {{ formatTime(drawer.session.openedAt) }} ({{ drawer.session.openedBy?.firstName }})
-              · start {{ formatCents(drawer.session.openingFloatCents) }}
-              <template v-if="drawer.session.movements?.length"> · {{ drawer.session.movements.length }} paid in/out</template>
-              <template v-if="drawer.session.expectedCents !== undefined"> · expected {{ formatCents(drawer.session.expectedCents) }}</template>
-            </span>
-            <!-- Paid in / paid out / safe drop: each needs a manager and prints a slip, which opens the drawer -->
-            <button class="text-lake hover:text-pine" @click="startCashMovement('PAID_IN')">Paid in</button>
-            <button class="text-lake hover:text-pine" @click="startCashMovement('PAID_OUT')">Paid out</button>
-            <button class="text-lake hover:text-pine" @click="startCashMovement('SAFE_DROP')">Safe drop</button>
-            <button class="text-lake hover:text-pine ml-auto" @click="closeDrawerForm">Close drawer</button>
-          </div>
-
-          <!-- Customer -->
-          <div class="px-4 py-3 border-b border-gray-100">
-            <div v-if="customer" class="flex items-center justify-between gap-2">
-              <div class="min-w-0">
-                <div class="font-body text-sm text-bark truncate">{{ customer.name || customer.email }}</div>
-                <div class="text-xs font-body" :class="isMember ? 'text-lake' : 'text-gray-400'">
-                  <template v-if="isMember">Member pricing · {{ memberDiscountRateBps(customer.membershipTier) / 100 }}% off Pro Shop</template>
-                  <template v-else>{{ customer.role === 'MEMBER' ? 'Membership expired' : 'Not a member' }}</template>
-                </div>
-              </div>
-              <button class="text-xs text-red-400 hover:text-red-600 font-body" @click="customer = null">Remove</button>
-            </div>
-            <button v-else class="text-sm text-lake hover:text-pine font-body" @click="showCustomerPicker = true">+ Attach customer</button>
-          </div>
-
-          <!-- Lines -->
-          <div ref="linesEl" class="flex-1 overflow-y-auto divide-y divide-gray-50 min-h-[8rem]">
-            <div
-              v-for="line in pricedLines"
-              :key="line.key"
-              :data-line-key="line.key"
-              :class="['cart-line px-4 py-2.5', { 'bg-gold/15': line.key === highlightLineKey }]"
-            >
-              <div class="flex justify-between gap-2">
-                <span class="font-body text-sm text-bark">{{ line.description }}</span>
-                <span class="font-body text-sm text-bark tabular-nums">{{ formatCents(line.subtotalCents) }}</span>
-              </div>
-              <div v-if="line.booking || line.newBooking" class="flex items-center gap-2 mt-1">
-                <span class="text-xs text-lake font-body">{{ line.newBooking ? 'Booked when the sale completes' : 'Prepaid tee time' }}</span>
-                <button class="ml-auto text-xs text-red-400 hover:text-red-600 font-body" @click="removeLine(line)">Remove</button>
-              </div>
-              <div v-else class="flex items-center gap-2 mt-1">
-                <button class="qty-btn" aria-label="Decrease quantity" @click="changeQty(line, -1)">−</button>
-                <span class="w-6 text-center text-sm font-body tabular-nums">{{ line.quantity }}</span>
-                <button class="qty-btn" aria-label="Increase quantity" @click="changeQty(line, 1)">+</button>
-                <span class="text-xs text-gray-400 font-body">@ {{ formatCents(line.unitPriceCents) }}</span>
-                <span v-if="line.taxRateBps === 0" class="text-xs text-gray-400 font-body">· no tax</span>
-                <!-- Automatic for active members; the Discount button is the manager's discount (needs approval) -->
-                <span v-if="line.memberDiscountCents" class="text-xs text-lake font-body">
-                  · member {{ line.memberDiscountBps / 100 }}% −{{ formatCents(line.memberDiscountCents) }}
-                </span>
-                <span class="ml-auto space-x-2 text-xs font-body">
-                  <button class="text-lake hover:text-pine" @click="openDiscount(line)">
-                    {{ line.managerDiscountCents ? `−${formatCents(line.managerDiscountCents)}` : 'Discount' }}
-                  </button>
-                  <button class="text-red-400 hover:text-red-600" @click="removeLine(line)">Remove</button>
-                </span>
-              </div>
-            </div>
-            <p v-if="!cart.length" class="px-4 py-8 text-center text-gray-400 text-sm font-body">Scan or tap products to start a sale.</p>
-          </div>
-
-          <!-- Totals -->
-          <div class="border-t border-gray-100 px-4 py-3 font-body text-sm space-y-1">
-            <div v-if="memberDiscountTotal" class="flex justify-between text-lake">
-              <span>Member discount</span><span class="tabular-nums">−{{ formatCents(memberDiscountTotal) }}</span>
-            </div>
-            <div v-if="totals.discountCents - memberDiscountTotal" class="flex justify-between text-gray-500">
-              <span>Discounts</span><span class="tabular-nums">−{{ formatCents(totals.discountCents - memberDiscountTotal) }}</span>
-            </div>
-            <div class="flex justify-between text-gray-500"><span>Subtotal</span><span class="tabular-nums">{{ formatCents(totals.subtotalCents) }}</span></div>
-            <div class="flex justify-between text-gray-500">
-              <span>Tax ({{ (catalog.salesTaxBps / 100).toFixed(2) }}%)</span><span class="tabular-nums">{{ formatCents(totals.taxCents) }}</span>
-            </div>
-            <div class="flex justify-between text-bark font-display font-bold text-xl pt-1">
-              <span>Total</span><span class="tabular-nums">{{ formatCents(totals.totalCents) }}</span>
-            </div>
-          </div>
-          <p v-if="needsCustomerForMembership" class="px-4 pb-2 text-clay text-xs font-body">
-            Attach the customer to sell a membership, so it goes on their account.
-          </p>
-          <div class="px-4 pb-4 flex gap-2">
-            <button class="btn-outline-sm" :disabled="!cart.length" @click="clearSale">Clear</button>
-            <button class="btn-amber flex-1 py-3 text-base disabled:opacity-50" :disabled="!cart.length || needsCustomerForMembership" @click="openTender">
-              Charge {{ formatCents(totals.totalCents) }}
-            </button>
-          </div>
-        </aside>
-      </div>
-    </div>
-
-    <!-- Sale complete -->
-    <div v-if="completed" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-sm text-center">
-        <div class="text-gray-400 text-xs font-body uppercase tracking-wider">Sale #{{ completed.sale.number }} complete</div>
-        <template v-if="completed.sale.changeCents">
-          <div class="text-gray-500 text-sm font-body mt-4">Change due</div>
-          <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(completed.sale.changeCents) }}</div>
-        </template>
-        <div v-else class="font-display font-bold text-bark text-3xl mt-3 tabular-nums">{{ formatCents(completed.sale.totalCents) }}</div>
-
-        <p v-for="w in completed.warnings" :key="w" class="text-clay text-sm font-body mt-3">{{ w }}</p>
-        <p v-if="completed.membershipUntil" class="text-lake text-sm font-body mt-3">Membership active through {{ completed.membershipUntil }}</p>
-        <p v-if="completed.emailError" class="text-clay text-sm font-body mt-3">Receipt email failed: {{ completed.emailError }}</p>
-        <p v-else-if="completed.emailedTo" class="text-gray-500 text-sm font-body mt-3">Receipt emailed to {{ completed.emailedTo }}</p>
-
-        <div class="mt-5 space-y-2">
-          <button class="btn-outline-sm w-full" @click="printDocument({ type: 'sale', sale: completed.sale })">Print Receipt</button>
-          <div class="flex gap-2">
-            <input v-model="completed.emailInput" type="email" class="input-field flex-1" placeholder="Email receipt to…" />
-            <button class="btn-outline-sm" :disabled="completed.sending || !completed.emailInput" @click="emailCompletedReceipt">
-              {{ completed.sending ? 'Sending…' : 'Send' }}
-            </button>
-          </div>
-          <button ref="newSaleButton" class="btn-amber w-full py-3 text-base" @click="startNewSale">New Sale</button>
+      <div v-else-if="catalog && !register" class="p-4 md:p-8">
+        <div class="max-w-md rounded-shape-lg bg-surface-container-low border border-outline-variant p-6">
+          <h2 class="font-display text-headline-s text-on-surface mb-1">Which register is this?</h2>
+          <p class="text-body-m text-on-surface-variant mb-4">This is saved on this computer, so you only choose once.</p>
+          <ul v-if="catalog.registers.length" class="space-y-2">
+            <li v-for="r in catalog.registers" :key="r.id">
+              <button
+                type="button"
+                class="state-layer w-full min-h-16 flex items-center gap-4 px-4 rounded-shape-md border border-outline-variant bg-surface-container-lowest text-left text-title-m text-on-surface cursor-pointer"
+                @click="chooseRegister(r.id)"
+              >
+                <IconStore class="w-6 h-6 flex-none text-on-surface-variant" aria-hidden="true" />
+                <span class="flex-1 min-w-0 truncate">{{ r.name }}</span>
+                <IconChevron class="w-6 h-6 flex-none text-on-surface-variant" aria-hidden="true" />
+              </button>
+            </li>
+          </ul>
+          <EmptyState
+            v-else
+            compact
+            :icon="IconStore"
+            title="No registers yet"
+            message="An admin can add one in Admin → Registers."
+          />
         </div>
       </div>
-    </div>
 
-    <!-- Refund / void done -->
-    <div v-if="refundResult" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-sm text-center">
-        <div class="text-gray-400 text-xs font-body uppercase tracking-wider">
-          Sale #{{ refundResult.sale.number }} {{ refundResult.refund.kind === 'VOID' ? 'voided' : 'refunded' }}
-        </div>
-        <template v-if="refundResult.refund.method === 'HOUSE_ACCOUNT'">
-          <div class="text-gray-500 text-sm font-body mt-4">Credited to the house account</div>
-          <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
-          <div class="text-gray-400 text-xs font-body">It shows on the member's next statement</div>
-        </template>
-        <template v-else-if="refundResult.refund.method === 'CARD_TERMINAL'">
-          <div class="text-gray-500 text-sm font-body mt-4">Refunded to the card</div>
-          <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
-          <div class="text-gray-400 text-xs font-body">It shows on the customer's statement in 5–10 days</div>
-        </template>
-        <template v-else>
-          <div class="text-gray-500 text-sm font-body mt-4">Give the customer</div>
-          <div class="font-display font-bold text-clay text-5xl tabular-nums">{{ formatCents(refundResult.refund.amountCents) }}</div>
-          <div class="text-gray-400 text-xs font-body">cash</div>
-        </template>
-        <p v-for="w in refundResult.warnings" :key="w" class="text-clay text-sm font-body mt-3">{{ w }}</p>
-        <p v-if="refundResult.memberUntil" class="text-lake text-sm font-body mt-3">
-          {{ refundResult.memberUntil.ended ? 'Membership ended' : 'Membership now runs through' }} {{ refundResult.memberUntil.label }}
-        </p>
-        <div class="mt-5 space-y-2">
-          <button class="btn-outline-sm w-full" @click="printDocument({ type: 'refund', sale: refundResult.sale, refund: refundResult.refund })">
-            Print Refund Slip
-          </button>
-          <button class="btn-amber w-full py-3 text-base" @click="refundResult = null; focusSearch()">Done</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Open the drawer -->
-    <div v-if="drawerForm?.mode === 'open'" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-sm">
-        <h2 class="font-display font-bold text-bark mb-1">Open the cash drawer</h2>
-        <p class="text-gray-500 text-sm font-body mb-4">
-          {{ drawerForm.resumeTender ? 'The drawer has to be open to take cash. ' : '' }}Count the cash in the drawer before the first sale.
-        </p>
-        <label class="label-sm">Starting cash ($)</label>
-        <input ref="drawerAmountInput" v-model="drawerForm.amount" type="number" min="0" step="0.01" class="input-field w-full text-lg" @keyup.enter="submitDrawer" />
-        <label class="label-sm mt-3">Note (optional)</label>
-        <input v-model="drawerForm.note" type="text" maxlength="300" class="input-field w-full" />
-        <p v-if="drawerForm.error" class="text-red-500 text-xs mt-2 font-body">{{ drawerForm.error }}</p>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="drawerForm = null">Cancel</button>
-          <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="drawerForm.busy || drawerForm.amount === ''" @click="submitDrawer">
-            {{ drawerForm.busy ? 'Opening…' : 'Open Drawer' }}
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Close the drawer (blind count: the expected amount shows after) -->
-    <div v-if="drawerForm?.mode === 'close'" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-sm">
-        <template v-if="!drawerForm.result">
-          <h2 class="font-display font-bold text-bark mb-1">Close the cash drawer</h2>
-          <p class="text-gray-500 text-sm font-body mb-4">Count all the cash in the drawer, including the starting cash.</p>
-          <label class="label-sm">Counted cash ($)</label>
-          <input ref="drawerAmountInput" v-model="drawerForm.amount" type="number" min="0" step="0.01" class="input-field w-full text-lg" @keyup.enter="submitDrawer" />
-          <label class="label-sm mt-3">Note (optional)</label>
-          <input v-model="drawerForm.note" type="text" maxlength="300" class="input-field w-full" placeholder="e.g. $20 to the safe at 2 PM" />
-          <p v-if="drawerForm.error" class="text-red-500 text-xs mt-2 font-body">{{ drawerForm.error }}</p>
-          <div class="flex justify-end gap-3 mt-5">
-            <button class="btn-outline-sm" @click="drawerForm = null">Cancel</button>
-            <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="drawerForm.busy || drawerForm.amount === ''" @click="submitDrawer">
-              {{ drawerForm.busy ? 'Closing…' : 'Close Drawer' }}
-            </button>
-          </div>
-        </template>
-        <template v-else>
-          <div class="text-center">
-            <div class="text-gray-400 text-xs font-body uppercase tracking-wider">Drawer closed</div>
-            <div class="text-gray-500 text-sm font-body mt-4">
-              {{ drawerForm.result.overShortCents === 0 ? 'Balanced' : drawerForm.result.overShortCents > 0 ? 'Over' : 'Short' }}
-            </div>
-            <div :class="['font-display font-bold text-5xl tabular-nums', drawerForm.result.overShortCents === 0 ? 'text-pine' : 'text-clay']">
-              {{ formatCents(Math.abs(drawerForm.result.overShortCents)) }}
-            </div>
-            <div class="text-sm font-body text-gray-500 mt-3 space-y-0.5">
-              <div>Expected {{ formatCents(drawerForm.result.expectedCents) }} · counted {{ formatCents(drawerForm.result.countedCents) }}</div>
-              <div class="text-xs text-gray-400">
-                Start {{ formatCents(drawerForm.result.openingFloatCents) }} + cash taken {{ formatCents(drawerForm.result.cashSalesCents) }}
-                − cash refunds {{ formatCents(drawerForm.result.cashRefundsCents) }}
-                <template v-if="drawerForm.result.paidInCents"> + paid in {{ formatCents(drawerForm.result.paidInCents) }}</template>
-                <template v-if="drawerForm.result.paidOutCents"> − paid out {{ formatCents(drawerForm.result.paidOutCents) }}</template>
-                <template v-if="drawerForm.result.safeDropCents"> − safe drops {{ formatCents(drawerForm.result.safeDropCents) }}</template>
-              </div>
-            </div>
-          </div>
-          <div class="mt-5 space-y-2">
-            <button class="btn-outline-sm w-full" @click="printDocument({ type: 'drawer', session: drawerForm.result })">Print Close Slip</button>
-            <button class="btn-amber w-full py-3 text-base" @click="drawerForm = null; focusSearch()">Done</button>
-          </div>
-        </template>
+      <!-- The register: products | cart (side by side from md, each scrolling on its own; stacked on phones) -->
+      <div
+        v-else-if="catalog"
+        class="md:h-full md:grid md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_24rem]"
+      >
+        <RegisterProducts
+          ref="productsRef"
+          v-model:active-category-id="activeCategoryId"
+          class="md:h-full"
+          :search="search"
+          :categories="catalog.categories"
+          :products="visibleProducts"
+          :price-label="productPriceLabel"
+          :is-out-of-stock="isOutOfStock"
+          :message="scanMessage"
+          @update:search="v => { search = v; scanMessage = null }"
+          @enter="onSearchEnter"
+          @choose="chooseProduct"
+          @custom="customItem = true"
+        />
+        <RegisterCart
+          class="md:h-full border-t md:border-t-0 md:border-l border-outline-variant"
+          :register-name="register.name"
+          :lines="pricedLines"
+          :totals="totals"
+          :member-discount-total="memberDiscountTotal"
+          :sales-tax-bps="catalog.salesTaxBps"
+          :customer="customer"
+          :is-member="isMember"
+          :drawer="drawer"
+          :has-card-reader="!!register.hasCardReader"
+          :reader-online="readerOnline"
+          :is-manager="authStore.isRegisterManager"
+          :highlight-key="highlightLineKey"
+          :needs-customer="needsCustomerForMembership"
+          :error="registerError"
+          @recent-sales="openRecentSales()"
+          @no-sale="noSale"
+          @account-payment="showAccountPayment = true"
+          @end-of-day="printZReport"
+          @change-register="changeRegister"
+          @open-drawer="openDrawerForm()"
+          @close-drawer="closeDrawerForm"
+          @cash-movement="startCashMovement"
+          @attach-customer="showCustomerPicker = true"
+          @remove-customer="customer = null; focusSearch()"
+          @change-qty="changeQty"
+          @discount="openDiscount"
+          @remove-line="removeLine"
+          @clear="clearSale"
+          @charge="openTender()"
+          @dismiss-error="registerError = null"
+        />
       </div>
     </div>
 
@@ -336,10 +126,20 @@
       />
     </div>
 
+    <!-- Sale complete / refund done / drawer closed / account payment received -->
+    <RegisterResultDialog
+      :result="result"
+      @print="printResult"
+      @done="onResultDone"
+      @email="emailCompletedReceipt"
+      @teesheet="backToTeeSheet"
+    />
+
     <RecentSalesModal
       v-if="showRecentSales"
       :register-id="registerId"
       :register-name="register?.name"
+      :initial-sale-id="recentSaleId"
       @close="showRecentSales = false; focusSearch()"
       @print="s => printDocument({ type: 'sale', sale: s })"
       @void="s => startRefund(s, 'void')"
@@ -352,7 +152,7 @@
       :busy="refundBusy"
       :error="refundError"
       @submit="submitRefund"
-      @cancel="refunding = null"
+      @cancel="cancelRefund"
     />
     <CashMovementModal
       v-if="cashMovement"
@@ -393,6 +193,9 @@
       :card-blocked="cardBlocked"
       :account="customer?.houseAccount ?? null"
       :account-name="customer?.name || customer?.email || ''"
+      :drawer-open="!!drawer?.session"
+      :reader-online="readerOnline"
+      :initial-method="tenderMethod || undefined"
       @complete="completeSale"
       @close="tendering = false; focusSearch()"
     />
@@ -407,89 +210,63 @@
       @close="onAccountPaymentClose"
     />
 
-    <!-- Account payment taken -->
-    <div v-if="accountPaymentResult" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-sm text-center">
-        <div class="text-gray-400 text-xs font-body uppercase tracking-wider">Account payment received</div>
-        <div class="font-body text-bark mt-2">{{ accountPaymentResult.memberName }}</div>
-        <template v-if="accountPaymentResult.changeCents">
-          <div class="text-gray-500 text-sm font-body mt-4">Change due</div>
-          <div class="font-display font-bold text-pine text-5xl tabular-nums">{{ formatCents(accountPaymentResult.changeCents) }}</div>
-        </template>
-        <div v-else class="font-display font-bold text-bark text-3xl mt-3 tabular-nums">{{ formatCents(-accountPaymentResult.payment.amountCents) }}</div>
-        <div class="text-gray-500 text-sm font-body mt-2">New balance {{ formatCents(accountPaymentResult.payment.balanceCents) }}</div>
-        <div class="mt-5 space-y-2">
-          <button class="btn-outline-sm w-full" @click="printAccountSlip">Print Receipt</button>
-          <button class="btn-amber w-full py-3 text-base" @click="accountPaymentResult = null; focusSearch()">Done</button>
-        </div>
-      </div>
-    </div>
-
     <CardPaymentModal
       v-if="cardPayment"
       :initial="cardPayment.checkout"
       :cash-cents="cardPayment.cashCents"
-      @done="onCardDone"
+      @done="r => onCardDone(r)"
       @canceled="onCardCanceled"
+      @pay-cash="onCardPayCash"
     />
 
-    <!-- Line discount -->
-    <div v-if="discounting" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-xs">
-        <h2 class="font-display font-bold text-bark mb-1">Discount</h2>
-        <p class="text-gray-400 text-xs font-body mb-3">{{ discounting.line.description }} · {{ formatCents(discounting.gross) }}</p>
-        <div class="flex gap-2 mb-2">
-          <button
-            v-for="m in ['$', '%']"
-            :key="m"
-            :class="['flex-1 py-1.5 rounded-lg text-sm font-body', discounting.mode === m ? 'bg-pine text-parch' : 'border border-gray-200 text-gray-600']"
-            @click="discounting.mode = m"
-          >
-            {{ m === '$' ? 'Amount' : 'Percent' }}
-          </button>
-        </div>
-        <input v-model="discounting.value" type="number" min="0" step="0.01" class="input-field w-full" @keyup.enter="applyDiscount" />
-        <div class="flex justify-end gap-2 mt-4">
-          <button class="btn-outline-sm mr-auto" @click="discounting = null">Cancel</button>
-          <button class="btn-outline-sm" @click="discounting.value = ''; applyDiscount()">Remove</button>
-          <button class="btn-amber px-4 py-2 text-sm" @click="applyDiscount">Apply</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Custom item -->
-    <div v-if="customItem" class="modal-overlay print:hidden">
-      <div class="modal-box max-w-sm">
-        <h2 class="font-display font-bold text-bark mb-3">Custom Item</h2>
-        <div class="space-y-3">
-          <div>
-            <label class="label-sm">Description</label>
-            <input v-model="customItem.description" type="text" maxlength="100" class="input-field w-full" />
-          </div>
-          <div>
-            <label class="label-sm">Price ($)</label>
-            <input v-model="customItem.price" type="number" min="0.01" step="0.01" class="input-field w-full" @keyup.enter="addCustomItem" />
-          </div>
-          <p class="text-gray-400 text-xs font-body">Custom items are taxed at the course rate.</p>
-        </div>
-        <div class="flex justify-end gap-2 mt-4">
-          <button class="btn-outline-sm" @click="customItem = null">Cancel</button>
-          <button class="btn-amber px-4 py-2 text-sm" :disabled="!customItemValid" @click="addCustomItem">Add</button>
-        </div>
-      </div>
-    </div>
+    <DrawerDialog
+      v-if="drawerForm"
+      :key="drawerForm.mode"
+      :mode="drawerForm.mode"
+      :initial-cents="drawerForm.initialCents"
+      :resume-tender="drawerForm.resumeTender"
+      :busy="drawerForm.busy"
+      :error="drawerForm.error"
+      @submit="submitDrawer"
+      @cancel="drawerForm = null; focusSearch()"
+    />
+    <DiscountDialog
+      v-if="discounting"
+      :description="discounting.line.description"
+      :gross-cents="discounting.gross"
+      :current-cents="discounting.line.managerDiscountCents"
+      @apply="applyDiscount"
+      @cancel="discounting = null; focusSearch()"
+    />
+    <CustomItemDialog v-if="customItem" @add="addCustomItem" @cancel="customItem = false; focusSearch()" />
   </div>
 </template>
 
 <script setup>
+// The register (POS). Layout and dialogs live in components/pos/register/*; this view owns the sale, the drawer, the
+// approvals and printing. A USB scanner works from the search field (its Enter) or, through useScanner, anywhere
+// no field or other dialog has focus, including over "Sale complete" (which then starts the next sale).
 import { ref, computed, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
-import { formatCents, dollarsToCents } from '@/lib/money'
-import { unitPriceCents, memberDiscountBps, memberDiscountCents, memberDiscountRateBps, priceLine, saleTotals, variantDescription } from '@/lib/pricing'
+import { formatCents } from '@/lib/money'
+import { unitPriceCents, memberDiscountBps, memberDiscountCents, priceLine, saleTotals, variantDescription } from '@/lib/pricing'
 import { printReceipt } from '@/lib/printReceipt'
 import { useAuthStore } from '@/stores/auth'
+import { useSnackbar } from '@/composables/useSnackbar'
 import { takeRegisterHandoff } from '@/lib/registerHandoff'
-import { formatLocalDate, localDate, COURSE_TZ } from '@/lib/timeclock'
+import { formatLocalDate, localDate } from '@/lib/timeclock'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import RegisterProducts from '@/components/pos/register/RegisterProducts.vue'
+import RegisterCart from '@/components/pos/register/RegisterCart.vue'
+import RegisterResultDialog from '@/components/pos/register/RegisterResultDialog.vue'
+import DrawerDialog from '@/components/pos/register/DrawerDialog.vue'
+import DiscountDialog from '@/components/pos/register/DiscountDialog.vue'
+import CustomItemDialog from '@/components/pos/register/CustomItemDialog.vue'
+import { useScanner } from '@/components/pos/register/useScanner'
+import { beepAdded, beepError } from '@/components/pos/register/registerSounds'
 import SaleReceipt from '@/components/pos/SaleReceipt.vue'
 import ZReportSlip from '@/components/pos/ZReportSlip.vue'
 import DrawerCloseSlip from '@/components/pos/DrawerCloseSlip.vue'
@@ -506,9 +283,13 @@ import AccountPaymentSlip from '@/components/pos/AccountPaymentSlip.vue'
 import ApprovalModal from '@/components/pos/ApprovalModal.vue'
 import RecentSalesModal from '@/components/pos/RecentSalesModal.vue'
 import RefundModal from '@/components/pos/RefundModal.vue'
+import IconStore from '~icons/material-symbols/storefront-rounded'
+import IconChevron from '~icons/material-symbols/chevron-right-rounded'
 
 const REGISTER_KEY = 'deerrun.registerId'
 const authStore = useAuthStore()
+const router = useRouter()
+const snackbar = useSnackbar()
 
 const catalog   = ref(null)
 const loading   = ref(false)
@@ -516,10 +297,9 @@ const loadError = ref(null)
 const registerId = ref(localStorage.getItem(REGISTER_KEY))
 
 const search           = ref('')
-const scanMessage      = ref(null)
+const scanMessage      = ref(null) // { text, error } under the search field
 const activeCategoryId = ref(null)
-const searchInput      = ref(null)
-const linesEl          = ref(null)
+const productsRef      = ref(null)
 const highlightLineKey = ref(null) // the cart line just added to, briefly highlighted
 
 // { key, variantId, custom: { description, priceCents }, quantity, discountCents }
@@ -529,15 +309,16 @@ const customer = ref(null)
 
 const pickingProduct     = ref(null)
 const showCustomerPicker = ref(false)
-const discounting        = ref(null)
-const customItem         = ref(null)
+const discounting        = ref(null) // { line, gross } while the discount dialog is open
+const customItem         = ref(false)
 const tendering          = ref(false)
+const tenderMethod       = ref(null) // preselected tender (CASH after "Pay with cash instead")
 const submitting         = ref(false)
 const submitError        = ref(null)
-const completed          = ref(null)
-const newSaleButton      = ref(null)
 const registerError      = ref(null)
-const printDoc           = ref(null) // { type: 'sale' | 'refund' | 'noSale', ... } — what window.print() prints
+const printDoc           = ref(null) // { type: 'sale' | 'refund' | 'noSale' | …, ... } — what window.print() prints
+// The result dialog: { kind: 'sale' | 'refund' | 'drawer' | 'accountPayment', ... } (see RegisterResultDialog)
+const result             = ref(null)
 
 // Manager approvals
 const approvalRequest    = ref(null) // { action, title, reason, resolve } while the PIN prompt is open
@@ -545,16 +326,15 @@ const discountApprovalId = ref(null) // one approval covers every discount in th
 
 // Voids and refunds
 const showRecentSales = ref(false)
+const recentSaleId    = ref(null) // open Recent sales on this sale (back from a cancelled refund)
 const refunding       = ref(null) // { sale, mode: 'void' | 'refund' }
 const refundBusy      = ref(false)
 const refundError     = ref(null)
-const refundResult    = ref(null) // { sale, refund, warnings, memberUntil: { label, ended } | null } after it's done
 
 // Cash drawer: { session, last } for this register; session is null while the drawer is closed
-const drawer            = ref(null)
-const drawerForm        = ref(null) // { mode: 'open' | 'close', amount, note, busy, error, result }
-const drawerAmountInput = ref(null)
-const cashMovement      = ref(null) // { type: 'PAID_IN' | 'PAID_OUT' | 'SAFE_DROP', busy, error } while the form is open
+const drawer       = ref(null)
+const drawerForm   = ref(null) // { mode: 'open' | 'close', initialCents, resumeTender, busy, error }
+const cashMovement = ref(null) // { type: 'PAID_IN' | 'PAID_OUT' | 'SAFE_DROP', busy, error } while the form is open
 
 let keySeq = 0
 
@@ -563,6 +343,14 @@ let keySeq = 0
 const register = computed(() => catalog.value?.registers.find(r => r.id === registerId.value) ?? null)
 // The customer search returns isMember (active, not expired); fall back to the role for older data
 const isMember = computed(() => customer.value?.isMember ?? customer.value?.role === 'MEMBER')
+
+// Reader status for the cart chip and the tender dialog: true online, false offline, null unknown. The staff catalog
+// doesn't report it yet (only GET /api/admin/registers/readers asks Stripe), so this reads an optional
+// `readerStatus: 'online' | 'offline'` on the register and is null until the API sends one.
+const readerOnline = computed(() => {
+  const status = register.value?.hasCardReader ? register.value.readerStatus : null
+  return status === 'online' ? true : status === 'offline' ? false : null
+})
 
 // Membership products put months on the customer's account, so they need a customer attached
 const needsCustomerForMembership = computed(() => !customer.value && cart.value.some(l =>
@@ -589,13 +377,25 @@ const codeIndex = computed(() => {
   return index
 })
 
-const visibleProducts = computed(() => {
-  const products = catalog.value?.products ?? []
-  const term = search.value.trim().toLowerCase()
-  if (!term) return products.filter(p => p.categoryId === activeCategoryId.value)
-  return products.filter(p => p.name.toLowerCase().includes(term) ||
+function matchProducts(text) {
+  const term = text.trim().toLowerCase()
+  return (catalog.value?.products ?? []).filter(p => p.name.toLowerCase().includes(term) ||
     p.variants.some(v => v.sku?.toLowerCase().includes(term) || v.barcode?.toLowerCase().includes(term)))
+}
+
+const visibleProducts = computed(() => {
+  if (!search.value.trim()) return (catalog.value?.products ?? []).filter(p => p.categoryId === activeCategoryId.value)
+  return matchProducts(search.value)
 })
+
+// What a scan or a search's Enter finds: an exact barcode/SKU, else the one product that matches
+function findMatch(term) {
+  const hit = codeIndex.value[term.toLowerCase()]
+  if (hit) return { kind: 'variant', ...hit }
+  const matches = matchProducts(term)
+  if (matches.length === 1) return { kind: 'product', product: matches[0] }
+  return { kind: matches.length ? 'many' : 'none' }
+}
 
 function productPriceLabel(p) {
   const prices = p.variants.map(v => unitPriceCents(p, v, isMember.value))
@@ -645,16 +445,19 @@ const memberDiscountTotal = computed(() => pricedLines.value.reduce((sum, l) => 
 const totals = computed(() => saleTotals(pricedLines.value))
 
 function focusSearch() {
-  nextTick(() => searchInput.value?.focus())
+  nextTick(() => productsRef.value?.focus())
 }
 
-// Scroll the cart line into view and flash it, so the cashier sees what a scan or tap added
+// Flash the cart line (the cart scrolls it into view), so the cashier sees what a scan or tap added
 let highlightTimer = null
 function showLine(key) {
-  highlightLineKey.value = key
+  beepAdded()
   clearTimeout(highlightTimer)
-  highlightTimer = setTimeout(() => { highlightLineKey.value = null }, 1200)
-  nextTick(() => linesEl.value?.querySelector(`[data-line-key="${key}"]`)?.scrollIntoView({ block: 'nearest' }))
+  highlightLineKey.value = null
+  nextTick(() => {
+    highlightLineKey.value = key
+    highlightTimer = setTimeout(() => { highlightLineKey.value = null }, 1200)
+  })
 }
 
 function addVariant(product, variant) {
@@ -673,21 +476,47 @@ function chooseProduct(product) {
 function onSearchEnter() {
   const term = search.value.trim()
   if (!term) return
-  const hit = codeIndex.value[term.toLowerCase()]
-  if (hit) {
-    addVariant(hit.product, hit.variant)
+  const match = findMatch(term)
+  if (match.kind === 'variant' || match.kind === 'product') {
     search.value = ''
+    scanMessage.value = null
+    if (match.kind === 'variant') addVariant(match.product, match.variant)
+    else chooseProduct(match.product)
     return
   }
-  if (visibleProducts.value.length === 1) {
-    chooseProduct(visibleProducts.value[0])
-    search.value = ''
+  if (match.kind === 'many') {
+    scanMessage.value = { text: 'Pick a product below.', error: false }
     return
   }
-  scanMessage.value = visibleProducts.value.length ? 'Pick a product below.' : `Nothing matches "${term}".`
-  // A missed scan: select it so the next scan replaces it instead of appending
-  if (!visibleProducts.value.length) nextTick(() => searchInput.value?.select())
+  // A missed scan: tone, and select the text so the next scan replaces it instead of appending
+  scanMessage.value = { text: `Nothing matches "${term}".`, error: true }
+  beepError()
+  nextTick(() => productsRef.value?.select())
 }
+
+// A scan from the document-level buffer (no field or dialog had focus): the same lookup as the search field.
+// Over "Sale complete" it starts the next sale with that item; a miss there keeps the result (change due) on screen.
+function onScan(code) {
+  if (result.value?.kind === 'sale') {
+    const match = findMatch(code)
+    if (match.kind !== 'variant' && match.kind !== 'product') {
+      beepError()
+      snackbar.show({ message: `Nothing matches "${code}"`, tone: 'error' })
+      return
+    }
+    startNewSale()
+  }
+  search.value = code
+  scanMessage.value = null
+  onSearchEnter()
+}
+
+// Any dialog other than "Sale complete" takes the keys for itself
+const dialogOpen = computed(() => !!(pickingProduct.value || showCustomerPicker.value || discounting.value || customItem.value ||
+  tendering.value || cardPayment.value || showRecentSales.value || refunding.value || drawerForm.value || cashMovement.value ||
+  approvalRequest.value || showAccountPayment.value || (result.value && result.value.kind !== 'sale')))
+
+useScanner(onScan, { canScan: () => !!register.value && !dialogOpen.value })
 
 function changeQty(line, delta) {
   const target = cart.value.find(l => l.key === line.key)
@@ -765,43 +594,22 @@ async function openDiscount(line) {
     discountApprovalId.value = approval.approvalId
   }
   // The manager's discount comes off what's left after any member discount
-  discounting.value = {
-    line,
-    gross: line.unitPriceCents * line.quantity - line.memberDiscountCents,
-    mode: '$',
-    value: line.managerDiscountCents ? (line.managerDiscountCents / 100).toFixed(2) : '',
-  }
+  discounting.value = { line, gross: line.unitPriceCents * line.quantity - line.memberDiscountCents }
 }
 
-function applyDiscount() {
-  const { line, gross, mode, value } = discounting.value
-  let cents = 0
-  if (value !== '' && Number(value) > 0) {
-    cents = mode === '%' ? Math.round((gross * Number(value)) / 100) : dollarsToCents(value)
-  }
-  cart.value.find(l => l.key === line.key).discountCents = Math.min(Math.max(cents || 0, 0), gross)
+function applyDiscount(cents) {
+  const { line, gross } = discounting.value
+  const target = cart.value.find(l => l.key === line.key)
+  if (target) target.discountCents = Math.min(Math.max(cents || 0, 0), gross)
   discounting.value = null
   focusSearch()
 }
 
-function openCustom() {
-  customItem.value = { description: '', price: '' }
-}
-
-const customItemValid = computed(() => customItem.value?.description.trim() && dollarsToCents(customItem.value.price) > 0)
-
-function addCustomItem() {
-  if (!customItemValid.value) return
+function addCustomItem({ description, priceCents }) {
   const key = keySeq++
-  cart.value.push({
-    key,
-    variantId: null,
-    custom: { description: customItem.value.description.trim(), priceCents: dollarsToCents(customItem.value.price) },
-    quantity: 1,
-    discountCents: 0,
-  })
+  cart.value.push({ key, variantId: null, custom: { description, priceCents }, quantity: 1, discountCents: 0 })
   showLine(key)
-  customItem.value = null
+  customItem.value = false
   focusSearch()
 }
 
@@ -814,17 +622,18 @@ function clearSale() {
 
 // ─── Checkout ───────────────────────────────────────────────────────────────
 
-function openTender() {
-  submitError.value = null
-  tendering.value   = true
+function openTender({ method = null } = {}) {
+  submitError.value  = null
+  tenderMethod.value = method
+  tendering.value    = true
 }
 
 async function completeSale(tender, { retried = false } = {}) {
-  const { payments, print, receiptEmail } = tender
+  const { payments, receiptEmail } = tender
   submitting.value  = true
   submitError.value = null
   try {
-    const result = await apiFetch('/api/staff/sales', {
+    const res = await apiFetch('/api/staff/sales', {
       method: 'POST',
       body: {
         registerId: registerId.value,
@@ -838,13 +647,13 @@ async function completeSale(tender, { retried = false } = {}) {
       },
     })
     tendering.value = false
-    if (result.cardCheckout) {
+    if (res.cardCheckout) {
       // The card is on the reader; the sale saves when it's approved (CardPaymentModal polls)
       const card = payments.find(p => p.method === 'CARD_TERMINAL')
-      cardPayment.value = { checkout: result.cardCheckout, tender, cashCents: totals.value.totalCents - (card?.amountCents ?? 0) }
+      cardPayment.value = { checkout: res.cardCheckout, tender, cashCents: totals.value.totalCents - (card?.amountCents ?? 0) }
       return
     }
-    await finishSale(result, tender)
+    await finishSale(res, tender)
   } catch (e) {
     if (e.code === 'APPROVAL_REQUIRED' && !retried) {
       // The discount approval expired (30 minutes); ask again and retry once
@@ -874,7 +683,7 @@ async function completeSale(tender, { retried = false } = {}) {
   }
 }
 
-// Card payment dialog: { checkout, tender, cashCents } while the card is on the reader
+// Card payment dialog: { checkout, tender, cashCents, kind?, member? } while the card is on the reader
 const cardPayment = ref(null)
 
 // Why this register can't take cards right now (null = it can)
@@ -883,28 +692,29 @@ const cardBlocked = computed(() => (register.value?.hasCardReader ? null : 'This
 // Shared end of a sale (cash, or card once approved): clear the cart and show the sale-complete screen
 async function finishSale({ sale, emailError = null, warnings = [], notice = null }, { print, receiptEmail }) {
   const hadMembership = cart.value.some(l => l.variantId && variantIndex.value[l.variantId]?.product.membershipMonths)
+  // A tee time from the Tee Sheet page (check-in or a walk-in booking): offer the way back
+  const checkIn = cart.value.some(l => l.booking || l.newBooking)
   cart.value      = []
   customer.value  = null
   discountApprovalId.value = null
-  completed.value = {
-    sale, emailError, warnings: notice ? [notice, ...warnings] : warnings,
-    emailedTo: emailError ? null : receiptEmail, emailInput: '', sending: false,
-    membershipUntil: hadMembership && !warnings.length ? await membershipEnd(sale.customerId) : null,
+  const membershipUntil = hadMembership && !warnings.length ? await membershipEnd(sale.customerId) : null
+  result.value = {
+    kind: 'sale', sale, emailError, warnings: notice ? [notice, ...warnings] : warnings,
+    emailedTo: emailError ? null : receiptEmail, sending: false, membershipUntil, checkIn,
   }
   if (print) await printDocument({ type: 'sale', sale })
-  nextTick(() => newSaleButton.value?.focus())
   loadCatalog() // refresh stock counts
   if (sale.payments.some(p => p.method === 'CASH')) loadDrawer() // managers see the running expected amount
 }
 
-async function onCardDone(result) {
-  const { tender, member } = cardPayment.value
+async function onCardDone(res, payment = cardPayment.value) {
+  const { tender, member } = payment
   cardPayment.value = null
-  if (result.accountPayment) {
-    await showAccountPaymentResult({ accountPayment: result.accountPayment, changeCents: 0, member })
+  if (res.accountPayment) {
+    await showAccountPaymentResult({ accountPayment: res.accountPayment, changeCents: 0, member })
     return
   }
-  await finishSale(result, tender)
+  await finishSale(res, tender)
 }
 
 // Cancelled before the card was charged: back to the payment screen with the cart as it was
@@ -915,17 +725,36 @@ function onCardCanceled() {
   else openTender()
 }
 
+// "Pay with cash instead" after a decline: the card dialog cancels the checkout first (like Cancel → Back to the
+// sale). Cancel again in case it didn't (the API answers 409 once it's cancelled); if the card had gone through after
+// all, the cancel completes the sale instead. Then back to payment with Cash picked.
+async function onCardPayCash() {
+  const payment = cardPayment.value
+  cardPayment.value = null
+  if (!payment) return
+  try {
+    const res = await apiFetch(`/api/staff/card-checkouts/${payment.checkout.id}`, { method: 'POST', body: { action: 'cancel' } })
+    if (res.sale || res.accountPayment) {
+      await onCardDone({ ...res, warnings: res.warnings ?? [] }, payment)
+      return
+    }
+  } catch {
+    // Already cancelled
+  }
+  if (payment.kind === 'account') showAccountPayment.value = true
+  else openTender({ method: 'CASH' })
+}
+
 // ─── House account payments (a member paying down their balance) ───────────
 
-const showAccountPayment   = ref(false)
-const accountPaymentResult = ref(null) // { payment, changeCents, memberName }
+const showAccountPayment = ref(false)
 
 async function showAccountPaymentResult({ accountPayment, changeCents, member }) {
   showAccountPayment.value = false
-  accountPaymentResult.value = { payment: accountPayment, changeCents, memberName: member?.name || member?.email || '' }
+  result.value = { kind: 'accountPayment', payment: accountPayment, changeCents, memberName: member?.name || member?.email || '' }
   // Cash goes in the drawer: print the receipt now (it opens the drawer); card receipts print from the button
   if (accountPayment.method === 'CASH') {
-    await printAccountSlip()
+    await printAccountSlip(result.value)
     loadDrawer()
   }
   if (customer.value?.houseAccount?.id === accountPayment.accountId) {
@@ -933,8 +762,8 @@ async function showAccountPaymentResult({ accountPayment, changeCents, member })
   }
 }
 
-function onAccountPaymentDone(result) {
-  showAccountPaymentResult(result)
+function onAccountPaymentDone(res) {
+  showAccountPaymentResult(res)
 }
 
 function onAccountPaymentCard({ cardCheckout, member }) {
@@ -952,8 +781,7 @@ async function onAccountPaymentClose(info) {
   }
 }
 
-function printAccountSlip() {
-  const r = accountPaymentResult.value
+function printAccountSlip(r) {
   return printDocument({ type: 'accountPayment', payment: r.payment, memberName: r.memberName, changeCents: r.changeCents })
 }
 
@@ -990,11 +818,68 @@ function applyHandoff() {
   if (handoff.customer && !customer.value) customer.value = handoff.customer
 }
 
+// ─── Result dialog ──────────────────────────────────────────────────────────
+
+function printResult() {
+  const r = result.value
+  if (!r) return
+  if (r.kind === 'sale') printDocument({ type: 'sale', sale: r.sale })
+  else if (r.kind === 'refund') printDocument({ type: 'refund', sale: r.sale, refund: r.refund })
+  else if (r.kind === 'drawer') printDocument({ type: 'drawer', session: r.session })
+  else printAccountSlip(r)
+}
+
+function onResultDone() {
+  if (result.value?.kind === 'sale') startNewSale()
+  else {
+    result.value = null
+    focusSearch()
+  }
+}
+
+function backToTeeSheet() {
+  result.value = null
+  router.push('/staff/teesheet')
+}
+
+async function emailCompletedReceipt(email) {
+  const r = result.value
+  if (r?.kind !== 'sale') return
+  r.sending = true
+  r.emailError = null
+  try {
+    await apiFetch(`/api/staff/sales/${r.sale.id}`, { method: 'POST', body: { action: 'email', email } })
+    r.emailedTo = email
+  } catch (e) {
+    r.emailError = e.message
+  } finally {
+    r.sending = false
+  }
+}
+
+function startNewSale() {
+  result.value = null
+  focusSearch()
+}
+
 // ─── Voids and refunds ──────────────────────────────────────────────────────
 
+function openRecentSales(saleId = null) {
+  recentSaleId.value = saleId
+  showRecentSales.value = true
+}
+
+// Recent sales closes while the refund dialog is up (one dialog at a time) and comes back on that sale if it's cancelled
 function startRefund(sale, mode) {
-  refundError.value = null
-  refunding.value   = { sale, mode }
+  refundError.value     = null
+  showRecentSales.value = false
+  refunding.value       = { sale, mode }
+}
+
+function cancelRefund() {
+  const saleId = refunding.value?.sale.id
+  refunding.value = null
+  openRecentSales(saleId)
 }
 
 async function submitRefund({ items, restock, reason, totalCents, method }) {
@@ -1010,23 +895,23 @@ async function submitRefund({ items, restock, reason, totalCents, method }) {
   refundBusy.value  = true
   refundError.value = null
   try {
-    const result = await apiFetch(`/api/staff/sales/${sale.id}`, {
+    const res = await apiFetch(`/api/staff/sales/${sale.id}`, {
       method: 'POST',
       body: { action: mode, approvalId: approval.approvalId, reason, registerId: registerId.value, items, restock, method },
     })
-    const refund = result.sale.refunds.find(r => r.id === result.refund.id)
+    const refund = res.sale.refunds.find(r => r.id === res.refund.id)
     refunding.value       = null
     showRecentSales.value = false
     // Refunded membership months come off the customer's end date (warnings if that didn't save)
-    const until = result.memberUntil
-    refundResult.value    = {
-      sale: result.sale, refund, warnings: result.warnings ?? [],
+    const until = res.memberUntil
+    result.value = {
+      kind: 'refund', sale: res.sale, refund, warnings: res.warnings ?? [],
       memberUntil: until
         ? { label: formatLocalDate(until, { month: 'short', day: 'numeric', year: 'numeric' }), ended: until < localDate() }
         : null,
     }
     // Printing the refund slip opens the drawer for the cash (card refunds print from the button instead)
-    if (refund.method === 'CASH') await printDocument({ type: 'refund', sale: result.sale, refund })
+    if (refund.method === 'CASH') await printDocument({ type: 'refund', sale: res.sale, refund })
     loadCatalog() // stock may have changed
     loadDrawer()
   } catch (e) {
@@ -1040,26 +925,6 @@ async function submitRefund({ items, restock, reason, totalCents, method }) {
   } finally {
     refundBusy.value = false
   }
-}
-
-async function emailCompletedReceipt() {
-  const c = completed.value
-  c.sending = true
-  c.emailError = null
-  try {
-    await apiFetch(`/api/staff/sales/${c.sale.id}`, { method: 'POST', body: { action: 'email', email: c.emailInput } })
-    c.emailedTo = c.emailInput
-    c.emailInput = ''
-  } catch (e) {
-    c.emailError = e.message
-  } finally {
-    c.sending = false
-  }
-}
-
-function startNewSale() {
-  completed.value = null
-  focusSearch()
 }
 
 // ─── Cash drawer ────────────────────────────────────────────────────────────
@@ -1076,36 +941,31 @@ async function loadDrawer() {
 function openDrawerForm({ resumeTender = false } = {}) {
   // Most courses start each day with the same amount, so suggest the last starting cash
   const last = drawer.value?.last?.openingFloatCents
-  drawerForm.value = {
-    mode: 'open', amount: last !== undefined ? (last / 100).toFixed(2) : '', note: '', busy: false, error: null, result: null,
-    resumeTender,
-  }
-  nextTick(() => drawerAmountInput.value?.select())
+  drawerForm.value = { mode: 'open', initialCents: last ?? null, resumeTender, busy: false, error: null }
 }
 
 function closeDrawerForm() {
-  drawerForm.value = { mode: 'close', amount: '', note: '', busy: false, error: null, result: null }
-  nextTick(() => drawerAmountInput.value?.focus())
+  drawerForm.value = { mode: 'close', initialCents: null, resumeTender: false, busy: false, error: null }
 }
 
-async function submitDrawer() {
+async function submitDrawer({ cents, note }) {
   const f = drawerForm.value
-  if (f.busy || f.amount === '') return
+  if (!f || f.busy) return
   f.busy  = true
   f.error = null
   try {
-    const cents = dollarsToCents(f.amount)
     if (f.mode === 'open') {
-      await apiFetch('/api/staff/register/drawer', { method: 'POST', body: { action: 'open', registerId: registerId.value, floatCents: cents, note: f.note } })
+      await apiFetch('/api/staff/register/drawer', { method: 'POST', body: { action: 'open', registerId: registerId.value, floatCents: cents, note } })
       drawerForm.value = null
       if (f.resumeTender && cart.value.length) openTender()
       else focusSearch()
     } else {
       const { session } = await apiFetch('/api/staff/register/drawer', {
         method: 'POST',
-        body: { action: 'close', sessionId: drawer.value.session.id, countedCents: cents, note: f.note },
+        body: { action: 'close', sessionId: drawer.value.session.id, countedCents: cents, note },
       })
-      f.result = session
+      drawerForm.value = null
+      result.value = { kind: 'drawer', session }
       await printDocument({ type: 'drawer', session })
     }
     await loadDrawer()
@@ -1160,10 +1020,6 @@ async function submitCashMovement({ amountCents, reason, recipient }) {
   }
 }
 
-function formatTime(ts) {
-  return new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ })
-}
-
 // ─── Setup ──────────────────────────────────────────────────────────────────
 
 function chooseRegister(id) {
@@ -1196,6 +1052,8 @@ async function loadCatalog() {
     }
   } catch (e) {
     loadError.value = e.message
+    // A refresh after a sale that fails keeps the register usable; say so in the cart
+    if (catalog.value) registerError.value = `Couldn't refresh products: ${e.message}`
   } finally {
     loading.value = false
   }
@@ -1208,17 +1066,3 @@ onMounted(async () => {
   focusSearch()
 })
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-/* Dialogs never print (only the slip does). Needed because this scoped display: flex outranks print:hidden. */
-@media print { .modal-overlay { display: none !important; } }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-/* The just-added line's highlight fades out (no fade with reduced motion) */
-.cart-line      { transition: background-color 0.6s ease-out; }
-@media (prefers-reduced-motion: reduce) { .cart-line { transition: none; } }
-.qty-btn        { @apply w-7 h-7 rounded-lg border border-gray-300 text-bark font-body leading-none hover:bg-gray-50; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40; }
-</style>

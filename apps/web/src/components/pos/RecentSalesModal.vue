@@ -1,111 +1,147 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
-    <div class="modal-box max-w-3xl max-h-[92vh] flex flex-col">
-      <!-- List -->
-      <template v-if="!selected">
-        <div class="flex flex-wrap items-center gap-3 mb-4">
-          <h2 class="font-display font-bold text-bark mr-auto">Recent Sales</h2>
-          <input
+  <AppDialog
+    :open="true"
+    size="lg"
+    fullscreen-on-mobile
+    :aria-label="selected ? `Sale #${selected.number}` : 'Recent sales'"
+    @update:open="v => !v && emit('close')"
+  >
+    <template #title>
+      <span v-if="!selected">Recent sales</span>
+      <span v-else class="flex items-center gap-2">
+        <IconButton :icon="IconBack" label="Back to the list" class="-ml-3" @click="selected = null" />
+        <span>Sale #{{ selected.number }}</span>
+        <StatusChip v-if="selected.status !== 'COMPLETED'" kind="sale" :status="selected.status" size="sm" />
+      </span>
+    </template>
+
+    <!-- List -->
+    <template v-if="!selected">
+      <div class="flex flex-wrap items-start gap-3 mb-3">
+        <form class="flex items-start gap-2 w-full sm:w-auto" @submit.prevent="load">
+          <TextField
             v-model="number"
-            type="text"
+            class="flex-1 sm:w-40"
+            label="Receipt #"
             inputmode="numeric"
-            class="input-field w-36"
-            placeholder="Receipt #"
-            @keyup.enter="load"
+            autocomplete="off"
+            enterkeyhint="search"
           />
-          <select v-model="scope" class="input-field" @change="load">
-            <option value="register">Today · {{ registerName }}</option>
-            <option value="all">Today · all registers</option>
-          </select>
-        </div>
-        <div v-if="loading" class="text-gray-400 text-sm">Loading…</div>
-        <p v-else-if="error" class="text-red-500 text-sm">{{ error }}</p>
-        <div v-else class="overflow-y-auto divide-y divide-gray-50 border border-gray-100 rounded-lg">
+          <IconButton type="submit" :icon="IconSearch" label="Find receipt" variant="tonal" class="mt-1" />
+        </form>
+        <SegmentedButton
+          v-model="scope"
+          size="lg"
+          label="Registers"
+          class="sm:ml-auto"
+          :options="[{ value: 'register', label: registerName || 'This register' }, { value: 'all', label: 'All registers' }]"
+          @update:model-value="number = ''; load()"
+        />
+      </div>
+      <p class="mb-2 text-label-l text-on-surface-variant">{{ number.trim() ? `Receipt #${number.trim()}` : 'Today' }}</p>
+
+      <ErrorBanner v-if="error" :message="error" class="mb-3" @retry="load" />
+      <Skeleton v-if="loading" variant="text" :lines="6" label="Loading sales" />
+      <ul v-else-if="sales.length" class="divide-y divide-outline-variant rounded-shape-md border border-outline-variant overflow-hidden">
+        <li v-for="s in sales" :key="s.id">
           <button
-            v-for="s in sales"
-            :key="s.id"
-            class="w-full text-left px-4 py-2.5 hover:bg-gray-50 flex items-center gap-4 font-body text-sm"
+            type="button"
+            class="state-layer w-full min-h-14 px-4 py-2 flex items-center gap-4 text-left text-body-l text-on-surface cursor-pointer"
             @click="open(s.id)"
           >
-            <span class="w-16 text-bark font-semibold">#{{ s.number }}</span>
-            <span class="w-20 text-gray-500">{{ formatTime(s.createdAt) }}</span>
-            <span class="flex-1 min-w-0 truncate text-gray-600">{{ s.customer?.name || s.customer?.email || 'Walk-in' }}</span>
-            <span v-if="s.status !== 'COMPLETED'" :class="['badge', statusClass(s.status)]">{{ statusLabel(s.status) }}</span>
-            <span class="w-20 text-right tabular-nums text-bark">{{ formatCents(s.totalCents) }}</span>
+            <span class="w-16 flex-none text-title-s tabular-nums">#{{ s.number }}</span>
+            <span class="w-20 flex-none text-body-m text-on-surface-variant tabular-nums">{{ formatTime(s.createdAt) }}</span>
+            <span class="flex-1 min-w-0 truncate text-body-m">{{ s.customer?.name || s.customer?.email || 'Walk-in' }}</span>
+            <StatusChip v-if="s.status !== 'COMPLETED'" kind="sale" :status="s.status" size="sm" class="max-sm:hidden" />
+            <span class="w-24 flex-none text-right tabular-nums">{{ formatCents(s.totalCents) }}</span>
           </button>
-          <p v-if="!sales.length" class="px-4 py-6 text-center text-gray-400 text-sm">No sales found.</p>
-        </div>
-        <div class="flex justify-end mt-4">
-          <button class="btn-outline-sm" @click="$emit('close')">Close</button>
-        </div>
-      </template>
+        </li>
+      </ul>
+      <EmptyState v-else-if="!error" compact :icon="IconReceipt" title="No sales found" />
+    </template>
 
-      <!-- Detail -->
-      <template v-else>
-        <div class="flex items-center gap-3 mb-1">
-          <button class="text-lake hover:text-pine text-sm font-body" @click="selected = null">← Back</button>
-          <h2 class="font-display font-bold text-bark">Sale #{{ selected.number }}</h2>
-          <span v-if="selected.status !== 'COMPLETED'" :class="['badge', statusClass(selected.status)]">{{ statusLabel(selected.status) }}</span>
+    <!-- Detail -->
+    <template v-else>
+      <p class="text-body-m text-on-surface-variant mb-3">
+        {{ formatWhen(selected.createdAt) }} · {{ selected.register?.name }} · {{ selected.cashier?.firstName }}
+        <template v-if="selected.customer"> · {{ selected.customer.name || selected.customer.email }}</template>
+      </p>
+
+      <table class="w-full text-body-m text-on-surface">
+        <caption class="sr-only">Items</caption>
+        <tbody class="divide-y divide-outline-variant">
+          <tr v-for="item in selected.items" :key="item.id">
+            <td class="py-2 pr-3">{{ item.quantity }} × {{ item.description }}</td>
+            <td class="py-2 pr-3 text-body-s text-tertiary">
+              <template v-if="item.refundedQuantity">{{ item.refundedQuantity }} refunded</template>
+            </td>
+            <td class="py-2 text-right tabular-nums">{{ formatCents(item.totalCents) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <dl class="border-t border-outline-variant mt-1 pt-2 text-body-m space-y-0.5">
+        <div class="flex justify-between text-on-surface-variant"><dt>Tax</dt><dd class="tabular-nums">{{ formatCents(selected.taxCents) }}</dd></div>
+        <div class="flex justify-between text-title-m text-on-surface"><dt>Total</dt><dd class="tabular-nums">{{ formatCents(selected.totalCents) }}</dd></div>
+        <div v-if="selected.refundedCents" class="flex justify-between text-tertiary">
+          <dt>Refunded</dt><dd class="tabular-nums">−{{ formatCents(selected.refundedCents) }}</dd>
         </div>
-        <p class="text-gray-400 text-xs font-body mb-4">
-          {{ formatWhen(selected.createdAt) }} · {{ selected.register?.name }} · {{ selected.cashier?.firstName }}
-          <template v-if="selected.customer"> · {{ selected.customer.name || selected.customer.email }}</template>
+      </dl>
+
+      <div v-if="selected.refunds.length" class="mt-4">
+        <h3 class="text-title-s text-on-surface mb-1">Refunds</h3>
+        <p v-for="r in selected.refunds" :key="r.id" class="text-body-m py-1">
+          {{ r.kind === 'VOID' ? 'Voided' : 'Refunded' }} {{ formatCents(r.amountCents) }} · {{ formatWhen(r.createdAt) }}
+          · approved by {{ r.approval?.approver?.firstName }} · “{{ r.reason }}”
         </p>
+      </div>
 
-        <div class="overflow-y-auto">
-          <table class="w-full text-sm font-body">
-            <tbody class="divide-y divide-gray-50">
-              <tr v-for="item in selected.items" :key="item.id">
-                <td class="py-1.5 pr-3 text-bark">{{ item.quantity }} × {{ item.description }}</td>
-                <td class="py-1.5 pr-3 text-xs text-clay">
-                  <template v-if="item.refundedQuantity">{{ item.refundedQuantity }} refunded</template>
-                </td>
-                <td class="py-1.5 text-right tabular-nums">{{ formatCents(item.totalCents) }}</td>
-              </tr>
-            </tbody>
-          </table>
-          <div class="border-t border-gray-100 mt-2 pt-2 text-sm font-body space-y-0.5">
-            <div class="flex justify-between text-gray-500"><span>Tax</span><span class="tabular-nums">{{ formatCents(selected.taxCents) }}</span></div>
-            <div class="flex justify-between text-bark font-semibold"><span>Total</span><span class="tabular-nums">{{ formatCents(selected.totalCents) }}</span></div>
-            <div v-if="selected.refundedCents" class="flex justify-between text-clay">
-              <span>Refunded</span><span class="tabular-nums">−{{ formatCents(selected.refundedCents) }}</span>
-            </div>
-          </div>
+      <ErrorBanner v-if="error" :message="error" class="mt-4" />
+      <p v-if="!canRefund && !['VOIDED', 'REFUNDED'].includes(selected.status)" class="mt-4 text-body-s text-on-surface-variant">
+        This sale has a payment the register can't refund. Refund it from the admin panel.
+      </p>
+    </template>
 
-          <div v-if="selected.refunds.length" class="mt-4">
-            <h3 class="text-xs text-gray-500 uppercase tracking-wider font-body mb-1">Refunds</h3>
-            <div v-for="r in selected.refunds" :key="r.id" class="text-sm font-body text-gray-600 py-1">
-              {{ r.kind === 'VOID' ? 'Voided' : 'Refunded' }} {{ formatCents(r.amountCents) }} · {{ formatWhen(r.createdAt) }}
-              · approved by {{ r.approval?.approver?.firstName }} · “{{ r.reason }}”
-            </div>
-          </div>
-        </div>
-
-        <div class="flex flex-wrap justify-end gap-2 mt-5">
-          <button class="btn-outline-sm" @click="$emit('print', selected)">Reprint</button>
-          <button v-if="canRefund" class="btn-outline-sm" @click="$emit('refund', selected)">Refund…</button>
-          <button v-if="canVoid" class="btn-outline-sm text-red-600 border-red-200" @click="$emit('void', selected)">Void Sale…</button>
-        </div>
-        <p v-if="!canRefund && !['VOIDED', 'REFUNDED'].includes(selected.status)" class="text-gray-400 text-xs font-body mt-2 text-right">
-          This sale has a payment the register can't refund. Refund it from the admin panel.
-        </p>
+    <template #actions="{ close }">
+      <template v-if="selected">
+        <AppButton v-if="canVoid" variant="text-danger" :icon="IconBlock" class="mr-auto" @click="emit('void', selected)">Void sale</AppButton>
+        <AppButton variant="outlined" size="lg" :icon="IconPrint" @click="emit('print', selected)">Reprint</AppButton>
+        <AppButton v-if="canRefund" variant="tonal" size="lg" :icon="IconUndo" @click="emit('refund', selected)">Refund</AppButton>
       </template>
-    </div>
-  </div>
+      <AppButton v-else variant="text" @click="close">Close</AppButton>
+    </template>
+  </AppDialog>
 </template>
 
 <script setup>
+// Today's sales at this register (or all registers, or one receipt number) with reprint, void and refund.
+// Mounted with v-if; Esc / Close emit close. initialSaleId opens that sale's detail (e.g. coming back from a
+// cancelled refund). Emits print(sale), void(sale), refund(sale), close.
 import { ref, computed, onMounted } from 'vue'
 import { apiFetch } from '@/lib/api'
 import { formatCents } from '@/lib/money'
 import { COURSE_TZ, localDate } from '@/lib/timeclock'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import TextField from '@/components/ui/TextField.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import IconBack from '~icons/material-symbols/arrow-back-rounded'
+import IconSearch from '~icons/material-symbols/search-rounded'
+import IconPrint from '~icons/material-symbols/print-rounded'
+import IconUndo from '~icons/material-symbols/undo-rounded'
+import IconBlock from '~icons/material-symbols/block-rounded'
+import IconReceipt from '~icons/material-symbols/receipt-long-rounded'
 
 const props = defineProps({
   registerId: { type: String, required: true },
   registerName: { type: String, default: '' },
   initialSaleId: { type: String, default: null },
 })
-defineEmits(['print', 'void', 'refund', 'close'])
+const emit = defineEmits(['print', 'void', 'refund', 'close'])
 
 const sales    = ref([])
 const selected = ref(null)
@@ -113,14 +149,6 @@ const scope    = ref('register')
 const number   = ref('')
 const loading  = ref(false)
 const error    = ref(null)
-
-const STATUS = {
-  PARTIALLY_REFUNDED: ['Partly refunded', 'bg-gold/20 text-bark'],
-  VOIDED: ['Voided', 'bg-red-100 text-red-700'],
-  REFUNDED: ['Refunded', 'bg-gray-100 text-gray-600'],
-}
-const statusLabel = (s) => STATUS[s]?.[0] ?? s
-const statusClass = (s) => STATUS[s]?.[1] ?? ''
 
 // The register refunds cash, card and house account payments
 const refundable = computed(() => !!selected.value?.payments.every(p => ['CASH', 'CARD_TERMINAL', 'HOUSE_ACCOUNT'].includes(p.method)))
@@ -167,11 +195,3 @@ onMounted(async () => {
   if (props.initialSaleId) await open(props.initialSaleId)
 })
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.badge          { @apply text-xs px-2 py-0.5 rounded-full font-body; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

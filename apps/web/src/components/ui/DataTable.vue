@@ -109,22 +109,30 @@
       </div>
       <ul v-else class="space-y-2" :aria-label="caption || undefined">
         <li v-for="(row, i) in sortedRows" :key="keyOf(row, i)" class="relative rounded-shape-md border border-outline-variant bg-surface">
+          <!-- The headline is the focusable control, named by its visible text (WCAG 2.5.3 label in name) and
+               described by the card's details; its ::after stretches over the card so a click anywhere opens the
+               row and the focus ring outlines the card -->
           <div
-            :role="interactive ? (rowTo ? 'link' : 'button') : undefined"
-            :tabindex="interactive ? 0 : undefined"
-            :aria-label="interactive ? labelOf(row) : undefined"
             :class="[
               'rounded-shape-md p-4',
               $slots.actions ? 'pr-14' : '',
               interactive ? 'state-layer cursor-pointer' : '',
             ]"
             @click="activate(row, $event)"
-            @keydown.enter.space.self.prevent="activate(row, $event)"
           >
-            <div class="text-title-m text-on-surface break-words">
+            <div
+              :role="interactive ? (rowTo ? 'link' : 'button') : undefined"
+              :tabindex="interactive ? 0 : undefined"
+              :aria-describedby="interactive && cardCols.length ? `${uid}-r${i}` : undefined"
+              :class="[
+                'text-title-m text-on-surface break-words',
+                interactive ? 'after:absolute after:inset-0 after:rounded-shape-md focus-visible:outline-none focus-visible:after:[outline:3px_solid_rgb(var(--focus-ring))] focus-visible:after:[outline-offset:2px]' : '',
+              ]"
+              @keydown.enter.space.self.prevent="activate(row, $event)"
+            >
               <slot :name="`cell-${primaryCol.key}`" :row="row" :value="row[primaryCol.key]" :column="primaryCol">{{ display(row, primaryCol) }}</slot>
             </div>
-            <dl v-if="cardCols.length" class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body-m">
+            <dl v-if="cardCols.length" :id="`${uid}-r${i}`" class="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-body-m">
               <template v-for="col in cardCols" :key="col.key">
                 <dt class="text-on-surface-variant">{{ col.label }}</dt>
                 <dd class="min-w-0 break-words text-on-surface">
@@ -142,6 +150,10 @@
   </div>
 </template>
 
+<script>
+let tableCount = 0
+</script>
+
 <script setup>
 // Data table: sticky header, client-side sort, keyboard-reachable clickable rows, cards below md.
 //   <DataTable :columns="cols" :rows="rows" row-key="id" v-model:sort="sort" caption="Bookings"
@@ -151,7 +163,8 @@
 //   </DataTable>
 // columns: [{ key, label, align?: left|right|center, sortable?, class?, primary?, hideOnMobile?,
 //             format?: (value, row) => text, sortValue?: row => value }]. The primary column (default: the first)
-//   is the card headline below md and gives clickable rows their accessible name (or pass `rowLabel(row)`).
+//   is the card headline below md and gives clickable rows their accessible name (or pass `rowLabel(row)` for the
+//   table row; a card is always named by its visible headline, WCAG 2.5.3, and described by its details).
 // Rows are clickable only with @row-click or `rowTo` (a function row → route): tabindex 0, Enter/Space, and
 //   Ctrl/⌘-click opens a `rowTo` route in a new tab. Clicks in the actions cell never trigger the row.
 // sort: { key, dir: 'asc'|'desc' } (v-model:sort optional). `manualSort` leaves the rows in order (server sort).
@@ -183,6 +196,7 @@ const props = defineProps({
   maxHeight:      { type: String, default: null },
 })
 const emit = defineEmits(['update:sort'])
+const uid = `dt-${++tableCount}`
 const router = useRouter()
 const slots = useSlots()
 

@@ -1,195 +1,159 @@
 <template>
-  <div class="page-enter">
-    <!-- Hero with course photo background -->
-    <PageHero label="An Earl Stone Design" title-html="<em>Deer Run</em>"
-      description="18 championship holes at the entrance to the Bankhead National Forest. Open to the public daily since 1980."
-      bg-image="/images/course-4.jpg" height="650px" logo>
-      <div class="mt-8 flex flex-col sm:flex-row gap-3 items-start">
-        <RouterLink to="/book" class="btn-amber">Book a Tee Time →</RouterLink>
-        <RouterLink to="/scorecard" class="btn-outline">View the Course</RouterLink>
-      </div>
-    </PageHero>
+  <div class="page-enter bg-surface-container">
+    <HomeHero />
 
-    <!-- Feature cards -->
-    <section class="topo py-16">
-      <div class="max-w-7xl mx-auto px-5">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div v-for="f in features" :key="f.title" class="card card-light rounded-lg p-7">
-            <div class="text-3xl mb-4">{{ f.icon }}</div>
-            <SectionLabel :text="f.label" class="mb-3" />
-            <h3
-              style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#1E3D2F;margin-bottom:8px;">
-              {{ f.title }}</h3>
-            <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.55);line-height:1.7;">{{ f.body
-              }}</p>
-            <RouterLink :to="f.link" class="inline-flex items-center gap-1 mt-4"
-              style="font-family:'Lato',sans-serif;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#1E3D2F;text-decoration:none;">
-              {{ f.cta }} →
-            </RouterLink>
+    <!-- Intro + three photo-led cards -->
+    <section class="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-20" aria-labelledby="intro-title">
+      <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+        <div class="max-w-2xl">
+          <p class="text-label-l uppercase tracking-[.2em] text-gold-text">The course</p>
+          <h2 id="intro-title" class="mt-2 font-display text-headline-m md:text-headline-l text-on-surface">
+            Rolling Lawrence County <em class="italic">terrain</em>
+          </h2>
+          <p class="mt-4 text-body-l text-on-surface-variant">
+            Sculpted into the rolling terrain of Lawrence County, Deer Run rewards thoughtful play with dramatic
+            elevation changes, water carries, and bent-grass greens.
+          </p>
+        </div>
+        <dl class="grid grid-cols-4 gap-4 sm:gap-8 border-t border-outline-variant pt-6 lg:border-0 lg:pt-0">
+          <div v-for="s in stats" :key="s.label" class="flex flex-col-reverse">
+            <dt class="text-label-m uppercase tracking-[.15em] text-on-surface-variant mt-1">{{ s.label }}</dt>
+            <dd class="font-display text-headline-m sm:text-display-s text-primary">{{ s.val }}</dd>
           </div>
+        </dl>
+      </div>
+
+      <ul class="mt-10 md:mt-12 grid gap-6 md:grid-cols-3">
+        <li v-for="c in cards" :key="c.to">
+          <Card :to="c.to" padding="lg" class="h-full group">
+            <template #media>
+              <div class="relative aspect-[3/2] overflow-hidden">
+                <ResponsivePicture
+                  :name="c.photo"
+                  sizes="(min-width: 1280px) 400px, (min-width: 768px) 33vw, 100vw"
+                  alt=""
+                  img-class="absolute inset-0 w-full h-full object-cover transition-transform duration-long-2 ease-standard group-hover:scale-105"
+                />
+              </div>
+            </template>
+            <p class="text-label-m uppercase tracking-[.15em] text-gold-text">{{ c.label }}</p>
+            <h3 class="mt-1 font-display text-headline-s text-on-surface">{{ c.title }}</h3>
+            <p v-if="c.price" class="mt-2 text-title-m text-primary">{{ c.price }}</p>
+            <p class="mt-2 text-body-m text-on-surface-variant">{{ c.body }}</p>
+            <span class="mt-4 inline-flex items-center gap-1 text-label-l text-primary">
+              {{ c.cta }}
+              <IconArrowForward class="w-[18px] h-[18px] transition-transform duration-short-4 group-hover:translate-x-1" aria-hidden="true" />
+            </span>
+          </Card>
+        </li>
+      </ul>
+    </section>
+
+    <PlanVisit />
+
+    <UpcomingEvents />
+
+    <!-- Membership teaser -->
+    <section class="on-dark relative isolate overflow-hidden bg-pine-deep text-on-primary" aria-labelledby="membership-title">
+      <ResponsivePicture
+        name="course-5-wide"
+        sizes="100vw"
+        alt=""
+        img-class="absolute inset-0 -z-10 w-full h-full object-cover"
+      />
+      <div class="absolute inset-0 -z-10 bg-gradient-to-r from-pine-deep/95 via-pine-deep/85 to-pine-deep/40" aria-hidden="true" />
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 py-12 md:py-24">
+        <div class="max-w-xl">
+          <p class="text-label-l uppercase tracking-[.2em] text-gold-container">Membership</p>
+          <h2 id="membership-title" class="mt-2 font-display text-headline-l md:text-display-s text-on-primary">
+            Make Deer Run <em class="italic">your</em> course
+          </h2>
+          <p class="mt-4 text-title-m font-normal text-on-primary">
+            Individual, Premier and Family memberships from <strong class="font-bold">${{ membershipFrom }}/month</strong>.
+          </p>
+          <ul class="mt-6 space-y-3">
+            <li v-for="b in membershipPerks" :key="b" class="flex items-start gap-3 text-body-l text-on-primary">
+              <IconCheckCircle class="w-6 h-6 flex-shrink-0 text-gold-container" aria-hidden="true" />
+              {{ b }}
+            </li>
+          </ul>
+          <AppButton to="/memberships" variant="gold" size="lg" :trailing-icon="IconArrowForward" class="mt-8">
+            Explore memberships
+          </AppButton>
         </div>
       </div>
     </section>
 
-    <!-- Stats strip -->
-    <section class="hero-bg py-16">
-      <div class="relative z-10 max-w-7xl mx-auto px-5">
-        <SectionLabel text="The Numbers" dark center class="mb-10" />
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-          <div v-for="s in stats" :key="s.label">
-            <div
-              style="font-family:'Playfair Display',serif;font-size:52px;font-weight:900;color:#F2EBD9;line-height:1;">
-              {{ s.val }}</div>
-            <div
-              style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:rgba(196,135,58,.7);margin-top:6px;">
-              {{ s.label }}</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Course photo gallery -->
-    <section class="overflow-hidden">
-      <div class="grid" style="grid-template-columns: 5fr 3fr 3fr; grid-template-rows: 300px 300px;">
-        <!-- Large featured photo — spans 2 rows -->
-        <div class="row-span-2 overflow-hidden relative group">
-          <img :src="gallery[0].src" :alt="gallery[0].alt"
-            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-          <div
-            class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        </div>
-        <!-- Top-right photos -->
-        <div class="overflow-hidden relative group">
-          <img :src="gallery[1].src" :alt="gallery[1].alt"
-            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        </div>
-        <div class="overflow-hidden relative group">
-          <img :src="gallery[2].src" :alt="gallery[2].alt"
-            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        </div>
-        <!-- Bottom-right photos -->
-        <div class="overflow-hidden relative group">
-          <img :src="gallery[3].src" :alt="gallery[3].alt"
-            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        </div>
-        <div class="overflow-hidden relative group">
-          <img :src="gallery[4].src" :alt="gallery[4].alt"
-            class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
-          <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        </div>
-      </div>
-    </section>
-
-    <!-- Bottom CTA -->
-    <section class="topo pb-20 pt-4">
-      <div class="max-w-7xl mx-auto px-5 text-center">
-        <SectionLabel text="Ready to Play?" center class="mb-5" />
-        <h2
-          style="font-family:'Playfair Display',serif;font-size:clamp(28px,4vw,46px);font-weight:900;color:#1E3D2F;margin-bottom:14px;">
-          Book Your Next Round Today
-        </h2>
-        <p
-          style="font-family:'Lato',sans-serif;font-size:15px;color:rgba(61,43,26,.5);margin-bottom:28px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.7;">
-          Tee times available online. Weekday and weekend rates for 9 or 18 holes, riding or walking.
-        </p>
-        <RouterLink to="/book" class="btn-amber mr-3">Book Online</RouterLink>
-        <RouterLink to="/rates" class="btn-outline-pine">View Rates</RouterLink>
-      </div>
-    </section>
+    <CourseGallery />
   </div>
 </template>
 
 <script setup>
-import PageHero from '@/components/layout/PageHero.vue'
-import SectionLabel from '@/components/ui/SectionLabel.vue'
-
-const features = [
-  {
-    icon: '⛳',
-    label: 'The Course',
-    title: '18 Holes of Earl Stone Design',
-    body: 'Sculpted into the rolling terrain of Lawrence County, Deer Run rewards thoughtful play with dramatic elevation changes, water carries, and bent-grass greens.',
-    link: '/scorecard',
-    cta: 'View Scorecard',
-  },
-  {
-    icon: '🏌️',
-    label: 'Tee Times',
-    title: 'Online Booking — 24/7',
-    body: 'Reserve your round in minutes from any device. Public golfers book up to 7 days in advance. Members enjoy 14-day access and priority morning slots.',
-    link: '/book',
-    cta: 'Book Now',
-  },
-  {
-    icon: '🏆',
-    label: 'Tournaments',
-    title: 'Year-Round Events',
-    body: 'From the Spring Opener Scramble to the Lawrence County Charity Open, our tournament calendar gives every golfer something to look forward to.',
-    link: '/tournaments',
-    cta: 'See Schedule',
-  },
-  {
-    icon: '📍',
-    label: 'Location',
-    title: '1175 County Road 100, Moulton AL',
-    body: 'At the entrance to Bankhead National Forest',
-    link: '/contact',
-    cta: 'Contact'
-  },
-  {
-    icon: '⏰',
-    label: 'Hours',
-    title: 'Open Daily · First tee 7:30 AM',
-    body: 'Closed Christmas Eve & Christmas Day',
-    link: '/contact',
-    cta: 'Contact'
-  },
-  {
-    icon: '📞',
-    label: 'Pro Shop',
-    title: '(256) 974-7384',
-    body: 'Call to book or inquire about memberships',
-    link: '/contact',
-    cta: 'Contact'
-  }
-]
+import CourseGallery from '@/components/home/CourseGallery.vue'
+import HomeHero from '@/components/home/HomeHero.vue'
+import PlanVisit from '@/components/home/PlanVisit.vue'
+import UpcomingEvents from '@/components/home/UpcomingEvents.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import Card from '@/components/ui/Card.vue'
+import ResponsivePicture from '@/components/ui/ResponsivePicture.vue'
+import { membershipTiers } from '@/data/membershipTiers'
+import { useBookingStore } from '@/stores/booking'
+import { computed, onMounted } from 'vue'
+import IconArrowForward from '~icons/material-symbols/arrow-forward-rounded'
+import IconCheckCircle from '~icons/material-symbols/check-circle-rounded'
 
 const stats = [
   { val: '18', label: 'Holes' },
   { val: '72', label: 'Par' },
-  { val: '6,745', label: 'Total Yards' },
+  { val: '6,745', label: 'Yards' },
   { val: '1980', label: 'Est.' },
 ]
 
-const gallery = [
-  { src: '/images/course-hero.jpg', alt: 'Deer Run Golf Course fairway' },
-  { src: '/images/course-2.jpg', alt: 'Deer Run Golf Course hole' },
-  { src: '/images/course-3.jpg', alt: 'Deer Run Golf Course green' },
-  { src: '/images/course-4.jpg', alt: 'Deer Run Golf Course landscape' },
-  { src: '/images/course-5.jpg', alt: 'Deer Run Golf Course scenery' },
-]
+// "From $X" uses the weekday 9-hole greens fee from GET /api/rates (the booking store's copy, DEFAULT_RATES until
+// it loads or if it fails)
+const booking = useBookingStore()
+onMounted(() => booking.loadRates())
+const fromPrice = computed(() => {
+  const cents = booking.rates.WEEKDAY_9
+  return cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`
+})
 
-const quickInfo = [
+const cards = computed(() => [
   {
-    icon: '📍',
-    label: 'Location',
-    value: '1175 County Road 100, Moulton AL',
-    sub: 'At the entrance to Bankhead National Forest',
+    to: '/scorecard',
+    photo: 'course-4',
+    label: 'The Course',
+    title: '18 holes of Earl Stone design',
+    body: 'Elevation changes, water carries and bent-grass greens. See every hole, tee and yardage.',
+    cta: 'View the scorecard',
   },
   {
-    icon: '⏰',
-    label: 'Hours',
-    value: 'Open Daily · First tee 7:30 AM',
-    sub: 'Closed Christmas Eve & Christmas Day',
+    to: '/rates',
+    photo: 'course-2-wide',
+    label: 'Tee Times & Rates',
+    title: 'Book online, day or night',
+    price: `Greens fees from ${fromPrice.value} per player`,
+    body: 'Weekday and weekend rates for 9 or 18 holes, riding or walking.',
+    cta: 'See rates',
   },
   {
-    icon: '📞',
-    label: 'Pro Shop',
-    value: '(256) 974-7384',
-    sub: 'Call to book or inquire about memberships',
+    to: '/tournaments',
+    photo: 'course-3',
+    label: 'Events',
+    title: 'Tournaments all year',
+    body: 'Our tournament calendar gives every golfer something to look forward to.',
+    cta: 'See the schedule',
   },
+])
+
+// Membership teaser, from src/data/membershipTiers.js
+const membershipFrom = Math.min(...membershipTiers.map(t => t.monthly))
+const discounts = membershipTiers.map(t => t.proShopDiscountBps / 100)
+const minDiscount = Math.min(...discounts)
+const maxDiscount = Math.max(...discounts)
+const membershipPerks = [
+  'Unlimited rounds',
+  '14-day advance tee time booking',
+  `${minDiscount === maxDiscount ? minDiscount : `${minDiscount}–${maxDiscount}`}% Pro Shop discount`,
 ]
 </script>

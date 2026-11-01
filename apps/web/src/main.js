@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import { createHead } from '@unhead/vue/client'
 import App from './App.vue'
 import router from './router'
 // Self-hosted fonts (latin subset, font-display: swap): Playfair Display for display/headlines, Lato for the rest
@@ -17,6 +18,7 @@ import VueDOMPurifyHTML from 'vue-dompurify-html';
 
 const app = createApp(App)
 app.use(createPinia())
+app.use(createHead()) // per-route <title> and description (App.vue)
 app.use(router)
 app.use(VueDOMPurifyHTML);
 app.mount('#app')

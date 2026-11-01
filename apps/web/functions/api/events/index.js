@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
+// GET /api/events[?past=true|false] — public list of TournamentEvent rows (every column), ordered by eventDate.
+// One event: GET /api/events/:id ([id].js).
+
 function json(data, status = 200) {
   return Response.json(data, { status })
 }

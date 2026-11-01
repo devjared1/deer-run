@@ -1,105 +1,105 @@
 <template>
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm font-body">
+  <div class="overflow-x-auto print:overflow-visible">
+    <table class="w-full border-collapse font-body text-body-m text-on-surface">
       <thead>
-        <tr class="text-left text-xs text-gray-500 uppercase tracking-wider">
-          <th v-if="showRegister" class="th">
+        <tr class="text-left border-b border-outline-variant">
+          <th v-if="showRegister" class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap">
             Register
           </th>
-          <th class="th">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap">
             Opened
           </th>
-          <th class="th">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap">
             Closed
           </th>
-          <th class="th text-right">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap text-right">
             Start
           </th>
-          <th class="th text-right">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap text-right">
             Cash in
           </th>
-          <th class="th text-right">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap text-right">
             Cash out
           </th>
-          <th class="th text-right" title="Paid in, paid out and safe drops">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap text-right" title="Paid in, paid out and safe drops">
             Paid in / out
           </th>
-          <th class="th text-right">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap text-right">
             Expected
           </th>
-          <th class="th text-right">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap text-right">
             Counted
           </th>
-          <th class="th text-right">
+          <th class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap text-right">
             Over / short
           </th>
-          <th v-if="closable" class="th print:hidden" />
+          <th v-if="closable" class="px-3 py-2 text-label-l text-on-surface-variant whitespace-nowrap print:hidden" />
         </tr>
       </thead>
-      <tbody class="divide-y divide-gray-50">
+      <tbody class="divide-y divide-outline-variant">
         <tr v-for="d in sessions" :key="d.id">
-          <td v-if="showRegister" class="td">
+          <td v-if="showRegister" class="px-3 py-2">
             {{ d.register?.name }}
           </td>
-          <td class="td whitespace-nowrap">
+          <td class="px-3 py-2 whitespace-nowrap">
             {{ when(d.openedAt) }}
-            <div class="text-xs text-gray-400">
+            <div class="text-body-s text-on-surface-variant">
               {{ person(d.openedBy) }}
             </div>
           </td>
-          <td class="td whitespace-nowrap">
+          <td class="px-3 py-2 whitespace-nowrap">
             <template v-if="d.closedAt">
               {{ when(d.closedAt) }}
-              <div class="text-xs text-gray-400">
+              <div class="text-body-s text-on-surface-variant">
                 {{ person(d.closedBy) }}
               </div>
             </template>
-            <span v-else class="text-xs px-2 py-0.5 rounded-full bg-gold/20 text-gold-dark">Open</span>
+            <StatusChip v-else label="Open" tone="warning" icon="pending" size="sm" />
           </td>
-          <td class="td-num">
+          <td class="px-3 py-2 text-right tabular-nums">
             {{ money(d.openingFloatCents) }}
           </td>
-          <td class="td-num">
+          <td class="px-3 py-2 text-right tabular-nums">
             {{ money(d.cashSalesCents) }}
           </td>
-          <td class="td-num">
+          <td class="px-3 py-2 text-right tabular-nums">
             {{ d.cashRefundsCents ? `−${money(d.cashRefundsCents)}` : money(0) }}
           </td>
-          <td class="td-num whitespace-nowrap" :title="movementTitle(d)">
+          <td class="px-3 py-2 text-right tabular-nums whitespace-nowrap" :title="movementTitle(d)">
             <template v-if="d.paidInCents || d.paidOutCents || d.safeDropCents">
               <div v-if="d.paidInCents">
-                +{{ money(d.paidInCents) }} <span class="text-xs text-gray-400">in</span>
+                +{{ money(d.paidInCents) }} <span class="text-body-s text-on-surface-variant">in</span>
               </div>
               <div v-if="d.paidOutCents">
-                −{{ money(d.paidOutCents) }} <span class="text-xs text-gray-400">out</span>
+                −{{ money(d.paidOutCents) }} <span class="text-body-s text-on-surface-variant">out</span>
               </div>
               <div v-if="d.safeDropCents">
-                −{{ money(d.safeDropCents) }} <span class="text-xs text-gray-400">to safe</span>
+                −{{ money(d.safeDropCents) }} <span class="text-body-s text-on-surface-variant">to safe</span>
               </div>
             </template>
-            <span v-else class="text-gray-400">—</span>
+            <span v-else class="text-on-surface-variant">—</span>
           </td>
-          <td class="td-num font-semibold">
-            {{ money(d.expectedCents) }}<span v-if="!d.closedAt" class="text-xs text-gray-400 font-normal"> so far</span>
+          <td class="px-3 py-2 text-right tabular-nums font-bold">
+            {{ money(d.expectedCents) }}<span v-if="!d.closedAt" class="text-body-s text-on-surface-variant font-normal"> so far</span>
           </td>
-          <td class="td-num">
+          <td class="px-3 py-2 text-right tabular-nums">
             {{ d.closedAt ? money(d.countedCents) : '—' }}
           </td>
-          <td class="td-num font-semibold" :class="overShortClass(d)">
+          <td class="px-3 py-2 text-right tabular-nums font-bold" :class="overShortClass(d)">
             <template v-if="d.closedAt">
               {{ d.overShortCents === 0 ? 'Balanced' : `${d.overShortCents > 0 ? '+' : '−'}${money(Math.abs(d.overShortCents))}` }}
             </template>
             <template v-else>
               —
             </template>
-            <div v-if="d.closeNote" class="text-xs text-gray-400 font-normal max-w-[14rem] ml-auto truncate" :title="d.closeNote">
+            <div v-if="d.closeNote" class="text-body-s text-on-surface-variant font-normal max-w-[14rem] ml-auto truncate" :title="d.closeNote">
               {{ d.closeNote }}
             </div>
           </td>
-          <td v-if="closable" class="td text-right print:hidden">
-            <button v-if="!d.closedAt" class="text-xs text-lake hover:text-pine" @click="$emit('close', d)">
+          <td v-if="closable" class="px-1 py-0 text-right print:hidden">
+            <AppButton v-if="!d.closedAt" variant="text" :aria-label="`Close the ${d.register?.name ?? ''} drawer`" @click="$emit('close', d)">
               Close…
-            </button>
+            </AppButton>
           </td>
         </tr>
       </tbody>
@@ -109,6 +109,8 @@
 
 <script setup>
 import { COURSE_TZ } from '@/lib/timeclock'
+import AppButton from '@/components/ui/AppButton.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
 import { MOVEMENT_LABELS, MOVEMENT_SIGN } from './salesReport'
 
 defineProps({
@@ -119,8 +121,8 @@ defineProps({
 defineEmits(['close'])
 
 function overShortClass(d) {
-  if (!d.closedAt || d.overShortCents === 0) return 'text-pine'
-  return 'text-clay'
+  if (!d.closedAt || d.overShortCents === 0) return 'text-primary'
+  return 'text-tertiary'
 }
 
 // Hover text: each paid in / paid out / safe drop with its time, reason and who did it
@@ -139,7 +141,10 @@ const money = (cents) => `$${((cents ?? 0) / 100).toLocaleString('en-US', { mini
 </script>
 
 <style scoped>
-.th     { @apply py-2 pr-3 font-semibold; }
-.td     { @apply py-2 pr-3 text-bark; }
-.td-num { @apply py-2 pr-3 text-right tabular-nums text-bark; }
+/* Ten columns don't fit a portrait letter page at screen size: tighter cells and wrapping headers/dates in print */
+@media print {
+  table { font-size: 9pt; }
+  th, td { padding-left: 4px; padding-right: 4px; white-space: normal; }
+  td.tabular-nums { white-space: nowrap; }
+}
 </style>

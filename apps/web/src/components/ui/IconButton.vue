@@ -3,7 +3,8 @@
     :is="to ? RouterLink : 'button'"
     :to="to || undefined"
     :type="to ? undefined : type"
-    :disabled="to ? undefined : disabled"
+    :disabled="to || focusableWhenDisabled ? undefined : disabled"
+    :aria-disabled="disabled && focusableWhenDisabled ? 'true' : undefined"
     :aria-label="label"
     :aria-pressed="toggle ? String(!!selected) : undefined"
     :title="tooltip ? label : undefined"
@@ -12,6 +13,7 @@
       SIZES[size],
       disabled ? 'text-on-surface/[.38] cursor-not-allowed' : `${variantClass} cursor-pointer`,
     ]"
+    @click.capture="blockWhenDisabled"
   >
     <component :is="icon" :class="ICON_SIZES[size]" aria-hidden="true" />
   </component>
@@ -20,6 +22,8 @@
 <script setup>
 // MD3 icon button: 48×48 touch target, required aria-label. variant: standard | filled | tonal | outlined |
 // inherit (current text color, for dark surfaces). `toggle` + `selected` for on/off buttons. `tooltip` shows the label on hover.
+// `focusableWhenDisabled`: disabled through aria-disabled (clicks blocked) so it keeps focus, e.g. a − / + stepper
+// whose button disables itself at the limit while it has focus.
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
@@ -34,7 +38,15 @@ const props = defineProps({
   toggle:   { type: Boolean, default: false },
   selected: { type: Boolean, default: false },
   tooltip:  { type: Boolean, default: false },
+  focusableWhenDisabled: { type: Boolean, default: false },
 })
+
+// Capture phase on the button itself runs before the parent's @click
+function blockWhenDisabled(event) {
+  if (!props.disabled || !props.focusableWhenDisabled) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}
 
 // sm is for dense tables only (still 40px); md and lg meet the 48dp target
 const SIZES = { sm: 'w-10 h-10 touch-target', md: 'w-12 h-12', lg: 'w-14 h-14' }

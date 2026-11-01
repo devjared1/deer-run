@@ -1,68 +1,92 @@
 <template>
-  <div class="max-w-6xl">
-    <!-- Toolbar -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-4 flex flex-wrap items-center gap-3 print:hidden">
-      <div class="flex rounded-lg border border-gray-300 overflow-hidden">
-        <button
-          v-for="(v, key) in SCHEDULE_VIEWS"
-          :key="key"
-          type="button"
-          :class="['px-3 py-2 text-sm font-body transition-colors', view === key ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-          @click="setQuery({ view: key })"
-        >
-          {{ v.label }}
-        </button>
+  <div class="max-w-6xl space-y-3">
+    <!-- Top app bar-style toolbar: period + chevrons, overflow menu -->
+    <div class="print:hidden space-y-2">
+      <div class="flex items-center gap-1">
+        <DateStepper
+          :model-value="stepperDate"
+          :step="STEPS[view]"
+          :format-title="stepperTitle"
+          :disabled="!data"
+          class="min-w-0"
+          @update:model-value="onStep"
+        />
+        <div class="ml-auto flex items-center gap-1">
+          <AppButton
+            variant="text"
+            class="hidden sm:inline-flex"
+            :disabled="!data || showsToday"
+            @click="goToday"
+          >
+            Today
+          </AppButton>
+          <AppButton
+            variant="outlined"
+            :icon="IconPrint"
+            class="hidden md:inline-flex"
+            :disabled="!data"
+            @click="printLandscape"
+          >
+            Print
+          </AppButton>
+          <RowActionsMenu
+            class="md:hidden"
+            label="More schedule actions"
+            :items="menuItems"
+          />
+        </div>
       </div>
-      <div class="flex rounded-lg border border-gray-300 overflow-hidden">
-        <button
-          type="button"
-          :class="['px-3 py-2 text-sm font-body transition-colors', !team ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-          @click="setQuery({ team: undefined })"
-        >
-          My shifts
-        </button>
-        <button
-          type="button"
-          :class="['px-3 py-2 text-sm font-body transition-colors', team ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-          @click="setQuery({ team: '1' })"
-        >
-          Whole team
-        </button>
+
+      <!-- Chip row: period length · whose shifts -->
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <ChipGroup
+          :model-value="view"
+          type="choice"
+          label="Period"
+          :options="viewOptions"
+          @update:model-value="v => setQuery({ view: v })"
+        />
+        <span
+          class="hidden min-[400px]:block w-px h-6 bg-outline-variant"
+          aria-hidden="true"
+        />
+        <ChipGroup
+          :model-value="team ? 'team' : 'mine'"
+          type="choice"
+          label="Whose shifts"
+          :options="whoOptions"
+          @update:model-value="v => setQuery({ team: v === 'team' ? '1' : undefined })"
+        />
       </div>
-      <div class="flex gap-2">
-        <button class="btn-outline-sm" :disabled="!data" @click="setQuery({ date: data.period.prevStart })">
-          ← Previous
-        </button>
-        <button class="btn-outline-sm" @click="setQuery({ date: undefined })">
-          Today
-        </button>
-        <button class="btn-outline-sm" :disabled="!data" @click="setQuery({ date: data.period.nextStart })">
-          Next →
-        </button>
-      </div>
-      <button class="btn-outline-sm ml-auto" :disabled="!data" @click="printLandscape">
-        🖨 Print
-      </button>
     </div>
 
-    <div v-if="data" class="flex flex-wrap items-baseline gap-x-4 gap-y-1 mb-3">
-      <h2 class="font-display font-bold text-bark text-xl">
-        <span class="hidden print:inline">Deer Run Schedule · </span>{{ periodLabel }}
+    <!-- Who and how much (and the period title on paper) -->
+    <div
+      v-if="data"
+      class="flex flex-wrap items-baseline gap-x-3 gap-y-1"
+    >
+      <h2 class="hidden print:block font-display text-headline-s text-on-surface">
+        Deer Run Schedule · {{ periodLabel }}
       </h2>
-      <span class="text-sm text-gray-500 font-body">
-        {{ team ? 'Whole team' : `${authStore.employee?.firstName} ${authStore.employee?.lastName}` }}
-      </span>
-      <span v-if="!team" class="text-sm text-gray-500 font-body">
-        · {{ myShifts.length }} shift{{ myShifts.length === 1 ? '' : 's' }}, {{ myShifts.length ? totalHours(myShifts) : '0h' }}
+      <span class="text-body-m text-on-surface-variant">
+        {{ team ? 'Whole team' : myName }}<template v-if="!team">
+          · {{ myShifts.length }} shift{{ myShifts.length === 1 ? '' : 's' }}, {{ myShifts.length ? totalHours(myShifts) : '0h' }}
+        </template>
       </span>
     </div>
 
-    <div v-if="loading && !data" class="text-gray-400 text-sm">
-      Loading…
-    </div>
-    <div v-else-if="error" class="text-red-500 text-sm">
-      {{ error }}
-    </div>
+    <Skeleton
+      v-if="loading && !data"
+      variant="rect"
+      height="360px"
+      label="Loading your schedule"
+    />
+    <ErrorBanner
+      v-else-if="error"
+      :message="error"
+      :retrying="loading"
+      @retry="load"
+    />
 
     <template v-else-if="data">
       <ScheduleMonth
@@ -85,46 +109,65 @@
       />
 
       <!-- My shifts, one row per day -->
-      <div v-else class="bg-white rounded-xl border border-gray-200 overflow-hidden divide-y divide-gray-100 print:rounded-none print:border-gray-400">
-        <div
-          v-for="d in dates"
-          :key="d"
-          :class="['flex flex-wrap items-center gap-x-6 gap-y-1 px-5 py-3 font-body', d === today ? 'bg-pine/5' : '']"
-        >
-          <div class="w-28 flex-shrink-0">
-            <div :class="['font-semibold', d === today ? 'text-pine' : 'text-bark']">
-              {{ formatLocalDate(d, { weekday: 'long' }) }}
+      <Card
+        v-else
+        padding="none"
+        class="overflow-hidden print:shadow-none print:border print:border-outline"
+      >
+        <!-- The list goes inside: Card wraps its default slot in a div, which a <ul> can't hold -->
+        <ul class="divide-y divide-outline-variant">
+          <li
+            v-for="d in dates"
+            :key="d"
+            :class="['flex items-start sm:items-center gap-x-4 gap-y-1 px-4 py-3', d === today ? 'bg-primary-container/40' : '']"
+            :aria-current="d === today ? 'date' : undefined"
+          >
+            <div class="w-24 sm:w-28 flex-none">
+              <div :class="['text-title-s', d === today ? 'text-primary' : 'text-on-surface']">
+                {{ formatLocalDate(d, { weekday: 'long' }) }}
+              </div>
+              <div class="text-body-s text-on-surface-variant">
+                {{ formatLocalDate(d, { month: 'short', day: 'numeric' }) }}{{ d === today ? ' · Today' : '' }}
+              </div>
             </div>
-            <div class="text-xs text-gray-400">
-              {{ formatLocalDate(d, { month: 'short', day: 'numeric' }) }}{{ d === today ? ' · Today' : '' }}
+            <div class="flex-1 min-w-0 flex flex-wrap gap-2">
+              <span
+                v-if="timeOffOn(data.timeOff, data.employeeId, d)"
+                :class="['inline-flex items-center gap-1.5 text-body-m border rounded-shape-sm px-2 py-1', timeOffClasses(timeOffOn(data.timeOff, data.employeeId, d))]"
+              >
+                <IconBeach
+                  class="w-4 h-4"
+                  aria-hidden="true"
+                />
+                {{ timeOffLabel(timeOffOn(data.timeOff, data.employeeId, d)) }}
+              </span>
+              <span
+                v-for="s in myShifts.filter(s => s.date === d)"
+                :key="s.id"
+                :class="['w-full sm:w-auto text-body-m border rounded-shape-sm px-3 py-1.5', shiftClasses(s, me)]"
+              >
+                <span class="whitespace-nowrap"><span class="font-bold">{{ longTime(s.startTime) }} – {{ longTime(s.endTime) }}</span>
+                  ({{ totalHours([s]) }})</span>
+                <span
+                  v-if="(s.position && s.position !== me?.position) || s.notes"
+                  class="block sm:inline sm:ml-2"
+                >{{ [s.position && s.position !== me?.position ? positionLabel(s.position) : null, s.notes].filter(Boolean).join(' · ') }}</span>
+              </span>
+              <span
+                v-if="!myShifts.some(s => s.date === d) && !timeOffOn(data.timeOff, data.employeeId, d)"
+                class="text-body-m text-on-surface-variant py-1"
+              >Off</span>
             </div>
-          </div>
-          <div class="flex-1 flex flex-wrap gap-2">
-            <span
-              v-if="timeOffOn(data.timeOff, data.employeeId, d)"
-              class="text-xs border border-dashed border-gray-400 text-gray-500 rounded px-2 py-1"
-            >
-              {{ timeOffLabel(timeOffOn(data.timeOff, data.employeeId, d)) }}
-            </span>
-            <span
-              v-for="s in myShifts.filter(s => s.date === d)"
-              :key="s.id"
-              :class="['text-sm border rounded px-3 py-1.5', shiftClasses(s, me)]"
-            >
-              <span class="font-semibold">{{ longTime(s.startTime) }} – {{ longTime(s.endTime) }}</span>
-              <span class="opacity-70 ml-1">({{ totalHours([s]) }})</span>
-              <span v-if="s.position && s.position !== me?.position" class="ml-2 opacity-80">{{ positionLabel(s.position) }}</span>
-              <span v-if="s.notes" class="ml-2 opacity-70">· {{ s.notes }}</span>
-            </span>
-            <span
-              v-if="!myShifts.some(s => s.date === d) && !timeOffOn(data.timeOff, data.employeeId, d)"
-              class="text-sm text-gray-300"
-            >Off</span>
-          </div>
-        </div>
-      </div>
+          </li>
+        </ul>
+      </Card>
 
-      <p class="text-gray-400 text-xs font-body mt-3 print:hidden">
+      <ScheduleLegend
+        v-if="team || view === 'month'"
+        :warnings="false"
+      />
+
+      <p class="text-body-s text-on-surface-variant print:hidden">
         Schedules can change. If you can't work a shift, talk to your manager.
       </p>
     </template>
@@ -139,9 +182,22 @@ import { apiFetch } from '@/lib/api'
 import { printLandscape } from '@/lib/print'
 import { localDate, formatLocalDate, isValidYmd } from '@/lib/timeclock'
 import { SCHEDULE_VIEWS, datesBetween, longTime } from '@/lib/schedule'
-import { positionLabel, shiftClasses, timeOffOn, timeOffLabel, totalHours } from '@/components/schedule/scheduleDisplay'
+import {
+  positionLabel, shiftClasses, timeOffClasses, timeOffOn, timeOffLabel, totalHours,
+} from '@/components/schedule/scheduleDisplay'
 import ScheduleGrid from '@/components/schedule/ScheduleGrid.vue'
 import ScheduleMonth from '@/components/schedule/ScheduleMonth.vue'
+import ScheduleLegend from '@/components/schedule/ScheduleLegend.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import Card from '@/components/ui/Card.vue'
+import ChipGroup from '@/components/ui/ChipGroup.vue'
+import DateStepper from '@/components/ui/DateStepper.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import IconPrint from '~icons/material-symbols/print-rounded'
+import IconToday from '~icons/material-symbols/today-rounded'
+import IconBeach from '~icons/material-symbols/beach-access-rounded'
 
 const route     = useRoute()
 const router    = useRouter()
@@ -151,6 +207,11 @@ const data    = ref(null)
 const loading = ref(false)
 const error   = ref(null)
 const today   = localDate()
+
+const STEPS = { week: 'week', biweek: 14, month: 'month' }
+const VIEW_LABELS = { week: 'Week', biweek: '2 weeks', month: 'Month' }
+const viewOptions = Object.keys(SCHEDULE_VIEWS).map(value => ({ value, label: VIEW_LABELS[value] ?? SCHEDULE_VIEWS[value].label }))
+const whoOptions = [{ value: 'mine', label: 'Mine' }, { value: 'team', label: 'Team' }]
 
 const view = computed(() => (SCHEDULE_VIEWS[route.query.view] ? route.query.view : 'week'))
 const date = computed(() => (isValidYmd(route.query.date) ? route.query.date : null))
@@ -163,6 +224,7 @@ function setQuery(patch) {
 }
 
 const me       = computed(() => data.value?.employees.find(e => e.id === data.value.employeeId) ?? null)
+const myName   = computed(() => `${authStore.employee?.firstName ?? ''} ${authStore.employee?.lastName ?? ''}`.trim())
 const dates    = computed(() => {
   if (!data.value) return []
   const p = data.value.period
@@ -179,6 +241,35 @@ const periodLabel = computed(() => {
   if (view.value === 'month') return formatLocalDate(p.start, { month: 'long', year: 'numeric' })
   return `${formatLocalDate(p.start, { month: 'short', day: 'numeric' })} – ${formatLocalDate(p.end, { month: 'short', day: 'numeric', year: 'numeric' })}`
 })
+
+// The stepper moves from the period's first day; the server snaps any date to its period
+const stepperDate = computed(() => data.value?.period.start ?? date.value ?? today)
+const showsToday = computed(() => !!data.value && data.value.period.start <= today && today <= data.value.period.end)
+
+// Compact so it fits next to the arrows on a phone: "Nov 1 – 7", "Oct 25 – Nov 7", "Nov 2026"
+function stepperTitle() {
+  if (!data.value) return 'Loading…'
+  const { start, end } = data.value.period
+  if (view.value === 'month') return formatLocalDate(start, { month: 'short', year: 'numeric' })
+  const thisYear = start.slice(0, 4) === today.slice(0, 4) && end.slice(0, 4) === start.slice(0, 4)
+  const y = thisYear ? {} : { year: 'numeric' }
+  const to = start.slice(0, 7) === end.slice(0, 7) && thisYear
+    ? formatLocalDate(end, { day: 'numeric' })
+    : formatLocalDate(end, { month: 'short', day: 'numeric', ...y })
+  return `${formatLocalDate(start, { month: 'short', day: 'numeric', ...y })} – ${to}`
+}
+
+function onStep(d) {
+  setQuery({ date: d === today ? undefined : d })
+}
+function goToday() {
+  setQuery({ date: undefined })
+}
+
+const menuItems = computed(() => [
+  { label: 'Go to today', icon: IconToday, disabled: !data.value || showsToday.value, onClick: goToday },
+  { label: 'Print', icon: IconPrint, disabled: !data.value, onClick: printLandscape },
+])
 
 async function load() {
   loading.value = true
@@ -197,7 +288,3 @@ async function load() {
 
 watch(() => [view.value, date.value, team.value], load, { immediate: true })
 </script>
-
-<style scoped>
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent; }
-</style>

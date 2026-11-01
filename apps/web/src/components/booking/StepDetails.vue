@@ -1,157 +1,172 @@
 <template>
-  <div class="card rounded-lg p-6">
-    <div class="flex items-center gap-3 mb-1">
-      <button @click="$emit('back')" style="color:rgba(61,43,26,.4);font-size:20px;cursor:pointer;background:none;border:none;">←</button>
-      <h2 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:#1E3D2F;">Your Details</h2>
+  <section class="rounded-shape-md bg-surface-container-low shadow-elevation-1 px-4 sm:px-6 pt-3 sm:pt-4 pb-6" aria-labelledby="step-details-title">
+    <div class="flex items-center gap-1 -ml-3">
+      <IconButton :icon="IconArrowBack" label="Back to tee times" @click="emit('back')" />
+      <h2
+        id="step-details-title"
+        data-step-heading
+        tabindex="-1"
+        class="font-display text-headline-s text-on-surface scroll-mt-24 focus:outline-none focus-visible:outline-none"
+      >
+        Your details
+      </h2>
     </div>
-    <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-bottom:24px;">
-      {{ formattedDate }} · {{ formattedTime }} · {{ store.players }} player{{ store.players > 1 ? 's' : '' }}
+    <p class="text-body-m text-on-surface-variant mt-1 mb-5">
+      <span class="text-on-surface">{{ dateLabel }} · {{ timeLabel }}</span> · {{ plural(store.players, 'player') }}
     </p>
 
-    <!-- Member / Guest toggle -->
-    <div class="flex gap-2 mb-6">
-      <button
-        @click="mode = 'guest'"
-        :class="['px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-all', mode !== 'guest' ? 'btn-outline-pine' : '']"
-        :style="mode === 'guest' ? 'background:#1E3D2F;color:#F2EBD9;font-family:Lato,sans-serif;border:none;cursor:pointer;' : ''"
+    <form novalidate class="space-y-6" @submit.prevent="proceed">
+      <!-- Who is booking -->
+      <div v-if="auth.isLoggedIn" class="flex items-start gap-3 rounded-shape-md bg-surface-container-lowest border border-outline-variant p-4">
+        <IconPerson class="w-6 h-6 text-primary flex-shrink-0 mt-0.5" aria-hidden="true" />
+        <div class="min-w-0">
+          <p class="text-title-s text-on-surface">
+            Booking as {{ auth.profile?.name || auth.profile?.email }}{{ auth.isMember ? ' (member)' : '' }}
+          </p>
+          <p class="text-body-s text-on-surface-variant break-words">
+            The confirmation goes to {{ auth.profile?.email }}. Manage the booking from My Account.
+          </p>
+        </div>
+      </div>
+
+      <template v-else>
+        <div>
+          <p class="text-label-l text-on-surface mb-2" aria-hidden="true">Book as</p>
+          <SegmentedButton v-model="mode" label="Book as" block size="lg" :options="MODE_OPTIONS" />
+        </div>
+
+        <div v-if="mode === 'guest'" class="space-y-4">
+          <TextField
+            ref="nameField"
+            v-model="store.guestName"
+            label="Full name"
+            name="name"
+            autocomplete="name"
+            autocapitalize="words"
+            required
+            :error="showError('name')"
+            @blur="touched.name = true"
+          />
+          <TextField
+            ref="emailField"
+            v-model="store.guestEmail"
+            label="Email"
+            type="email"
+            name="email"
+            autocomplete="email"
+            inputmode="email"
+            autocapitalize="off"
+            spellcheck="false"
+            required
+            helper="Your confirmation and receipt go here"
+            :error="showError('email')"
+            @blur="touched.email = true"
+          />
+        </div>
+
+        <div v-else class="rounded-shape-md bg-surface-container-lowest border border-outline-variant p-4 space-y-3">
+          <p class="text-body-m text-on-surface">
+            Sign in to book under your account: members book 14 days ahead and can cancel from My Account.
+            Your selection is kept.
+          </p>
+          <AppButton variant="filled" :to="{ path: '/login', query: { redirect: '/book?resume=details' } }" :icon="IconLogin">
+            Sign in to continue
+          </AppButton>
+        </div>
+      </template>
+
+      <!-- The round -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <p class="text-label-l text-on-surface mb-2" aria-hidden="true">Holes</p>
+          <SegmentedButton v-model="store.roundHoles" label="Holes" block size="lg" :options="HOLE_OPTIONS" />
+        </div>
+        <div>
+          <p class="text-label-l text-on-surface mb-2" aria-hidden="true">Cart</p>
+          <SegmentedButton v-model="store.cart" label="Cart" block size="lg" :options="CART_OPTIONS" />
+        </div>
+      </div>
+
+      <!-- Price -->
+      <dl class="rounded-shape-md bg-gold-container/40 border border-outline-variant p-4 space-y-2 text-body-m text-on-surface">
+        <div class="flex justify-between gap-4">
+          <dt>Greens fee, {{ store.roundHoles }} holes ({{ weekend ? 'weekend/holiday' : 'weekday' }}) · {{ store.players }} × {{ formatCents(store.price.greensCents) }}</dt>
+          <dd class="tabular-nums">{{ formatCents(store.price.greensCents * store.players) }}</dd>
+        </div>
+        <div v-if="store.cart" class="flex justify-between gap-4">
+          <dt>Cart · {{ store.players }} × {{ formatCents(store.price.cartCents) }}</dt>
+          <dd class="tabular-nums">{{ formatCents(store.price.cartCents * store.players) }}</dd>
+        </div>
+        <div class="flex justify-between gap-4 pt-2 border-t border-outline-variant text-title-m">
+          <dt>Total</dt>
+          <dd class="tabular-nums">{{ formatCents(store.price.totalCents) }}</dd>
+        </div>
+      </dl>
+
+      <AppButton
+        type="submit"
+        variant="gold"
+        size="lg"
+        block
+        :disabled="!auth.isLoggedIn && mode === 'member'"
+        :trailing-icon="IconArrowForward"
       >
-        Continue as Guest
-      </button>
-      <button
-        @click="mode = 'member'"
-        :class="['px-4 py-2 text-sm font-bold uppercase tracking-wider rounded-sm transition-all', mode !== 'member' ? 'btn-outline-pine' : '']"
-        :style="mode === 'member' ? 'background:#C4873A;color:#0D1F16;font-family:Lato,sans-serif;border:none;cursor:pointer;' : ''"
-      >
-        Member / Sign In
-      </button>
-    </div>
-
-    <!-- Guest form -->
-    <div v-if="mode === 'guest'" class="space-y-4 mb-6">
-      <div>
-        <label class="field-label">Full Name</label>
-        <input v-model="store.guestName" type="text" placeholder="John Smith" class="field rounded-sm" />
-      </div>
-      <div>
-        <label class="field-label">Email (for confirmation)</label>
-        <input v-model="store.guestEmail" type="email" placeholder="john@example.com" class="field rounded-sm" />
-      </div>
-    </div>
-
-    <!-- Member info -->
-    <div v-else class="mb-6">
-      <div v-if="authStore.isLoggedIn" class="p-4 rounded" style="background:rgba(30,61,47,.06);">
-        <div style="font-family:'Lato',sans-serif;font-size:13px;font-weight:700;color:#1E3D2F;">
-          Signed in{{ authStore.isMember ? ' as a member' : '' }}{{ authStore.profile?.name ? ` · ${authStore.profile.name}` : '' }}
-        </div>
-        <div style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(61,43,26,.5);margin-top:2px;">{{ authStore.profile?.email }}</div>
-      </div>
-      <div v-else class="space-y-4">
-        <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.55);">Sign in to access member rates and advance booking.</p>
-        <RouterLink :to="{ path: '/login', query: { redirect: '/book?resume=details' } }" class="btn-primary inline-flex">Sign In to My Account</RouterLink>
-      </div>
-    </div>
-
-    <!-- Round: 9 or 18 holes, riding or walking -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-      <fieldset>
-        <legend class="field-label">Holes</legend>
-        <div class="flex gap-2">
-          <button
-            v-for="n in [9, 18]"
-            :key="n"
-            type="button"
-            :aria-pressed="store.roundHoles === n"
-            :class="['flex-1 px-4 py-3 text-sm font-bold rounded-sm transition-all', store.roundHoles === n ? '' : 'btn-outline-pine']"
-            :style="store.roundHoles === n ? 'background:#1E3D2F;color:#F2EBD9;font-family:Lato,sans-serif;border:none;' : ''"
-            @click="store.roundHoles = n"
-          >
-            {{ n }} holes
-          </button>
-        </div>
-      </fieldset>
-      <fieldset>
-        <legend class="field-label">Cart</legend>
-        <div class="flex gap-2">
-          <button
-            v-for="opt in [{ value: true, label: 'Riding' }, { value: false, label: 'Walking' }]"
-            :key="opt.label"
-            type="button"
-            :aria-pressed="store.cart === opt.value"
-            :class="['flex-1 px-4 py-3 text-sm font-bold rounded-sm transition-all', store.cart === opt.value ? '' : 'btn-outline-pine']"
-            :style="store.cart === opt.value ? 'background:#1E3D2F;color:#F2EBD9;font-family:Lato,sans-serif;border:none;' : ''"
-            @click="store.cart = opt.value"
-          >
-            {{ opt.label }}
-          </button>
-        </div>
-      </fieldset>
-    </div>
-
-    <!-- Order summary -->
-    <div class="p-4 rounded mb-6" style="background:rgba(196,135,58,.08);border:1px solid rgba(196,135,58,.2);">
-      <div class="flex justify-between mb-2" style="font-family:'Lato',sans-serif;font-size:13px;color:#52392A;">
-        <span>Greens fee, {{ store.roundHoles }} holes · {{ store.players }} × {{ money(store.price.greensCents) }}</span>
-        <span>{{ money(store.price.greensCents * store.players) }}</span>
-      </div>
-      <div v-if="store.cart" class="flex justify-between mb-2" style="font-family:'Lato',sans-serif;font-size:13px;color:#52392A;">
-        <span>Cart · {{ store.players }} × {{ money(store.price.cartCents) }}</span>
-        <span>{{ money(store.price.cartCents * store.players) }}</span>
-      </div>
-      <div class="flex justify-between pt-2" style="font-family:'Lato',sans-serif;font-size:14px;font-weight:700;color:#3D2B1A;border-top:1px solid rgba(196,135,58,.25);">
-        <span>Total</span>
-        <span>{{ money(store.price.totalCents) }}</span>
-      </div>
-    </div>
-
-    <div v-if="error" class="mb-4 p-3 rounded text-sm" style="background:rgba(140,74,47,.1);color:#6B3820;font-family:'Lato',sans-serif;">
-      {{ error }}
-    </div>
-
-    <button
-      @click="proceed"
-      class="btn-amber w-full justify-center"
-    >
-      Proceed to Payment →
-    </button>
-  </div>
+        Continue to payment
+      </AppButton>
+    </form>
+  </section>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useBookingStore } from '@/stores/booking'
+// Booking step 3: who's booking (guest, or sign in and come back to this step), the round (9/18, riding/walking)
+// and the price. No phone field: Booking has no phone column and POST /api/bookings doesn't take one.
+import AppButton from '@/components/ui/AppButton.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import TextField from '@/components/ui/TextField.vue'
+import { formatCents } from '@/lib/money'
+import { isWeekendRate } from '@/lib/rates'
+import { teeTime } from '@/lib/teesheet'
+import { formatLocalDate } from '@/lib/timeclock'
 import { useAuthStore } from '@/stores/auth'
+import { useBookingStore } from '@/stores/booking'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
+import IconGolfCart from '~icons/deer/golf-cart'
+import IconArrowBack from '~icons/material-symbols/arrow-back-rounded'
+import IconArrowForward from '~icons/material-symbols/arrow-forward-rounded'
+import IconLogin from '~icons/material-symbols/login-rounded'
+import IconPerson from '~icons/material-symbols/person-rounded'
+import IconWalk from '~icons/material-symbols/directions-walk-rounded'
+import { plural } from './bookingFlow'
 
 const emit = defineEmits(['next', 'back'])
-const store     = useBookingStore()
-const authStore = useAuthStore()
+const store = useBookingStore()
+const auth = useAuthStore()
 onMounted(() => store.loadRates())
 
-function money(cents) {
-  return `$${(cents / 100).toFixed(2)}`
-}
-const mode  = ref(authStore.isLoggedIn ? 'member' : 'guest')
-const error = ref('')
+const MODE_OPTIONS = [{ value: 'guest', label: 'Guest' }, { value: 'member', label: 'Sign in' }]
+const HOLE_OPTIONS = [{ value: 9, label: '9 holes' }, { value: 18, label: '18 holes' }]
+const CART_OPTIONS = [{ value: true, label: 'Riding', icon: IconGolfCart }, { value: false, label: 'Walking', icon: IconWalk }]
 
-const formattedDate = computed(() => {
-  if (!store.selectedDate) return ''
-  return new Date(store.selectedDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
-})
+const mode = ref('guest')
+const touched = reactive({ name: false, email: false })
+const submitted = ref(false)
+const nameField = ref(null)
+const emailField = ref(null)
 
-const formattedTime = computed(() => {
-  if (!store.selectedSlot) return ''
-  const [h, m] = store.selectedSlot.startTime.split(':').map(Number)
-  const ampm = h >= 12 ? 'PM' : 'AM'
-  return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${ampm}`
-})
+const dateLabel = computed(() => (store.selectedDate ? formatLocalDate(store.selectedDate, { weekday: 'long', month: 'long', day: 'numeric' }) : ''))
+const timeLabel = computed(() => (store.selectedSlot ? teeTime(store.selectedSlot.startTime) : ''))
+const weekend = computed(() => !!store.selectedDate && isWeekendRate(store.selectedDate, store.holidayDates))
+
+// Errors show once a field was left, or after Continue
+const showError = key => ((touched[key] || submitted.value) ? store.guestErrors[key] : '')
 
 function proceed() {
-  error.value = ''
-  if (mode.value === 'guest') {
-    if (!store.guestName || !store.guestEmail) {
-      error.value = 'Please fill in your name and email.'
-      return
-    }
+  submitted.value = true
+  if (!auth.isLoggedIn) {
+    if (mode.value !== 'guest') return
+    if (store.guestErrors.name) return nextTick(() => nameField.value?.focus())
+    if (store.guestErrors.email) return nextTick(() => emailField.value?.focus())
   }
   emit('next')
 }

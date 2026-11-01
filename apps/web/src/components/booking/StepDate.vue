@@ -1,154 +1,72 @@
 <template>
-  <div class="card rounded-lg p-6">
-    <h2 style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#1E3D2F;margin-bottom:4px;">
-      Select a Date
+  <section class="rounded-shape-md bg-surface-container-low shadow-elevation-1 p-4 sm:p-6" aria-labelledby="step-date-title">
+    <h2
+      id="step-date-title"
+      data-step-heading
+      tabindex="-1"
+      class="font-display text-headline-s text-on-surface scroll-mt-24 focus:outline-none focus-visible:outline-none"
+    >
+      Choose a date
     </h2>
-    <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-bottom:12px;">
-      Tee times available up to {{ authStore.maxBookDays }} days in advance.
+    <p class="text-body-m text-on-surface-variant mt-1 mb-4">
+      Tee times can be booked up to {{ auth.maxBookDays }} days ahead.
+      <template v-if="!auth.isMember && !auth.isAdmin">Members can book 14 days ahead.</template>
+      {{ ' ' }}<RouterLink
+        v-if="!auth.isLoggedIn"
+        :to="{ path: '/login', query: { redirect: '/book' } }"
+        class="text-primary underline"
+      >Member sign in</RouterLink>
     </p>
 
-    <hr
-      class="mb-2 p-0"
-      style="border-bottom: 1px solid rgba(61,43,26,.12);"
-    >
-
-    <!-- Calendar grid -->
-    <div class="mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <button
-          class="btn-outline-pine"
-          style="padding:4px 8px;"
-          @click="prevMonth"
-        >
-          ‹
-        </button>
-        <div style="font-family:'Playfair Display',serif;font-size:14px;font-weight:700;color:#1E3D2F;">
-          {{ monthLabel }}
-        </div>
-        <button
-          class="btn-outline-pine"
-          style="padding:4px 8px;"
-          @click="nextMonth"
-        >
-          ›
-        </button>
-      </div>
-
-      <!-- Day headers -->
-      <div class="grid grid-cols-7">
-        <div
-          v-for="d in ['Su','Mo','Tu','We','Th','Fr','Sa']"
-          :key="d"
-          class="text-center text-xs font-bold uppercase"
-          style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.4);letter-spacing:.08em;"
-        >
-          {{ d }}
-        </div>
-      </div>
-
-      <!-- Day cells -->
-      <div class="grid grid-cols-7 gap-1">
-        <div
-          v-for="cell in calendarCells"
-          :key="cell.key"
-          class="flex items-center justify-center w-full h-9"
-        >
-          <button
-            v-if="cell.date"
-            :disabled="cell.disabled"
-            class="w-full h-full flex items-center justify-center rounded text-xs font-bold transition-all"
-            :style="cellStyle(cell)"
-            @click="selectDate(cell.date)"
-          >
-            {{ cell.day }}
-          </button>
-        </div>
-      </div>
+    <!-- Phones: a strip of the bookable days; md+: the month -->
+    <div class="md:hidden">
+      <DateStrip :model-value="store.selectedDate" :min="win.from" :max="win.to" :day-info="dayInfo" @select="select" />
+    </div>
+    <div class="hidden md:block">
+      <BookingCalendar :model-value="store.selectedDate" :min="win.from" :max="win.to" :day-info="dayInfo" @select="select" />
     </div>
 
-    <button
-      :disabled="!selectedDate"
-      class="btn-amber w-full justify-center"
-      :style="!selectedDate ? 'opacity:.4;cursor:not-allowed;' : ''"
-      @click="$emit('next')"
-    >
-      Choose a Tee Time →
-    </button>
-  </div>
+    <p class="mt-3 text-body-s text-on-surface-variant" aria-live="polite">
+      <template v-if="loadingHints">Checking availability…</template>
+      <template v-else-if="store.availabilityReady">Numbers show the tee times still open each day. Pick a day to see them.</template>
+      <template v-else>Pick a day to see its open tee times.</template>
+    </p>
+  </section>
 </template>
 
 <script setup>
-import { useAuthStore } from '@/stores/auth';
-import { useBookingStore } from '@/stores/booking';
-import { computed, ref } from 'vue';
+// Booking step 1: picking a day goes straight on to the Time step.
+import { useAuthStore } from '@/stores/auth'
+import { useBookingStore } from '@/stores/booking'
+import { computed, onMounted, ref } from 'vue'
+import BookingCalendar from './BookingCalendar.vue'
+import DateStrip from './DateStrip.vue'
+import { bookingWindow, plural } from './bookingFlow'
 
 const emit = defineEmits(['next'])
-const bookingStore = useAuthStore()
-const authStore    = useAuthStore()
-const store        = useBookingStore()
+const auth = useAuthStore()
+const store = useBookingStore()
 
-const today    = new Date()
-today.setHours(0, 0, 0, 0)
-const maxDate  = new Date(today)
-maxDate.setDate(today.getDate() + authStore.maxBookDays)
+const win = computed(() => bookingWindow(auth.maxBookDays))
+const loadingHints = ref(!store.availabilityReady)
 
-const currentMonth = ref(new Date(today.getFullYear(), today.getMonth(), 1))
-
-const monthLabel = computed(() => {
-  return currentMonth.value.toLocaleString('default', { month: 'long', year: 'numeric' })
+onMounted(async () => {
+  await store.loadAvailability(win.value.from, win.value.to)
+  loadingHints.value = false
 })
 
-const selectedDate = computed({
-  get: () => store.selectedDate,
-  set: (val) => { store.selectedDate = val },
-})
-
-const formattedDate = computed(() => {
-  if (!selectedDate.value) return ''
-  return new Date(selectedDate.value + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-})
-
-const calendarCells = computed(() => {
-  const year  = currentMonth.value.getFullYear()
-  const month = currentMonth.value.getMonth()
-  const first = new Date(year, month, 1)
-  const last  = new Date(year, month + 1, 0)
-  const cells = []
-
-  // Leading blanks
-  for (let i = 0; i < first.getDay(); i++) cells.push({ key: `blank-${i}`, date: null })
-
-  for (let d = 1; d <= last.getDate(); d++) {
-    const date = new Date(year, month, d)
-    const dateStr = `${year}-${String(month + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`
-    cells.push({
-      key: dateStr,
-      date: dateStr,
-      day: d,
-      disabled: date < today || date > maxDate,
-      isToday: date.getTime() === today.getTime(),
-      selected: selectedDate.value === dateStr,
-    })
-  }
-  return cells
-})
-
-function cellStyle(cell) {
-  if (cell.disabled) return 'font-family:Lato,sans-serif;color:rgba(61,43,26,.2);cursor:not-allowed;'
-  if (cell.selected) return 'font-family:Lato,sans-serif;background:#C4873A;color:#0D1F16;cursor:pointer;'
-  if (cell.isToday)  return 'font-family:Lato,sans-serif;background:rgba(30,61,47,.1);color:#1E3D2F;cursor:pointer;font-weight:900;'
-  return 'font-family:Lato,sans-serif;color:#3D2B1A;cursor:pointer;'
+// Availability hint for a day: only once the summary has loaded; a day with nothing open can't be picked
+function dayInfo(ymd) {
+  if (!store.availabilityReady) return { hint: '', disabled: false, aria: '' }
+  const day = store.availability[ymd]
+  if (!day) return { hint: 'No times', disabled: true, aria: 'no tee times online' }
+  if (!day.open) return { hint: 'Full', disabled: true, aria: 'fully booked' }
+  return { hint: `${day.open} open`, disabled: false, aria: `${plural(day.open, 'tee time')} open` }
 }
 
-function selectDate(dateStr) {
-  selectedDate.value = dateStr
-  store.selectedSlot = null
-}
-
-function prevMonth() {
-  currentMonth.value = new Date(currentMonth.value.getFullYear(), currentMonth.value.getMonth() - 1, 1)
-}
-function nextMonth() {
-  currentMonth.value = new Date(currentMonth.value.getFullYear(), currentMonth.value.getMonth() + 1, 1)
+function select(ymd) {
+  if (store.selectedDate !== ymd) store.selectedSlot = null
+  store.selectedDate = ymd
+  emit('next')
 }
 </script>

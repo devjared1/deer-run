@@ -1,9 +1,10 @@
 // Prices are stored as integer cents; forms edit them as dollars.
 
-/** 4500 → "$45.00"; null → "—" */
+/** 4500 → "$45.00", 123456 → "$1,234.56", -500 → "-$5.00"; null → "—" */
 export function formatCents(cents) {
   if (cents === null || cents === undefined) return '—'
-  return `$${(cents / 100).toFixed(2)}`
+  const dollars = (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return `${cents < 0 ? '-' : ''}$${dollars}`
 }
 
 /** 4500 → "45.00"; null → "" (for form inputs) */

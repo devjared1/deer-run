@@ -36,7 +36,11 @@ export async function onRequestGet({ request, env }) {
   if (!user) {
     const { data: created, error: dbError } = await supabase
       .from('User')
-      .insert({ id: crypto.randomUUID(), supabaseId: authUser.id, email: authUser.email, role: 'GUEST' })
+      // The name comes from sign-up (LoginView → supabase.auth.signUp options.data.name)
+      .insert({
+        id: crypto.randomUUID(), supabaseId: authUser.id, email: authUser.email, role: 'GUEST',
+        name: authUser.user_metadata?.name?.trim() || null,
+      })
       .select()
       .single()
 

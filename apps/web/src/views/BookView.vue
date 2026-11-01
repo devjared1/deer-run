@@ -1,15 +1,11 @@
 <template>
-  <div
-    class="page-enter"
-    style="background-color:#f7f3e8"
-  >
+  <div class="bg-surface">
     <PageHero
-      label="Reserve Your Round"
+      label="Reserve your round"
       title-html="Book a <em>Tee Time</em>"
-      description="Select your date, choose a time, and complete payment securely online."
-      bg-image="/images/course-5-wide.jpg"
-      height="200px"
-      :classes="['flex', 'items-center']"
+      description="Pick a day, choose a time for your group and pay securely online."
+      photo="course-5-wide"
+      height="180px"
     />
 
     <section class="py-6 md:py-10">
@@ -21,6 +17,6 @@
 </template>
 
 <script setup>
-import BookingWizard from '@/components/booking/BookingWizard.vue';
-import PageHero from '@/components/layout/PageHero.vue';
+import BookingWizard from '@/components/booking/BookingWizard.vue'
+import PageHero from '@/components/layout/PageHero.vue'
 </script>

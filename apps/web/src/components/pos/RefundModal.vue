@@ -1,106 +1,106 @@
 <template>
-  <div class="modal-overlay">
-    <div class="modal-box max-w-lg max-h-[92vh] overflow-y-auto">
-      <h2 class="font-display font-bold text-bark mb-1">{{ isVoid ? 'Void' : 'Refund' }} Sale #{{ sale.number }}</h2>
-      <p class="text-gray-500 text-sm font-body mb-4">
+  <AppDialog :open="true" :title="`${isVoid ? 'Void' : 'Refund'} sale #${sale.number}`" size="lg" persistent>
+    <div class="font-body text-on-surface">
+      <p class="text-body-m text-on-surface-variant mb-3">
         <template v-if="isVoid">Cancels the whole sale and returns tracked items to stock.</template>
         <template v-else>Choose what's being returned.</template>
       </p>
 
-      <table class="w-full text-sm font-body mb-3">
-        <tbody class="divide-y divide-gray-50">
-          <tr v-for="(row, i) in rows" :key="row.item.id">
-            <td class="py-2 pr-3 text-bark">
-              {{ row.item.description }}
-              <div class="text-xs text-gray-400">
-                {{ row.item.quantity }} sold<template v-if="row.item.refundedQuantity"> · {{ row.item.refundedQuantity }} already refunded</template>
-              </div>
-            </td>
-            <td class="py-2 pr-3 w-32">
-              <div v-if="!isVoid && row.remaining > 0" class="flex items-center gap-1">
-                <button class="qty-btn" :disabled="row.quantity === 0" @click="row.quantity--">−</button>
-                <span class="w-6 text-center tabular-nums">{{ row.quantity }}</span>
-                <button class="qty-btn" :disabled="row.quantity >= row.remaining" @click="row.quantity++">+</button>
-                <button class="text-xs text-lake ml-1" @click="row.quantity = row.remaining">All</button>
-              </div>
-              <span v-else-if="isVoid" class="text-gray-500 tabular-nums">× {{ row.remaining }}</span>
-              <span v-else class="text-xs text-gray-400">Fully refunded</span>
-            </td>
-            <td class="py-2 text-right tabular-nums w-20">{{ row.quantity ? formatCents(previews[i].amountCents) : '—' }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <!-- Items -->
+      <ul class="divide-y divide-outline-variant border-y border-outline-variant">
+        <li v-for="(row, i) in rows" :key="row.item.id" class="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
+          <div class="min-w-[10rem] flex-1">
+            <div class="text-body-l">{{ row.item.description }}</div>
+            <div class="text-body-s text-on-surface-variant">
+              {{ row.item.quantity }} sold<template v-if="row.item.refundedQuantity"> · {{ row.item.refundedQuantity }} already refunded</template>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 ml-auto">
+            <template v-if="!isVoid && row.remaining > 0">
+              <!-- focusable-when-disabled: these disable themselves at the limit while focused (keyboard focus stays put) -->
+              <IconButton :icon="IconRemove" variant="outlined" :label="`One fewer ${row.item.description}`" :disabled="row.quantity === 0" focusable-when-disabled @click="row.quantity--" />
+              <span class="w-8 text-center text-title-m tabular-nums" aria-live="polite">{{ row.quantity }}</span>
+              <IconButton :icon="IconAdd" variant="outlined" :label="`One more ${row.item.description}`" :disabled="row.quantity >= row.remaining" focusable-when-disabled @click="row.quantity++" />
+              <AppButton variant="text" :aria-label="`Refund all ${row.item.description}`" :disabled="row.quantity === row.remaining" focusable-when-disabled @click="row.quantity = row.remaining">All</AppButton>
+            </template>
+            <span v-else-if="isVoid" class="text-body-m text-on-surface-variant tabular-nums">× {{ row.remaining }}</span>
+            <span v-else class="text-body-s text-on-surface-variant">Fully refunded</span>
+            <span class="w-20 text-right text-body-l tabular-nums">{{ row.quantity ? formatCents(previews[i].amountCents) : '—' }}</span>
+          </div>
+        </li>
+      </ul>
 
-      <div class="space-y-3 border-t border-gray-100 pt-3">
-        <label v-if="!isVoid" class="flex items-center gap-2 font-body text-sm text-bark cursor-pointer">
-          <input v-model="restock" type="checkbox" class="rounded" /> Return items to stock
-          <span class="text-gray-400 text-xs">(uncheck for damaged items)</span>
-        </label>
-        <div>
-          <label class="label-sm">Reason *</label>
-          <input v-model="reason" type="text" maxlength="200" class="input-field w-full" :placeholder="isVoid ? 'Rang up the wrong item' : 'Wrong size'" />
-        </div>
+      <Checkbox v-if="!isVoid" v-model="restock" label="Return items to stock" helper="Untick for damaged items" class="mt-3" />
+
+      <!-- Reason -->
+      <div class="mt-4">
+        <div class="text-label-l text-on-surface-variant" aria-hidden="true">Reason</div>
+        <ChipGroup v-model="reasonChoice" type="choice" size="lg" label="Reason" :options="reasonOptions" />
+        <TextField
+          v-if="reasonChoice === OTHER"
+          v-model="otherReason"
+          label="What happened?"
+          maxlength="200"
+          required
+          class="mt-2"
+        />
       </div>
 
-      <!-- Where the money goes: back to the card it was paid with, or cash -->
+      <!-- Where the money goes: back the way it was paid -->
       <div v-if="cardAvailable > 0 || accountAvailable > 0" class="mt-4">
-        <div class="label-sm">Refund to</div>
-        <div class="flex rounded-lg border border-gray-300 overflow-hidden w-fit">
-          <button
-            v-if="cardAvailable > 0"
-            type="button"
-            :class="['px-3 py-2 text-sm font-body', method === 'CARD_TERMINAL' ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-            @click="method = 'CARD_TERMINAL'"
-          >
-            The card (up to {{ formatCents(cardAvailable) }})
-          </button>
-          <button
-            v-if="accountAvailable > 0"
-            type="button"
-            :class="['px-3 py-2 text-sm font-body', method === 'HOUSE_ACCOUNT' ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-            @click="method = 'HOUSE_ACCOUNT'"
-          >
-            House account (up to {{ formatCents(accountAvailable) }})
-          </button>
-          <button
-            v-if="cashAvailable > 0"
-            type="button"
-            :class="['px-3 py-2 text-sm font-body', method === 'CASH' ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-            @click="method = 'CASH'"
-          >
-            Cash (up to {{ formatCents(cashAvailable) }})
-          </button>
-        </div>
+        <div class="text-label-l text-on-surface-variant mb-1" aria-hidden="true">Refund to</div>
+        <SegmentedButton v-model="method" :options="methodOptions" label="Refund to" size="lg" block />
+        <p class="mt-1 text-body-s text-on-surface-variant">
+          Up to {{ formatCents(limit) }} {{ { CARD_TERMINAL: 'back to the card', HOUSE_ACCOUNT: 'back to the house account' }[method] ?? 'in cash' }}<template v-if="method === 'CASH'">. Cash refunds need an open drawer</template>.
+        </p>
       </div>
 
-      <div class="mt-4 flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3 font-body">
-        <span class="text-gray-600 text-sm">{{ { CARD_TERMINAL: 'Back to the card', HOUSE_ACCOUNT: 'Credit to the house account' }[method] ?? 'Cash to give back' }}</span>
-        <span class="font-display font-bold text-bark text-2xl tabular-nums">{{ formatCents(totalCents) }}</span>
+      <div class="mt-4 flex items-center justify-between gap-3 rounded-shape-md bg-surface-container-highest px-4 py-3">
+        <span class="text-body-l text-on-surface-variant">{{ { CARD_TERMINAL: 'Back to the card', HOUSE_ACCOUNT: 'Credit to the house account' }[method] ?? 'Cash to give back' }}</span>
+        <span class="font-display text-headline-m tabular-nums">{{ formatCents(totalCents) }}</span>
       </div>
 
-      <div class="flex justify-end gap-3 mt-5">
-        <button class="btn-outline-sm" :disabled="busy" @click="$emit('cancel')">Cancel</button>
-        <button
-          :disabled="busy || !canSubmit"
-          :class="['px-4 py-2 text-sm rounded-lg font-body font-semibold disabled:opacity-50', isVoid ? 'bg-red-500 hover:bg-red-600 text-white' : 'btn-amber']"
-          @click="submit"
-        >
-          {{ busy ? 'Working…' : isVoid ? 'Void Sale' : 'Refund' }}
-        </button>
-      </div>
-      <p v-if="overLimit" class="text-clay text-xs font-body mt-2 text-right">
-        Only {{ formatCents(limit) }} can go back {{ { CARD_TERMINAL: 'to the card', HOUSE_ACCOUNT: 'to the account' }[method] ?? 'in cash' }}. Refund fewer items this way.
-      </p>
-      <p class="text-gray-400 text-xs font-body mt-2 text-right">A manager approves before anything is refunded.</p>
-      <p v-if="error" class="text-red-500 text-sm mt-2 font-body">{{ error }}</p>
+      <ErrorBanner
+        v-if="overLimit"
+        tone="warning"
+        :message="`Only ${formatCents(limit)} can go back ${{ CARD_TERMINAL: 'to the card', HOUSE_ACCOUNT: 'to the account' }[method] ?? 'in cash'}. Refund fewer items this way.`"
+        class="mt-3"
+      />
+      <ErrorBanner v-if="error" :message="error" class="mt-3" />
+      <p class="mt-3 text-body-s text-on-surface-variant text-right">A manager approves before anything is refunded.</p>
     </div>
-  </div>
+
+    <template #actions>
+      <AppButton variant="outlined" size="xl" :disabled="busy" @click="$emit('cancel')">Cancel</AppButton>
+      <AppButton size="xl" :variant="isVoid ? 'danger' : 'filled'" :disabled="!canSubmit" :loading="busy" @click="submit">
+        {{ busy ? 'Working…' : isVoid ? 'Void sale' : 'Refund' }}
+      </AppButton>
+    </template>
+  </AppDialog>
 </template>
 
 <script setup>
+// Void or refund a sale: quantities per line (48dp ±), restock, reason chips (Other → text), refund-to (money goes back
+// the way it was paid: what's left of the card, house account or cash payments; cash needs an open drawer, which
+// the server checks). A manager approves afterwards (the register opens ApprovalModal).
+//   <RefundModal :sale="sale" mode="refund" :busy="busy" :error="error" @submit="refund" @cancel="close" />
+// Props: sale, mode 'void' | 'refund', busy, error. Emits submit({ items, restock, reason, totalCents, method }), cancel.
 import { ref, computed } from 'vue'
 import { formatCents } from '@/lib/money'
 import { refundForLine } from '@/lib/pricing'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import Checkbox from '@/components/ui/Checkbox.vue'
+import ChipGroup from '@/components/ui/ChipGroup.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import TextField from '@/components/ui/TextField.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import IconAdd from '~icons/material-symbols/add-rounded'
+import IconRemove from '~icons/material-symbols/remove-rounded'
+import IconCard from '~icons/material-symbols/credit-card-rounded'
+import IconWallet from '~icons/material-symbols/account-balance-wallet-rounded'
+import IconCash from '~icons/material-symbols/payments-rounded'
 
 const props = defineProps({
   sale: { type: Object, required: true },
@@ -121,7 +121,16 @@ const rows = ref(props.sale.items.map(item => ({
 const previews = computed(() => rows.value.map(r => (r.quantity ? refundForLine(r.item, r.quantity) : { amountCents: 0, taxCents: 0 })))
 
 const restock = ref(true)
-const reason  = ref('')
+
+// Reason: a chip's text, or what's typed under Other
+const OTHER = 'Other'
+const reasonOptions = computed(() => (isVoid.value
+  ? ['Rang wrong', 'Changed mind', OTHER]
+  : ['Wrong size', 'Defective', 'Rang wrong', 'Changed mind', OTHER]
+).map(r => ({ value: r, label: r })))
+const reasonChoice = ref(null)
+const otherReason  = ref('')
+const reason = computed(() => (reasonChoice.value === OTHER ? otherReason.value.trim() : reasonChoice.value || ''))
 
 const totalCents = computed(() => previews.value.reduce((sum, p) => sum + p.amountCents, 0))
 // Money goes back the way it was paid: what's left of the card payment, and of the cash
@@ -133,24 +142,22 @@ const method = ref(cardAvailable.value > 0 ? 'CARD_TERMINAL' : accountAvailable.
 const limit = computed(() => ({ CARD_TERMINAL: cardAvailable.value, HOUSE_ACCOUNT: accountAvailable.value }[method.value] ?? cashAvailable.value))
 const overLimit = computed(() => totalCents.value > limit.value)
 
-const canSubmit = computed(() => reason.value.trim() && rows.value.some(r => r.quantity > 0) && !overLimit.value)
+const methodOptions = computed(() => [
+  cardAvailable.value > 0 && { value: 'CARD_TERMINAL', label: 'Card', icon: IconCard },
+  accountAvailable.value > 0 && { value: 'HOUSE_ACCOUNT', label: 'House account', icon: IconWallet },
+  cashAvailable.value > 0 && { value: 'CASH', label: 'Cash', icon: IconCash },
+].filter(Boolean))
+
+const canSubmit = computed(() => !props.busy && reason.value && rows.value.some(r => r.quantity > 0) && !overLimit.value)
 
 function submit() {
+  if (!canSubmit.value) return
   emit('submit', {
     items: rows.value.filter(r => r.quantity > 0).map(r => ({ saleItemId: r.item.id, quantity: r.quantity })),
     restock: restock.value,
-    reason: reason.value.trim(),
+    reason: reason.value,
     totalCents: totalCents.value,
     method: method.value,
   })
 }
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.qty-btn        { @apply w-7 h-7 rounded-lg border border-gray-300 text-bark leading-none hover:bg-gray-50 disabled:opacity-40; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

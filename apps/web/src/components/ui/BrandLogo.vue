@@ -8,7 +8,6 @@
       :width="width"
       :height="size"
       :loading="eager ? 'eager' : 'lazy'"
-      :fetchpriority="eager ? 'high' : undefined"
       decoding="async"
       class="block h-auto max-w-full"
       :style="{ height: `${size}px`, width: 'auto' }"
@@ -27,7 +26,9 @@ const props = defineProps({
   /** Rendered height in CSS px */
   size:    { type: Number, default: 48 },
   alt:     { type: String, default: 'Deer Run Golf Course' },
-  /** Above the fold (nav, hero): load immediately with high priority */
+  /** Above the fold (nav, hero): load immediately rather than lazily. Not fetchpriority high: the hero photo is the
+   *  LCP image and gets the bandwidth first. Leave a desktop-only copy (hidden md:inline-block) lazy: an eager
+   *  image downloads even while it's hidden, a lazy one only once it's shown. */
   eager:   { type: Boolean, default: false },
 })
 

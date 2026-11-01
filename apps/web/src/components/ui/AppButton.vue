@@ -3,10 +3,11 @@
     :is="tag"
     v-bind="linkAttrs"
     :type="tag === 'button' ? type : undefined"
-    :disabled="tag === 'button' ? isDisabled : undefined"
-    :aria-disabled="tag !== 'button' && isDisabled ? 'true' : undefined"
+    :disabled="tag === 'button' && !softDisabled ? disabled : undefined"
+    :aria-disabled="isDisabled && (tag !== 'button' || softDisabled) ? 'true' : undefined"
     :aria-busy="loading ? 'true' : undefined"
     :class="classes"
+    @click.capture="blockWhenSoftDisabled"
   >
     <ProgressIndicator v-if="loading" :size="iconSize" class="-ml-1" />
     <component :is="icon" v-else-if="icon" :class="['-ml-1', iconClass]" aria-hidden="true" />
@@ -16,16 +17,20 @@
 </template>
 
 <script setup>
-// MD3 common button. variant: filled (pine) | gold (the brand call to action) | tonal | outlined | text | danger.
+// MD3 common button. variant: filled (pine) | gold (the brand call to action) | tonal | outlined | text | danger |
+// text-danger (a low-emphasis destructive action, e.g. Delete in a dialog).
 // size: md (40px; still a 48px touch target through padding of the hit area) | lg (48px) | xl (64px, POS).
-// `to` renders a RouterLink, `href` an <a>. `loading` shows a spinner and disables the button.
+// `to` renders a RouterLink, `href` an <a>. `loading` shows a spinner and disables the button: aria-disabled and
+// clicks blocked rather than the `disabled` attribute (even with `disabled` too), so a button that was just pressed
+// keeps keyboard focus. `focusableWhenDisabled` does the same for `disabled` (a button that disables itself when
+// pressed, e.g. "All" in a quantity stepper).
 // Icons: pass a component, e.g. :icon="IconAdd" (import IconAdd from '~icons/material-symbols/add-rounded').
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import ProgressIndicator from './ProgressIndicator.vue'
 
 const props = defineProps({
-  variant:      { type: String, default: 'filled', validator: v => ['filled', 'gold', 'tonal', 'outlined', 'text', 'danger'].includes(v) },
+  variant:      { type: String, default: 'filled', validator: v => ['filled', 'gold', 'tonal', 'outlined', 'text', 'danger', 'text-danger'].includes(v) },
   size:         { type: String, default: 'md', validator: v => ['md', 'lg', 'xl'].includes(v) },
   type:         { type: String, default: 'button' },
   to:           { type: [String, Object], default: null },
@@ -35,9 +40,19 @@ const props = defineProps({
   loading:      { type: Boolean, default: false },
   disabled:     { type: Boolean, default: false },
   block:        { type: Boolean, default: false },
+  focusableWhenDisabled: { type: Boolean, default: false },
 })
 
 const isDisabled = computed(() => props.disabled || props.loading)
+// Disabled through aria-disabled only (stays focusable)
+const softDisabled = computed(() => props.loading || (props.disabled && props.focusableWhenDisabled))
+
+// Capture phase on the element itself runs before the parent's @click (and a form submit), so both are stopped
+function blockWhenSoftDisabled(event) {
+  if (!softDisabled.value && !(isDisabled.value && props.href)) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+}
 const tag = computed(() => (props.to && !isDisabled.value ? RouterLink : props.href ? 'a' : 'button'))
 const linkAttrs = computed(() => (props.to && !isDisabled.value ? { to: props.to } : props.href ? { href: props.href } : {}))
 
@@ -57,6 +72,7 @@ const VARIANTS = {
   outlined: 'border border-outline text-primary bg-transparent',
   text:     'text-primary bg-transparent px-3',
   danger:   'bg-error text-on-error hover:shadow-elevation-1',
+  'text-danger': 'text-error bg-transparent px-3',
 }
 // MD3 disabled: content 38%, container 12%
 const DISABLED = {
@@ -66,6 +82,7 @@ const DISABLED = {
   outlined: 'border border-on-surface/[.12] text-on-surface/[.38]',
   text: 'text-on-surface/[.38] px-3',
   danger: 'bg-on-surface/[.12] text-on-surface/[.38]',
+  'text-danger': 'text-on-surface/[.38] px-3',
 }
 
 const classes = computed(() => [

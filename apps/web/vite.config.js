@@ -1,13 +1,15 @@
+import { relative, resolve } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import Icons from 'unplugin-icons/vite'
 import { FileSystemIconLoader } from 'unplugin-icons/loaders'
 
-// Preloads the two fonts the first paint needs (Playfair Display 700 for headlines, Lato 400 for text). Their
-// file names are hashed at build time, so the links are added to index.html from the bundle.
+// Preloads the two fonts every page's first paint needs (Lato 400 for text, Lato 700 for labels and the nav). Their
+// file names are hashed at build time, so the links are added to index.html from the bundle. The Playfair Display
+// faces a page's headline uses differ per page, so scripts/prerender.mjs adds those to each page's HTML.
 function preloadFonts() {
-  const wanted = [/playfair-display-latin-700-normal-[\w-]+\.woff2$/, /lato-latin-400-normal-[\w-]+\.woff2$/]
+  const wanted = [/lato-latin-400-normal-[\w-]+\.woff2$/, /lato-latin-700-normal-[\w-]+\.woff2$/]
   return {
     name: 'deer-run:preload-fonts',
     apply: 'build',
@@ -25,6 +27,47 @@ function preloadFonts() {
   }
 }
 
+// After the bundle is written: one HTML file per public route with its head tags, plus sitemap.xml
+// (scripts/prerender.mjs). A plugin rather than an npm script so the Cloudflare Pages build command (`vite build`)
+// runs it too.
+// It also gets each lazy view's chunks (the view's own chunk, the shared chunks it imports and their CSS, minus what
+// the main bundle already loads), so every page's HTML can preload them.
+function prerenderPages() {
+  let outDir, root
+  let views = {}
+  return {
+    name: 'deer-run:prerender',
+    apply: 'build',
+    configResolved(config) {
+      root = config.root
+      outDir = resolve(config.root, config.build.outDir)
+    },
+    writeBundle(_options, bundle) {
+      const chunks = new Map(Object.values(bundle).filter(c => c.type === 'chunk').map(c => [c.fileName, c]))
+      const walk = (file, seen = new Set()) => {
+        if (!seen.has(file)) {
+          seen.add(file)
+          for (const f of chunks.get(file)?.imports ?? []) walk(f, seen)
+        }
+        return seen
+      }
+      const main = new Set([...chunks.values()].filter(c => c.isEntry).flatMap(c => [...walk(c.fileName)]))
+      views = {}
+      for (const c of chunks.values()) {
+        if (!c.isDynamicEntry || !c.facadeModuleId?.endsWith('.vue')) continue
+        const js = [...walk(c.fileName)].filter(f => !main.has(f))
+        const css = js.flatMap(f => [...(chunks.get(f).viteMetadata?.importedCss ?? [])])
+        views[relative(root, c.facadeModuleId).replace(/\\/g, '/')] = { js, css }
+      }
+    },
+    async closeBundle() {
+      const { prerender } = await import('./scripts/prerender.mjs')
+      const { pages, urls } = await prerender({ dist: outDir, views })
+      console.log(`deer-run:prerender: ${pages} pages, sitemap.xml with ${urls} URLs`)
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -37,6 +80,7 @@ export default defineConfig({
       customCollections: { deer: FileSystemIconLoader('./src/assets/icons') },
     }),
     preloadFonts(),
+    prerenderPages(),
   ],
   resolve: {
     alias: {

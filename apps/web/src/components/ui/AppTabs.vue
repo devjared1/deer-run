@@ -1,5 +1,6 @@
 <template>
-  <TabGroup :selected-index="selectedIndex" @change="select">
+  <!-- as="div" so class/attrs passed to AppTabs have an element to land on -->
+  <TabGroup as="div" :selected-index="selectedIndex" @change="select">
     <div class="relative border-b border-outline-variant">
       <TabList
         ref="listRef"

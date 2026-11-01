@@ -42,7 +42,7 @@ deer-run/
 │   │   │   │   ├── schedule/  # ScheduleGrid, ScheduleMonth, schedule/time off display helpers
 │   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
 │   │   │   │   ├── tournament/# EventCard, EventFilterBar
-│   │   │   │   └── ui/        # MD3 component set (see Design System) + SectionLabel, CourseDiagram, TreelineDivider
+│   │   │   │   └── ui/        # MD3 component set (see Design System) + ResponsivePicture, useFocusReturn
 │   │   │   ├── composables/   # usePendingTimeOff (admin sidebar badge), useConfirm, useSnackbar
 │   │   │   ├── data/          # Static JS data (holes, rates, membershipTiers, teeSets, employeePositions)
 │   │   │   ├── lib/           # supabase.js, api.js, and shared logic (see "Shared libraries")
@@ -226,12 +226,14 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 |--------|------|------|-------------|
 | GET | `/api/auth/me` | Required | Upsert + return DB user, linked `employee`, `canUseRegister`, `isRegisterManager` |
 | GET | `/api/teetimes?date=YYYY-MM-DD` | Optional | Available slots (member-only slots hidden from guests) |
+| GET | `/api/teetimes?from=&to=` | Optional | Per-day availability `[{ date, open, spots }]` (≤ 31 days; booking calendar hints) |
 | GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates }` (cents, from the rate products) |
 | POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent → `{ bookingId, clientSecret }` |
 | GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
 | GET | `/api/bookings/my` | Required | Signed-in user's bookings |
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
+| GET | `/api/events/:id` | Public | One event (404 if missing) |
 | POST | `/api/inquiries/membership`, `/api/inquiries/contact` | Public | Save inquiry/message + email `CONTACT_EMAIL_TO` |
 | POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email (`metadata.bookingId`), saves a register card sale (`metadata.cardCheckoutId`), or records a house account payment (`metadata.houseAccountId`); `payment_intent.payment_failed` → autopay failed |
 
@@ -239,9 +241,9 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 
 | Path | Methods | Description |
 |------|---------|-------------|
-| `/api/admin/dashboard` | GET | Dashboard stats |
-| `/api/admin/teetimes[/:id]` | GET, POST / PUT, DELETE | Tee time slots |
-| `/api/admin/bookings[/:id]` | GET / PUT | Bookings list, status changes |
+| `/api/admin/dashboard` | GET | Dashboard stats (course-local today, same day last week, 7-day `series`) |
+| `/api/admin/teetimes[/:id]` | GET, POST / PUT, DELETE | Tee time slots; POST `{ action: 'generate' \| 'close' \| 'members', from, to, … , dryRun? }` for bulk generate / delete open slots / members-only (returns counts) |
+| `/api/admin/bookings[/:id]` | GET / PUT | Bookings list (`from`, `to`, `search`, `status` comma list, paged), status changes |
 | `/api/admin/events[/:id]` | GET, POST / PUT, DELETE | Tournaments |
 | `/api/admin/users[/:id]` | GET / PUT | Users, role changes |
 | `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS, tipping, late fee) + `rates` (saved onto the rate products) and `holidayDates`; PUT returns `warning` if the tip percentages didn't reach Stripe |
@@ -307,7 +309,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | Path | Methods | Description |
 |------|---------|-------------|
 | `/api/account/house-account` | GET, POST | Own account, activity, statements; `set_pin`, `pay` / `confirm_payment`, `autopay_setup` / `autopay_confirm` / `autopay_disable` |
-| `/api/account/statements/:id` | GET | One own statement with its entries (printable) |
+| `/api/account/statements/:id[?format=pdf]` | GET | One own statement with its entries (printable); `format=pdf` downloads the PDF |
 
 ### Auth helpers in Functions
 `functions/api/admin/_auth.js` and `functions/api/staff/_auth.js` hold the helpers. Each returns either a
@@ -424,7 +426,9 @@ register, house accounts with statements, events and inquiries. It skips itself 
 | Path            | View                  | Guard |
 |-----------------|-----------------------|---------------|
 | `/`             | `HomeView.vue`        | — |
-| `/scorecard`, `/rates`, `/memberships`, `/tournaments`, `/contact` | matching `*View.vue` | — |
+| `/scorecard`, `/rates`, `/memberships`, `/tournaments`, `/contact`, `/accessibility` | matching `*View.vue` | — |
+| `/course/hole/:n` (1–18) | `HoleView.vue` (`/course` → `/scorecard`) | — |
+| `/tournaments/:id` | `EventView.vue` (details, registration inquiry, .ics, `Event` JSON-LD) | — |
 | `/book`         | `BookView.vue`        | — |
 | `/confirmation` | `ConfirmationView.vue` (`?booking_id=`) | — |
 | `/login`        | `LoginView.vue`       | — |
@@ -442,7 +446,20 @@ signed out. Failing a guard redirects to `/login?redirect=<path>` (not signed in
 (no register access). All routes are lazy-loaded via `() => import('@/views/...')`.
 
 When adding a page to a portal, also add it to the layout's `navItems` and `titles` (`AdminLayout.vue` /
-`StaffLayout.vue`).
+`StaffLayout.vue`), and give the route a `meta.title`.
+
+Every route has `meta.title` (public ones also `meta.description`): `App.vue` sets `<title>` ("<title> · Deer Run
+Golf Course"), the description and `robots` with `@unhead/vue` (`meta.noindex` and the portals are noindex). Other
+route meta: `breadcrumbs` (admin top bar, `[{ label, to }]`), `registerMode` (`/staff/register`: full-bleed, collapsed
+rail), `bare` (no public nav/footer, e.g. `/dev/ui`). Unknown URLs go to `NotFoundView` (catch-all route, last).
+`scrollBehavior` restores the saved position on back/forward and scrolls to `#hash` targets.
+
+Shells: the public site has `AppNav` (skip link, full-screen menu drawer on phones, a sticky "Book a tee time" bar
+below md that sets `--bottom-bar-height` / `--snackbar-offset`) and `AppFooter`; course facts (address, phone, hours,
+map links, social) live in `src/data/site.js`. The admin shell is a top app bar + modal drawer (phones) / rail (md) /
+drawer (lg); pages put their primary action in the bar with `<Teleport to="#admin-page-actions" defer>`. The staff
+shell is a bottom nav bar by role (phones) / rail (md) / drawer (lg) with a clock-status chip and **Switch cashier**
+(signs out to `/login?redirect=<page>`). Both portals have gallery previews at `/dev/ui`.
 
 ---
 
@@ -495,7 +512,7 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 | `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
 | `pricing.js` | Register line/tax/total math incl. the member Pro Shop discount (`memberDiscountBps`; imports `../data/membershipTiers.js`), shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
-| `api.js` | `apiFetch()` (see above) |
+| `api.js` | `apiFetch()` (see above), `apiDownload(url, fallbackName)` (authenticated file downloads: CSV, PDF) |
 | `printReceipt.js`, `print.js` | `printReceipt()` (80 mm `@page`) and `printLandscape()`; each adds its `@page` rule only while printing |
 | `supabase.js` | Anon client singleton (frontend only) |
 
@@ -503,10 +520,15 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 
 ## Booking Flow
 
-4-step wizard in `components/booking/BookingWizard.vue`:
+4-step wizard in `components/booking/BookingWizard.vue`; the step is in the URL (`/book?step=time|details|payment`, so
+browser Back works; a step whose prerequisites are missing falls back to the first missing one). `/book?date=&players=&time=`
+(the Home search) prefills and opens on the Time step. Steps, time-of-day groups and editable copy (cancellation line,
+arrival tips) are in `components/booking/bookingFlow.js`.
 
-1. **StepDate** — calendar date picker
-2. **StepTime** — fetches `/api/teetimes?date=...`, shows available slots with `available` count
+1. **StepDate** — day strip on phones (`DateStrip`), month grid on md+ (`BookingCalendar`), with per-day availability
+   from `/api/teetimes?from=&to=`; picking a day continues
+2. **StepTime** — players first, then only slots with room (`/api/teetimes?date=...`), grouped Morning / Midday /
+   Afternoon, with a sticky summary bar
 3. **StepDetails** — 9/18 holes, riding/walking and the price breakdown; guest name/email if not logged in (Sign In
    returns to this step via `/book?resume=details`)
 4. **StepPayment** — calls `/api/bookings`, which creates a PENDING booking and a Stripe PaymentIntent
@@ -552,6 +574,14 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
   (not on products with a member price); manager discounts still need approval. **Tips** (setting, off by default) are
   asked for on the reader, stored on the card payment (`Payment.tipCents`) and kept out of sales and tax; POS refunds
   never return them. **Paid-ins, paid-outs and safe drops** need a manager and print a slip.
+  **Register UI**: `RegisterView` owns the sale state; its pieces are in `components/pos/register/` (products with the
+  scan field, cart, drawer/discount/custom-item dialogs, one result dialog, `useScanner.js`: a document-level scanner
+  buffer, `registerSounds.js`). The POS dialogs (`TenderModal` with `drawerOpen`/`readerOnline`/`initialMethod`,
+  `CardPaymentModal` emitting `pay-cash`, approval/refund/cash movement/account payment) use `NumericKeypad` for PINs,
+  cash and counts. **Tee Sheet** cards (`components/teesheet/`) check in with "No add-ons, done" (no sale) or
+  "Add items at the register". **On Course** uses group cards and a bottom-sheet position update
+  (`components/oncourse/`). Tee Sheet and On Course have a **High contrast** switch (`composables/useHighContrast.js`,
+  `data-contrast="high"`). Gallery previews with mocked APIs for every staff page are at `/dev/ui`.
   **On-course tracking**: check-in records cart numbers, own cart, start hole and 9/18; the starter and marshals record
   tee-offs, positions (hole + tee/fairway/green; every report kept in `PositionReport`) and finishes on `/staff/oncourse`,
   and `src/lib/pace.js` estimates where every group is and whether it's ahead of or behind its tee time, using per-hole
@@ -580,7 +610,8 @@ in every state at **`/dev/ui`** (dev server, or a build with `VITE_UI_GALLERY=tr
   renamed `gold`.) Legacy brand hexes `pine`, `clay`, `lake`, `bark`, `parch` stay until pages are migrated.
 - **Type scale**: `text-display-l/m/s`, `text-headline-l/m/s` (with `font-display`, Playfair Display),
   `text-title-l/m/s`, `text-body-l/m/s`, `text-label-l/m/s` (Lato, the default `font-body`). Fonts are self-hosted
-  with `@fontsource` (imported in `main.js`; Playfair 700 and Lato 400 preloaded by a plugin in `vite.config.js`).
+  with `@fontsource` (imported in `main.js`; Lato 400/700 preloaded on every page by a plugin in `vite.config.js`,
+  each page's headline Playfair faces by `scripts/prerender.mjs`).
 - **Shape** `rounded-shape-xs` (4, text fields) / `-sm` (8, chips, menus) / `-md` (12, cards) / `-lg` (16) /
   `-xl` (28, dialogs, sheets) / `rounded-full` (buttons). **Elevation** `shadow-elevation-1…5`. **Motion**
   `ease-emphasized`, `ease-standard` (+ `-decelerate`/`-accelerate`), `duration-short-2/short-4/medium-2/medium-4/long-2`.
@@ -602,6 +633,22 @@ Material Symbols Rounded via `unplugin-icons` (inline SVG components, tree-shake
 `BrandLogo` (`variant="emblem"` full logo, or `"mark"` round stag-and-sun badge; `size` = height in px; `eager` above
 the fold). Optimized WebP/PNG files are in `public/images/logo`; masters and the original SVG in `docs/brand`.
 Favicons, `apple-touch-icon.png`, `icon-192/512.png` and `site.webmanifest` are in `public/`.
+
+### Photos and SEO
+- Course photos: originals in `apps/web/photos-src` (not deployed). `python scripts/gen-photos.py` (from
+  `apps/web`, needs Pillow) writes AVIF/WebP/JPEG at 640/1280/1920 to `public/images/photos` and the manifest
+  `src/data/photos.js` (size, widths, alt text). Render with `ResponsivePicture` (`name`, `sizes`, `priority` for the
+  LCP image); `PageHero` takes `photo="<name>"`. Only course photos; a professional shoot is planned.
+- Course facts (address, phone, email, hours by day, map links, social, city page) are in `src/data/site.js`; the
+  footer, Contact, Home and JSON-LD all read it.
+- Head tags: `src/lib/seo.js` builds title, description, canonical, Open Graph/Twitter (`meta.ogImage` = a photo
+  name) and the GolfCourse/LocalBusiness JSON-LD; `App.vue` applies them with `useHead`, and the `deer-run:prerender`
+  Vite plugin (`scripts/prerender.mjs`) writes one HTML file per public route (`dist/rates.html`, head only) plus
+  `dist/sitemap.xml` at build time. `public/robots.txt`, `public/_headers` (caching, basic security headers).
+- Performance: each prerendered page also preloads its view's chunks, its hero photo (`HERO_PHOTOS` / `HERO_SIZES`
+  in `prerender.mjs`: keep them in step with the views' `PageHero photo` and `sizes`) and its headline fonts.
+  `stores/auth.js` loads the Supabase client on demand (signed-out visitors never wait for it); Stripe.js comes from
+  `@stripe/stripe-js/pure` (loads on `loadStripe()`). The footer waits for the first page (no layout shift).
 
 ### Components (`src/components/ui/`, each file starts with a usage comment)
 | Area | Components |

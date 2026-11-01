@@ -8,7 +8,7 @@
         :disabled="disabled"
         :aria-label="`${title}. Choose a date`"
         :class="[
-          'state-layer flex items-center gap-2 h-12 px-4 rounded-full text-title-m min-w-0',
+          'state-layer flex items-center gap-2 h-12 px-4 rounded-full text-title-m min-w-0 max-w-full',
           disabled ? 'text-on-surface/[.38] cursor-not-allowed' : 'text-on-surface cursor-pointer',
         ]"
         @click="openPicker"
