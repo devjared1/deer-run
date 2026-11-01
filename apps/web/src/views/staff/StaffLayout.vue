@@ -44,6 +44,13 @@
         <RouterLink to="/" class="mt-2 flex items-center gap-2 text-parch/60 hover:text-parch text-xs font-body transition-colors">
           ← Back to site
         </RouterLink>
+        <button
+          type="button"
+          class="mt-2 flex items-center gap-2 text-parch/60 hover:text-parch text-xs font-body transition-colors"
+          @click="signOut"
+        >
+          Sign out
+        </button>
       </div>
     </aside>
 
@@ -78,14 +85,22 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { positionLabel } from '@/data/employeePositions'
 import DeerLogo from '@/components/ui/DeerLogo.vue'
 
 const route       = useRoute()
+const router      = useRouter()
 const authStore   = useAuthStore()
 const sidebarOpen = ref(false)
+
+// On a shared register PC the next person signs in and lands back on the same page
+async function signOut() {
+  const back = route.fullPath
+  await authStore.logout()
+  router.push({ path: '/login', query: { redirect: back } })
+}
 
 const navItems = computed(() => [
   { to: '/staff',           label: 'Time Clock',   icon: '⏱' },
