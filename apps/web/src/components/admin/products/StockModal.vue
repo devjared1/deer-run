@@ -25,7 +25,7 @@
           <button
             v-for="m in modes"
             :key="m.value"
-            :class="['px-3 py-1.5 rounded-lg text-sm font-body', adj.mode === m.value ? 'bg-amber text-bark font-semibold' : 'bg-white border border-gray-200 text-gray-600']"
+            :class="['px-3 py-1.5 rounded-lg text-sm font-body', adj.mode === m.value ? 'bg-gold text-bark font-semibold' : 'bg-white border border-gray-200 text-gray-600']"
             @click="setMode(m.value)"
           >
             {{ m.label }}
@@ -132,7 +132,7 @@ function variantLabel(v) {
 
 function stockClass(qty) {
   if (qty <= 0) return 'text-red-600'
-  if (qty <= 3) return 'text-amber'
+  if (qty <= 3) return 'text-gold'
   return 'text-gray-500'
 }
 

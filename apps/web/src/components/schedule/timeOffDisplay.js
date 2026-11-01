@@ -3,7 +3,7 @@ import { formatLocalDate } from '@/lib/timeclock'
 export const STATUS_LABELS = { PENDING: 'Pending', APPROVED: 'Approved', DENIED: 'Denied', CANCELLED: 'Cancelled' }
 
 export const STATUS_CLASSES = {
-  PENDING:   'bg-amber/20 text-amber-dark',
+  PENDING:   'bg-gold/20 text-gold-dark',
   APPROVED:  'bg-pine/15 text-pine',
   DENIED:    'bg-red-100 text-red-600',
   CANCELLED: 'bg-gray-100 text-gray-500',

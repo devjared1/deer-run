@@ -24,7 +24,7 @@
         <tr
           v-for="emp in employees"
           :key="emp.id"
-          :class="['border-b border-gray-100 align-top', emp.id === highlightEmployeeId ? 'bg-amber/5' : '']"
+          :class="['border-b border-gray-100 align-top', emp.id === highlightEmployeeId ? 'bg-gold/5' : '']"
         >
           <td class="name-col px-4 py-2">
             <div class="font-semibold text-bark whitespace-nowrap">
@@ -38,13 +38,13 @@
             v-for="date in dates"
             :key="date"
             :class="['day-cell px-1.5 py-1.5 border-l border-gray-100', date === today ? 'bg-pine/5' : '',
-              editable ? 'cursor-pointer hover:bg-amber/10 print:cursor-auto' : '']"
+              editable ? 'cursor-pointer hover:bg-gold/10 print:cursor-auto' : '']"
             @click="editable && $emit('add', { employeeId: emp.id, date })"
           >
             <div
               v-if="timeOffOn(timeOff, emp.id, date)"
               :class="['time-off text-[11px] leading-tight rounded px-1.5 py-0.5 mb-1 border border-dashed whitespace-nowrap',
-                timeOffOn(timeOff, emp.id, date).status === 'PENDING' ? 'border-amber text-amber-dark' : 'border-gray-400 text-gray-500 bg-gray-50']"
+                timeOffOn(timeOff, emp.id, date).status === 'PENDING' ? 'border-gold text-gold-dark' : 'border-gray-400 text-gray-500 bg-gray-50']"
             >
               {{ timeOffLabel(timeOffOn(timeOff, emp.id, date)) }}
             </div>
@@ -53,7 +53,7 @@
               :key="shift.id"
               type="button"
               :class="['shift-chip block w-full text-left text-xs leading-tight rounded border px-1.5 py-1 mb-1 last:mb-0',
-                shiftClasses(shift, emp), editable ? 'hover:ring-2 hover:ring-amber/60' : 'cursor-default',
+                shiftClasses(shift, emp), editable ? 'hover:ring-2 hover:ring-gold/60' : 'cursor-default',
                 warnings[shift.id] ? 'ring-1 ring-red-400 print:ring-0' : '']"
               :title="shiftTitle(shift, emp)"
               @click.stop="editable && $emit('edit', shift)"

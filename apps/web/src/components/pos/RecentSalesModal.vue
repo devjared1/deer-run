@@ -115,7 +115,7 @@ const loading  = ref(false)
 const error    = ref(null)
 
 const STATUS = {
-  PARTIALLY_REFUNDED: ['Partly refunded', 'bg-amber/20 text-bark'],
+  PARTIALLY_REFUNDED: ['Partly refunded', 'bg-gold/20 text-bark'],
   VOIDED: ['Voided', 'bg-red-100 text-red-700'],
   REFUNDED: ['Refunded', 'bg-gray-100 text-gray-600'],
 }

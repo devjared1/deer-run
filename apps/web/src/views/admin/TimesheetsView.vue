@@ -156,7 +156,7 @@
             <div>
               <label class="label-sm">
                 Clock Out
-                <span v-if="nextDay(form.clockOut)" class="text-amber">(next day)</span>
+                <span v-if="nextDay(form.clockOut)" class="text-gold">(next day)</span>
               </label>
               <input v-model="form.clockOut" type="time" class="input-field w-full" />
             </div>

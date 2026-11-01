@@ -40,7 +40,7 @@
                         <span class="text-xs" :class="readerFor(r).status === 'online' ? 'text-pine' : 'text-red-500'">
                           {{ readerFor(r).status === 'online' ? 'Online' : 'Offline' }}
                         </span>
-                        <span v-if="readerFor(r).simulated" class="text-xs text-amber-dark"> · simulated</span>
+                        <span v-if="readerFor(r).simulated" class="text-xs text-gold-dark"> · simulated</span>
                       </span>
                       <span v-else-if="readers" class="text-xs text-red-500">Not found in Stripe</span>
                     </div>

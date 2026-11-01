@@ -54,7 +54,7 @@
                 {{ person(d.closedBy) }}
               </div>
             </template>
-            <span v-else class="text-xs px-2 py-0.5 rounded-full bg-amber/20 text-amber-dark">Open</span>
+            <span v-else class="text-xs px-2 py-0.5 rounded-full bg-gold/20 text-gold-dark">Open</span>
           </td>
           <td class="td-num">
             {{ money(d.openingFloatCents) }}

@@ -147,7 +147,7 @@
               from the Stock button, not here. Removing a variant with stock history deactivates it instead.
             </p>
           </template>
-          <p v-if="switchingToOptions" class="text-amber text-xs font-body mt-2">
+          <p v-if="switchingToOptions" class="text-gold text-xs font-body mt-2">
             The current single variant will be removed (or deactivated if it has stock history) when you save.
           </p>
         </div>

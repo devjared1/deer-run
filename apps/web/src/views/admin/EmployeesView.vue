@@ -80,7 +80,7 @@
                 </td>
                 <td class="px-5 py-3 whitespace-nowrap text-right space-x-3">
                   <button @click="openEdit(emp)" class="text-xs text-lake hover:text-pine">Edit</button>
-                  <button @click="toggleActive(emp)" class="text-xs text-amber hover:text-clay">
+                  <button @click="toggleActive(emp)" class="text-xs text-gold hover:text-clay">
                     {{ emp.active ? 'Deactivate' : 'Reactivate' }}
                   </button>
                   <button

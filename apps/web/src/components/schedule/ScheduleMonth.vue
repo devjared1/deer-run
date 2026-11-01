@@ -16,7 +16,7 @@
         :class="['day min-h-[7rem] border-b border-r border-gray-100 p-1.5',
           inMonth(date) ? '' : 'bg-gray-50/70 text-gray-300',
           date === today ? 'bg-pine/5' : '',
-          editable && inMonth(date) ? 'cursor-pointer hover:bg-amber/10 print:cursor-auto' : '']"
+          editable && inMonth(date) ? 'cursor-pointer hover:bg-gold/10 print:cursor-auto' : '']"
         @click="editable && inMonth(date) && $emit('add', { employeeId: null, date })"
       >
         <div :class="['text-xs font-semibold mb-1', date === today ? 'text-pine' : inMonth(date) ? 'text-bark' : 'text-gray-300']">
@@ -37,7 +37,7 @@
             :class="['shift-chip block w-full text-left text-[11px] leading-tight rounded border px-1 py-0.5 mb-0.5 truncate',
               shiftClasses(shift, employeeById.get(shift.employeeId)),
               shift.employeeId === highlightEmployeeId ? 'font-bold' : '',
-              editable ? 'hover:ring-2 hover:ring-amber/60' : 'cursor-default',
+              editable ? 'hover:ring-2 hover:ring-gold/60' : 'cursor-default',
               warnings[shift.id] ? 'ring-1 ring-red-400 print:ring-0' : '']"
             :title="(warnings[shift.id] ?? []).map(w => `⚠ ${w}`).join('\n') || shift.notes || ''"
             @click.stop="editable && $emit('edit', shift)"

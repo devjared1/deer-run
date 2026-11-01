@@ -28,12 +28,12 @@
       </div>
     </div>
 
-    <div v-if="taxBps === 0" class="mb-6 bg-amber/10 border border-amber/30 rounded-xl p-4 text-sm font-body text-bark">
+    <div v-if="taxBps === 0" class="mb-6 bg-gold/10 border border-gold/30 rounded-xl p-4 text-sm font-body text-bark">
       <strong class="font-semibold">Sales tax is set to 0%.</strong>
       Set the course's rate in <RouterLink to="/admin/settings" class="text-lake underline">Settings → Point of Sale</RouterLink>
       before the register goes live.
     </div>
-    <p v-if="notice" class="mb-4 text-sm font-body text-amber">{{ notice }}</p>
+    <p v-if="notice" class="mb-4 text-sm font-body text-gold">{{ notice }}</p>
 
     <div v-if="loading && !products.length" class="text-gray-400 text-sm">Loading…</div>
     <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
@@ -80,7 +80,7 @@
                 <td class="td text-right whitespace-nowrap space-x-3 text-xs">
                   <button class="text-lake hover:text-pine" @click="openForm(p)">Edit</button>
                   <button v-if="p.trackInventory" class="text-lake hover:text-pine" @click="stockProduct = p">Stock</button>
-                  <button class="text-amber hover:text-clay" @click="toggleActive(p)">{{ p.active ? 'Deactivate' : 'Activate' }}</button>
+                  <button class="text-gold hover:text-clay" @click="toggleActive(p)">{{ p.active ? 'Deactivate' : 'Activate' }}</button>
                   <button class="text-red-400 hover:text-red-600" @click="deleting = p">Delete</button>
                 </td>
               </tr>
@@ -174,7 +174,7 @@ function variantSummary(p) {
 
 function stockClass(p) {
   if (p.totalStock <= 0) return 'text-red-600 font-semibold'
-  if (p.variants.some(v => v.active && v.stockQty <= 0)) return 'text-amber font-semibold'
+  if (p.variants.some(v => v.active && v.stockQty <= 0)) return 'text-gold font-semibold'
   return 'text-bark'
 }
 

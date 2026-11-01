@@ -23,7 +23,7 @@
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap">
             <h3 class="font-display font-bold text-bark">{{ ev.name }}</h3>
-            <span v-if="ev.featured" class="text-xs bg-amber/20 text-amber px-2 py-0.5 rounded-full font-body">Featured</span>
+            <span v-if="ev.featured" class="text-xs bg-gold/20 text-gold px-2 py-0.5 rounded-full font-body">Featured</span>
             <span v-if="ev.memberOnly" class="text-xs bg-lake/20 text-lake px-2 py-0.5 rounded-full font-body">Members only</span>
             <span v-if="ev.past" class="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full font-body">Past</span>
           </div>

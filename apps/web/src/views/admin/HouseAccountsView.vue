@@ -69,7 +69,7 @@
             <tr
               v-for="a in data.accounts"
               :key="a.id"
-              class="hover:bg-amber/5 cursor-pointer"
+              class="hover:bg-gold/5 cursor-pointer"
               @click="$router.push(`/admin/house-accounts/${a.id}`)"
             >
               <td class="td">
