@@ -7,7 +7,7 @@
       label="Reserve Your Round"
       title-html="Book a <em>Tee Time</em>"
       description="Select your date, choose a time, and complete payment securely online."
-      bg-image="/images/course-5-copy.jpg"
+      bg-image="/images/course-5-wide.jpg"
       height="200px"
       :classes="['flex', 'items-center']"
     />
