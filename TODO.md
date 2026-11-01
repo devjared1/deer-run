@@ -631,17 +631,19 @@ dialogs. Receipts and slips aren't redesigned.
       Answer: Use the current photography pics where you can. Will need to get professional photos done at a later date.
 
 ### Phase 4: Booking flow
-- [ ] Steps in the URL (`/book?step=` or child routes) so browser Back works; focus moves to each step heading;
+- [x] Steps in the URL (`/book?step=` or child routes) so browser Back works; focus moves to each step heading;
       `aria-current="step"`; reduced-motion-aware transitions
-- [ ] Date: horizontal 7–14 day strip on mobile, month calendar on desktop with grid semantics and arrow keys, 48dp
+- [x] Date: horizontal 7–14 day strip on mobile, month calendar on desktop with grid semantics and arrow keys, 48dp
       days, navigation limited to the booking window, per-day availability hint, no extra "continue" click
-- [ ] Time: **players first**, then only times that fit; grouped Morning / Midday / Twilight with sticky subheads;
+- [x] Time: **players first**, then only times that fit; grouped Morning / Midday / Twilight with sticky subheads;
       skeleton loading; empty state with next-day chips; sticky bottom summary (date · time · players · total) with
       Continue
-- [ ] Details: segmented guest/member control, phone field, inline validation, `autocomplete`, labels tied to inputs
-- [ ] Payment: total from the server's PaymentIntent, terms and cancellation-policy line, busy state, Stripe
+- [x] Details: segmented guest/member control, phone field, inline validation, `autocomplete`, labels tied to inputs
+      (no phone field: `Booking` has no phone column; add one with a migration if the course wants it. Arrival tips and
+      the cancellation copy live in `components/booking/bookingFlow.js`, to confirm with the course)
+- [x] Payment: total from the server's PaymentIntent, terms and cancellation-policy line, busy state, Stripe
       `appearance` from the tokens
-- [ ] Confirmation: booking reference, Add to calendar (.ics), directions, manage booking, arrival tips, weather for
+- [x] Confirmation: booking reference, Add to calendar (.ics), directions, manage booking, arrival tips, weather for
       the tee date
 
 ### Phase 5: Admin panel migration

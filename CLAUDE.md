@@ -226,6 +226,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 |--------|------|------|-------------|
 | GET | `/api/auth/me` | Required | Upsert + return DB user, linked `employee`, `canUseRegister`, `isRegisterManager` |
 | GET | `/api/teetimes?date=YYYY-MM-DD` | Optional | Available slots (member-only slots hidden from guests) |
+| GET | `/api/teetimes?from=&to=` | Optional | Per-day availability `[{ date, open, spots }]` (≤ 31 days; booking calendar hints) |
 | GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates }` (cents, from the rate products) |
 | POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent → `{ bookingId, clientSecret }` |
 | GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
@@ -519,10 +520,15 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 
 ## Booking Flow
 
-4-step wizard in `components/booking/BookingWizard.vue`:
+4-step wizard in `components/booking/BookingWizard.vue`; the step is in the URL (`/book?step=time|details|payment`, so
+browser Back works; a step whose prerequisites are missing falls back to the first missing one). `/book?date=&players=&time=`
+(the Home search) prefills and opens on the Time step. Steps, time-of-day groups and editable copy (cancellation line,
+arrival tips) are in `components/booking/bookingFlow.js`.
 
-1. **StepDate** — calendar date picker
-2. **StepTime** — fetches `/api/teetimes?date=...`, shows available slots with `available` count
+1. **StepDate** — day strip on phones (`DateStrip`), month grid on md+ (`BookingCalendar`), with per-day availability
+   from `/api/teetimes?from=&to=`; picking a day continues
+2. **StepTime** — players first, then only slots with room (`/api/teetimes?date=...`), grouped Morning / Midday /
+   Afternoon, with a sticky summary bar
 3. **StepDetails** — 9/18 holes, riding/walking and the price breakdown; guest name/email if not logged in (Sign In
    returns to this step via `/book?resume=details`)
 4. **StepPayment** — calls `/api/bookings`, which creates a PENDING booking and a Stripe PaymentIntent
