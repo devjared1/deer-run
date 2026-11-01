@@ -33,7 +33,8 @@ for file in sorted(os.listdir(SRC)):
         h = round(img.height * w / img.width)
         sized = img.resize((w, h), Image.LANCZOS)
         base = os.path.join(OUT, f'{name}-{w}')
-        sized.save(base + '.avif', 'AVIF', quality=55, speed=6)
+        # AVIF at 45 (was 55): about 30% smaller, no visible difference at these sizes (Lighthouse Phase 7 pass)
+        sized.save(base + '.avif', 'AVIF', quality=45, speed=6)
         sized.save(base + '.webp', 'WEBP', quality=72, method=6)
         sized.save(base + '.jpg', 'JPEG', quality=78, optimize=True, progressive=True)
     manifest[name] = {'width': img.width, 'height': img.height, 'widths': widths, 'alt': ALT.get(name, '')}

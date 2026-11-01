@@ -225,6 +225,8 @@
                     <template v-if="i === 0">
                       {{ formatLocalDate(day.date) }}
                     </template>
+                    <!-- Later punches on the same day: the date for screen readers only (no empty row header) -->
+                    <span v-else class="sr-only">{{ formatLocalDate(day.date) }}</span>
                   </th>
                   <td class="td text-on-surface">
                     {{ formatClockTime(entry.clockIn) }}

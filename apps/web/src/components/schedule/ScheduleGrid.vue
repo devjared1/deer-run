@@ -1,5 +1,11 @@
 <template>
-  <div class="schedule-grid overflow-x-auto rounded-shape-md border border-outline-variant bg-surface-container-lowest print:overflow-visible print:rounded-none">
+  <div
+    :tabindex="editable ? undefined : 0"
+    :role="editable ? undefined : 'region'"
+    :aria-label="editable ? undefined : (caption || 'Schedule')"
+    class="schedule-grid overflow-x-auto rounded-shape-md border border-outline-variant bg-surface-container-lowest print:overflow-visible print:rounded-none"
+  >
+    <!-- Read-only, the grid has nothing to focus: the scroll box takes focus so the keyboard can scroll it sideways -->
     <table class="w-full text-body-s font-body border-collapse">
       <caption v-if="caption" class="sr-only">{{ caption }}</caption>
       <thead>
@@ -64,13 +70,14 @@
                        shiftClasses(shift, emp), editable ? 'hover:ring-2 hover:ring-gold/60 cursor-pointer' : '',
                        warnings[shift.id] ? 'ring-1 ring-error print:ring-0' : '']"
               :title="shiftTitle(shift, emp)"
-              :aria-label="editable ? `Edit shift: ${shiftTitle(shift, emp).replace(/\n/g, '. ')}` : undefined"
               @click.stop="editable && $emit('edit', shift)"
             >
+              <!-- Named by its visible text plus sr-only context (an aria-label wouldn't contain "9a–5p") -->
+              <span v-if="editable" class="sr-only">Edit shift for {{ emp.firstName }} {{ emp.lastName }}, {{ formatLocalDate(date, { weekday: 'long', month: 'short', day: 'numeric' }) }}: </span>
               <span class="flex items-center gap-0.5">
                 <span class="font-bold whitespace-nowrap">{{ shortTime(shift.startTime) }}–{{ shortTime(shift.endTime) }}</span>
                 <IconWarning v-if="warnings[shift.id]" class="w-3.5 h-3.5 flex-none text-error print:hidden" aria-hidden="true" />
-                <span v-if="warnings[shift.id] && !editable" class="sr-only">Warning: {{ warnings[shift.id].join('; ') }}</span>
+                <span v-if="warnings[shift.id]" class="sr-only">Warning: {{ warnings[shift.id].join('; ') }}</span>
               </span>
               <span v-if="shift.position && shift.position !== emp.position" class="block text-[10px] truncate">
                 {{ positionLabel(shift.position) }}

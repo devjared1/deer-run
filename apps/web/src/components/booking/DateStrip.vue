@@ -11,7 +11,6 @@
         :tabindex="i === tabIndexAt ? 0 : -1"
         :aria-pressed="String(d.ymd === modelValue)"
         :aria-disabled="d.disabled ? 'true' : undefined"
-        :aria-label="d.aria"
         :class="[
           'state-layer w-[4.5rem] min-h-24 py-2 rounded-shape-md flex flex-col items-center justify-center gap-0.5',
           'transition-colors duration-short-4 ease-standard',
@@ -21,6 +20,8 @@
         ]"
         @click="pick(d)"
       >
+        <!-- Spoken name in full (sr-only) instead of an aria-label that wouldn't contain the visible text -->
+        <span class="sr-only">{{ d.aria }}</span>
         <span class="text-label-m" aria-hidden="true">{{ d.weekday }}</span>
         <span class="text-title-l tabular-nums leading-none" aria-hidden="true">{{ d.day }}</span>
         <span class="text-label-s" aria-hidden="true">{{ d.month }}</span>

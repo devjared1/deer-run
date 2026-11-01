@@ -139,3 +139,12 @@ const when = (ts) => new Date(ts).toLocaleString('en-US', { month: 'short', day:
 const person = (e) => (e ? `${e.firstName} ${e.lastName}` : '')
 const money = (cents) => `$${((cents ?? 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 </script>
+
+<style scoped>
+/* Ten columns don't fit a portrait letter page at screen size: tighter cells and wrapping headers/dates in print */
+@media print {
+  table { font-size: 9pt; }
+  th, td { padding-left: 4px; padding-right: 4px; white-space: normal; }
+  td.tabular-nums { white-space: nowrap; }
+}
+</style>

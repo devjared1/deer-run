@@ -26,7 +26,7 @@
               :class="[
                 'inline-flex items-center justify-center w-8 h-8 rounded-full text-label-l flex-shrink-0 transition-colors duration-short-4 ease-standard',
                 i < stepIndex ? 'bg-primary text-on-primary'
-                : i === stepIndex ? 'bg-gold text-on-gold'
+                : i === stepIndex ? 'bg-gold text-on-gold ring-2 ring-inset ring-gold-text'
                   : 'bg-surface-container-highest text-on-surface-variant',
               ]"
               aria-hidden="true"

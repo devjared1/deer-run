@@ -89,6 +89,7 @@
 // The body scrolls inside a 90vh max height. dialogOnDesktop (default true): from `md` up it's a centered dialog.
 import { computed, ref } from 'vue'
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
+import { useFocusReturn } from './useFocusReturn'
 
 const props = defineProps({
   open:            { type: Boolean, default: false },
@@ -154,9 +155,12 @@ function onHandleClick() {
   if (!moved) dismiss()
   moved = false
 }
+// Focus goes back to what had it when the sheet opened (see useFocusReturn.js)
+const restoreFocus = useFocusReturn(() => props.open)
 function onAfterLeave() {
   dragY.value = 0
   settling.value = false
+  restoreFocus()
   emit('after-leave')
 }
 </script>

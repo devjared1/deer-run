@@ -11,7 +11,7 @@
     <div class="max-w-7xl mx-auto h-16 md:h-[72px] pl-4 pr-2 md:px-5 flex items-center gap-2">
       <RouterLink to="/" class="flex-shrink-0 inline-flex items-center rounded-shape-sm" aria-label="Deer Run Golf Course, home">
         <BrandLogo :size="40" eager alt="" class="md:hidden" />
-        <BrandLogo :size="48" eager alt="" class="hidden md:inline-block" />
+        <BrandLogo :size="48" alt="" class="hidden md:inline-block" />
       </RouterLink>
 
       <!-- Desktop links (lg+) -->
@@ -97,15 +97,17 @@
   </NavDrawer>
 
   <!-- Phones: sticky "Book a tee time" bar, above the safe area. App.vue pads the page by its height. -->
-  <div
+  <!-- A landmark, so its link isn't content outside every region (axe "region") -->
+  <nav
     v-if="showBookBar"
     ref="bookBar"
+    aria-label="Quick booking"
     class="md:hidden fixed inset-x-0 bottom-0 z-app-bar bg-surface-container-low shadow-elevation-2 px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] print:hidden"
   >
     <AppButton variant="gold" size="lg" block to="/book" :icon="IconEventAvailable">
       Book a tee time
     </AppButton>
-  </div>
+  </nav>
 </template>
 
 <script setup>

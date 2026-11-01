@@ -63,7 +63,8 @@
             @click="onSelect({ to: '/staff' }, $event)"
           >
             <StatusChip :tone="clockChip.tone" :icon="clockChip.icon" class="group-hover:shadow-elevation-1 transition-shadow">
-              <span :class="clockChip.time ? 'hidden sm:inline' : ''">{{ clockChip.label }}</span>
+              <!-- The space keeps "On the clock 2h 05m" one phrase, so the aria-label contains the visible text -->
+              <span :class="clockChip.time ? 'hidden sm:inline' : ''">{{ clockChip.label }}{{ ' ' }}</span>
               <span v-if="clockChip.time" class="tabular-nums">{{ clockChip.time }}</span>
             </StatusChip>
           </RouterLink>

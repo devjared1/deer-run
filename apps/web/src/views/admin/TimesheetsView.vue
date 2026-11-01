@@ -234,8 +234,7 @@
 
 <script setup>
 import { ref, computed, nextTick, onMounted } from 'vue'
-import { apiFetch } from '@/lib/api'
-import { useAuthStore } from '@/stores/auth'
+import { apiDownload, apiFetch } from '@/lib/api'
 import { positionLabel } from '@/data/employeePositions'
 import {
   localDate, localTime, weekStart, addDays, formatMinutes, formatClockTime, formatLocalDate,
@@ -270,7 +269,6 @@ import IconEdit from '~icons/material-symbols/edit-rounded'
 import IconDelete from '~icons/material-symbols/delete-rounded'
 import IconAdd from '~icons/material-symbols/add-rounded'
 
-const authStore = useAuthStore()
 const confirm   = useConfirm()
 const snackbar  = useSnackbar()
 
@@ -349,21 +347,13 @@ async function load(date = sheet.value?.period.start ?? null) {
   }
 }
 
-// CSV comes back as a file, not JSON, so this one call uses fetch directly (apiFetch parses JSON)
+// CSV comes back as a file, not JSON, so it goes through apiDownload
 async function downloadCsv(detail) {
   downloading.value   = true
   downloadError.value = null
   try {
     const params = new URLSearchParams({ date: sheet.value.period.start, format: 'csv', detail })
-    const res = await fetch(`/api/admin/timesheets?${params}`, { headers: { Authorization: `Bearer ${authStore.getToken()}` } })
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText)
-    const filename = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] ?? 'timesheet.csv'
-    const url = URL.createObjectURL(await res.blob())
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    await apiDownload(`/api/admin/timesheets?${params}`, 'timesheet.csv')
   } catch (e) {
     downloadError.value = e.message
   } finally {

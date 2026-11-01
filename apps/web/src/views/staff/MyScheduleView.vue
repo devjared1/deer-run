@@ -112,52 +112,54 @@
       <Card
         v-else
         padding="none"
-        tag="ul"
-        class="overflow-hidden divide-y divide-outline-variant print:shadow-none print:border print:border-outline"
+        class="overflow-hidden print:shadow-none print:border print:border-outline"
       >
-        <li
-          v-for="d in dates"
-          :key="d"
-          :class="['flex items-start sm:items-center gap-x-4 gap-y-1 px-4 py-3', d === today ? 'bg-primary-container/40' : '']"
-          :aria-current="d === today ? 'date' : undefined"
-        >
-          <div class="w-24 sm:w-28 flex-none">
-            <div :class="['text-title-s', d === today ? 'text-primary' : 'text-on-surface']">
-              {{ formatLocalDate(d, { weekday: 'long' }) }}
+        <!-- The list goes inside: Card wraps its default slot in a div, which a <ul> can't hold -->
+        <ul class="divide-y divide-outline-variant">
+          <li
+            v-for="d in dates"
+            :key="d"
+            :class="['flex items-start sm:items-center gap-x-4 gap-y-1 px-4 py-3', d === today ? 'bg-primary-container/40' : '']"
+            :aria-current="d === today ? 'date' : undefined"
+          >
+            <div class="w-24 sm:w-28 flex-none">
+              <div :class="['text-title-s', d === today ? 'text-primary' : 'text-on-surface']">
+                {{ formatLocalDate(d, { weekday: 'long' }) }}
+              </div>
+              <div class="text-body-s text-on-surface-variant">
+                {{ formatLocalDate(d, { month: 'short', day: 'numeric' }) }}{{ d === today ? ' · Today' : '' }}
+              </div>
             </div>
-            <div class="text-body-s text-on-surface-variant">
-              {{ formatLocalDate(d, { month: 'short', day: 'numeric' }) }}{{ d === today ? ' · Today' : '' }}
-            </div>
-          </div>
-          <div class="flex-1 min-w-0 flex flex-wrap gap-2">
-            <span
-              v-if="timeOffOn(data.timeOff, data.employeeId, d)"
-              :class="['inline-flex items-center gap-1.5 text-body-m border rounded-shape-sm px-2 py-1', timeOffClasses(timeOffOn(data.timeOff, data.employeeId, d))]"
-            >
-              <IconBeach
-                class="w-4 h-4"
-                aria-hidden="true"
-              />
-              {{ timeOffLabel(timeOffOn(data.timeOff, data.employeeId, d)) }}
-            </span>
-            <span
-              v-for="s in myShifts.filter(s => s.date === d)"
-              :key="s.id"
-              :class="['w-full sm:w-auto text-body-m border rounded-shape-sm px-3 py-1.5', shiftClasses(s, me)]"
-            >
-              <span class="whitespace-nowrap"><span class="font-bold">{{ longTime(s.startTime) }} – {{ longTime(s.endTime) }}</span>
-                ({{ totalHours([s]) }})</span>
+            <div class="flex-1 min-w-0 flex flex-wrap gap-2">
               <span
-                v-if="(s.position && s.position !== me?.position) || s.notes"
-                class="block sm:inline sm:ml-2"
-              >{{ [s.position && s.position !== me?.position ? positionLabel(s.position) : null, s.notes].filter(Boolean).join(' · ') }}</span>
-            </span>
-            <span
-              v-if="!myShifts.some(s => s.date === d) && !timeOffOn(data.timeOff, data.employeeId, d)"
-              class="text-body-m text-on-surface-variant py-1"
-            >Off</span>
-          </div>
-        </li>
+                v-if="timeOffOn(data.timeOff, data.employeeId, d)"
+                :class="['inline-flex items-center gap-1.5 text-body-m border rounded-shape-sm px-2 py-1', timeOffClasses(timeOffOn(data.timeOff, data.employeeId, d))]"
+              >
+                <IconBeach
+                  class="w-4 h-4"
+                  aria-hidden="true"
+                />
+                {{ timeOffLabel(timeOffOn(data.timeOff, data.employeeId, d)) }}
+              </span>
+              <span
+                v-for="s in myShifts.filter(s => s.date === d)"
+                :key="s.id"
+                :class="['w-full sm:w-auto text-body-m border rounded-shape-sm px-3 py-1.5', shiftClasses(s, me)]"
+              >
+                <span class="whitespace-nowrap"><span class="font-bold">{{ longTime(s.startTime) }} – {{ longTime(s.endTime) }}</span>
+                  ({{ totalHours([s]) }})</span>
+                <span
+                  v-if="(s.position && s.position !== me?.position) || s.notes"
+                  class="block sm:inline sm:ml-2"
+                >{{ [s.position && s.position !== me?.position ? positionLabel(s.position) : null, s.notes].filter(Boolean).join(' · ') }}</span>
+              </span>
+              <span
+                v-if="!myShifts.some(s => s.date === d) && !timeOffOn(data.timeOff, data.employeeId, d)"
+                class="text-body-m text-on-surface-variant py-1"
+              >Off</span>
+            </div>
+          </li>
+        </ul>
       </Card>
 
       <ScheduleLegend

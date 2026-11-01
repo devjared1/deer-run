@@ -33,9 +33,10 @@
             :type="editable ? 'button' : undefined"
             :class="['block w-full text-left rounded-shape-xs border px-3 py-2', shiftClasses(shift, employeeById.get(shift.employeeId)),
                      editable ? 'state-layer cursor-pointer' : '', warnings[shift.id] ? 'ring-1 ring-error' : '']"
-            :aria-label="editable ? `Edit ${fullName(shift.employeeId)}'s shift, ${longTime(shift.startTime)} to ${longTime(shift.endTime)}` : undefined"
             @click="editable && $emit('edit', shift)"
           >
+            <!-- Named by the visible text (label in name), with "Edit shift" for screen readers -->
+            <span v-if="editable" class="sr-only">Edit shift: </span>
             <span class="flex flex-wrap items-baseline gap-x-2">
               <span class="text-label-l whitespace-nowrap">{{ longTime(shift.startTime) }} – {{ longTime(shift.endTime) }}</span>
               <span :class="['text-body-m', shift.employeeId === highlightEmployeeId ? 'font-bold' : '']">

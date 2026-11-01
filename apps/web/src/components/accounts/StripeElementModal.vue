@@ -32,7 +32,8 @@
 // Cancel. If the bank needs a redirect, Stripe returns to returnUrl with payment_intent / setup_intent in the query,
 // and the page finishes from there. Mount it with v-if and drop it on success or close.
 import { ref, shallowRef, onMounted } from 'vue'
-import { loadStripe } from '@stripe/stripe-js'
+// '/pure': Stripe.js loads when the dialog calls loadStripe(), not as soon as the My Account chunk does
+import { loadStripe } from '@stripe/stripe-js/pure'
 import AppButton from '@/components/ui/AppButton.vue'
 import AppDialog from '@/components/ui/AppDialog.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'

@@ -185,7 +185,8 @@ const status = ref('idle') // idle | sending | done | error
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const emailError = computed(() => {
   if (!touched.value && !submitted.value) return ''
-  if (!newsletterEmail.value) return 'Enter your email address.'
+  // Empty is only an error on submit: keyboard users tab through this field on every page
+  if (!newsletterEmail.value) return submitted.value ? 'Enter your email address.' : ''
   if (!EMAIL_RE.test(newsletterEmail.value)) return 'Enter an email address like name@example.com.'
   return ''
 })

@@ -29,17 +29,19 @@ export async function apiFetch(url, { method = 'GET', body } = {}) {
 
 /**
  * Downloads a file from an authenticated /api endpoint (CSV exports, statement PDFs). The file name comes from the
- * response's Content-Disposition, else `fallbackName`. Throws like apiFetch on an error response.
+ * response's Content-Disposition, else `fallbackName`. Resolves to the file name. Throws like apiFetch on an error
+ * response.
  */
 export async function apiDownload(url, fallbackName = 'download') {
   const res = await fetch(url, { headers: authHeaders(false) })
   if (!res.ok) throw await failure(res)
   const disposition = res.headers.get('Content-Disposition') || ''
-  const name = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1] || fallbackName
+  const name = decodeURIComponent(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1] || fallbackName)
   const href = URL.createObjectURL(await res.blob())
-  const a = Object.assign(document.createElement('a'), { href, download: decodeURIComponent(name) })
+  const a = Object.assign(document.createElement('a'), { href, download: name })
   document.body.appendChild(a)
   a.click()
   a.remove()
   setTimeout(() => URL.revokeObjectURL(href), 1000)
+  return name
 }

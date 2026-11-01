@@ -42,7 +42,7 @@ deer-run/
 │   │   │   │   ├── schedule/  # ScheduleGrid, ScheduleMonth, schedule/time off display helpers
 │   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
 │   │   │   │   ├── tournament/# EventCard, EventFilterBar
-│   │   │   │   └── ui/        # MD3 component set (see Design System) + SectionLabel, ResponsivePicture
+│   │   │   │   └── ui/        # MD3 component set (see Design System) + ResponsivePicture, useFocusReturn
 │   │   │   ├── composables/   # usePendingTimeOff (admin sidebar badge), useConfirm, useSnackbar
 │   │   │   ├── data/          # Static JS data (holes, rates, membershipTiers, teeSets, employeePositions)
 │   │   │   ├── lib/           # supabase.js, api.js, and shared logic (see "Shared libraries")
@@ -610,7 +610,8 @@ in every state at **`/dev/ui`** (dev server, or a build with `VITE_UI_GALLERY=tr
   renamed `gold`.) Legacy brand hexes `pine`, `clay`, `lake`, `bark`, `parch` stay until pages are migrated.
 - **Type scale**: `text-display-l/m/s`, `text-headline-l/m/s` (with `font-display`, Playfair Display),
   `text-title-l/m/s`, `text-body-l/m/s`, `text-label-l/m/s` (Lato, the default `font-body`). Fonts are self-hosted
-  with `@fontsource` (imported in `main.js`; Playfair 700 and Lato 400 preloaded by a plugin in `vite.config.js`).
+  with `@fontsource` (imported in `main.js`; Lato 400/700 preloaded on every page by a plugin in `vite.config.js`,
+  each page's headline Playfair faces by `scripts/prerender.mjs`).
 - **Shape** `rounded-shape-xs` (4, text fields) / `-sm` (8, chips, menus) / `-md` (12, cards) / `-lg` (16) /
   `-xl` (28, dialogs, sheets) / `rounded-full` (buttons). **Elevation** `shadow-elevation-1…5`. **Motion**
   `ease-emphasized`, `ease-standard` (+ `-decelerate`/`-accelerate`), `duration-short-2/short-4/medium-2/medium-4/long-2`.
@@ -644,6 +645,10 @@ Favicons, `apple-touch-icon.png`, `icon-192/512.png` and `site.webmanifest` are 
   name) and the GolfCourse/LocalBusiness JSON-LD; `App.vue` applies them with `useHead`, and the `deer-run:prerender`
   Vite plugin (`scripts/prerender.mjs`) writes one HTML file per public route (`dist/rates.html`, head only) plus
   `dist/sitemap.xml` at build time. `public/robots.txt`, `public/_headers` (caching, basic security headers).
+- Performance: each prerendered page also preloads its view's chunks, its hero photo (`HERO_PHOTOS` / `HERO_SIZES`
+  in `prerender.mjs`: keep them in step with the views' `PageHero photo` and `sizes`) and its headline fonts.
+  `stores/auth.js` loads the Supabase client on demand (signed-out visitors never wait for it); Stripe.js comes from
+  `@stripe/stripe-js/pure` (loads on `loadStripe()`). The footer waits for the first page (no layout shift).
 
 ### Components (`src/components/ui/`, each file starts with a usage comment)
 | Area | Components |

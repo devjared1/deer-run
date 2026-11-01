@@ -293,7 +293,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue'
-import { apiFetch } from '@/lib/api'
+import { apiDownload, apiFetch } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { printReceipt } from '@/lib/printReceipt'
@@ -550,15 +550,7 @@ async function downloadCsv(detail) {
     if (status.value) params.set('status', status.value)
     params.set('format', 'csv')
     params.set('detail', detail)
-    const res = await fetch(`/api/admin/sales?${params}`, { headers: { Authorization: `Bearer ${authStore.getToken()}` } })
-    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || res.statusText)
-    const filename = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] ?? `sales-${detail}.csv`
-    const url = URL.createObjectURL(await res.blob())
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    a.click()
-    URL.revokeObjectURL(url)
+    const filename = await apiDownload(`/api/admin/sales?${params}`, `sales-${detail}.csv`)
     snackbar.show(`Downloaded ${filename}`)
   } catch (e) {
     downloadError.value = `Couldn't export: ${e.message}`

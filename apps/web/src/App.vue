@@ -10,7 +10,7 @@
     <main id="main" ref="main" tabindex="-1" class="flex-1 outline-none">
       <RouterView />
     </main>
-    <AppFooter v-if="!isPortal" />
+    <AppFooter v-if="!isPortal && routeReady" />
     <!-- One host each for useConfirm() and useSnackbar(), shared by every layout -->
     <ConfirmDialog />
     <AppSnackbar />
@@ -36,6 +36,11 @@ const main   = ref(null)
 // Admin and staff pages have their own layouts (sidebar + header), so the public site's nav and
 // footer are hidden there. route.meta includes the parent /admin or /staff route's meta.
 const isPortal = computed(() => !!(route.meta.requiresAdmin || route.meta.requiresStaff || route.meta.bare))
+
+// The footer waits for the first page: until the lazy view has loaded, <main> is empty and the footer would sit
+// in the viewport, then jump down when the page renders (a big layout shift on every first load)
+const routeReady = ref(false)
+router.isReady().catch(() => {}).then(() => { routeReady.value = true })
 
 // Head tags from the route (src/lib/seo.js; unhead is registered in main.js): <title> from meta.title, the
 // description, robots (portals, the 404 page and meta.noindex stay out of search results), canonical, Open Graph and

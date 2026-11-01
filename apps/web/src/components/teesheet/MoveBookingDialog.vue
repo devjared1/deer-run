@@ -21,15 +21,15 @@
       <div
         v-else-if="slots"
         class="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-72 overflow-y-auto p-0.5"
-        role="radiogroup"
+        role="group"
         aria-label="New tee time"
       >
+        <!-- Pressed-state buttons (each a tab stop), not radios: there's no arrow-key navigation in this grid -->
         <button
           v-for="opt in options"
           :key="opt.slot.id"
           type="button"
-          role="radio"
-          :aria-checked="String(selected === opt.slot.id)"
+          :aria-pressed="String(selected === opt.slot.id)"
           :disabled="!!opt.reason"
           :class="[
             'state-layer min-h-14 rounded-shape-sm border px-2 py-1.5 text-left font-body',

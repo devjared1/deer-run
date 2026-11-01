@@ -694,13 +694,42 @@ dialogs. Receipts and slips aren't redesigned.
 - [x] Remaining emoji (✓ ✕ ⚠ 🖨 🛺 etc.) replaced; `apiFetch` in TimeClock and MyTimesheet
 
 ### Phase 7: Quality pass
-- [ ] Lighthouse ≥ 90 (Performance, Accessibility, Best Practices, SEO) on every public route; LCP < 2.5 s on 4G,
+- [x] Lighthouse ≥ 90 (Performance, Accessibility, Best Practices, SEO) on every public route; LCP < 2.5 s on 4G,
       CLS < 0.1
-- [ ] axe: 0 serious/critical issues across public, admin and staff pages; full keyboard-only walkthrough of booking,
+      (Lighthouse 12 on the built site over HTTP/2 with a mocked API, mobile 4G: Performance 97–99, the other three
+      100, CLS 0; desktop 100 across. LCP 2.0–2.4 s, Contact 2.56 s. Fixed: the footer jumping down when the lazy
+      page arrived (CLS 0.9 → 0), fonts and the hero photo found late (each page's HTML now preloads its view's
+      chunks, hero photo and headline fonts), Supabase in the main bundle (loaded on demand; signed-out visitors
+      never wait for it; main chunk 142 → 96 KB gz), Stripe.js loading on /book before the payment step
+      (`@stripe/stripe-js/pure`), AVIF at quality 45, phone PageHero photo at the 640 file, logos not `fetchpriority`.
+      Still a client-rendered body: a body prerender would be the next step for FCP/LCP.)
+- [x] axe: 0 serious/critical issues across public, admin and staff pages; full keyboard-only walkthrough of booking,
       register sale, refund, check-in and On Course update
-- [ ] Contrast audit of every token pairing (WCAG AA; 3:1 for large text and UI components)
-- [ ] Device pass: iPhone SE / 14 / Pro Max, Android 412px, iPad portrait/landscape, the register PC at 1366×768
+      (axe-core 4 at 412 and 1280 on every public route and the `/dev/ui` admin/staff/POS previews with dialogs open.
+      Fixed: names that didn't contain the visible text (date strip, shift chips, DataTable cards, hole tiles, clock
+      chip, "00" key), a `<ul>` holding a `<div>` (My Schedule), a read-only schedule grid that couldn't be scrolled by
+      keyboard, the phone Book bar outside any landmark. Keyboard: focus now returns to the trigger when an AppDialog /
+      BottomSheet closes (`useFocusReturn.js`; Headless UI's restore ran while the page was still inert), a loading
+      AppButton and the refund −/+/All steppers keep focus (`focusableWhenDisabled`), dialogs don't open on an
+      aria-disabled control, the newsletter field no longer errors when tabbed past. Left: the disabled TextField's
+      helper text (38% by design, exempt as an inactive control); gallery-only landmark/heading notices)
+- [x] Contrast audit of every token pairing (WCAG AA; 3:1 for large text and UI components)
+      (154 pairs, default and high contrast: all text pairs pass; the only failures are brand gold as a fill or border
+      on light surfaces, 2.2–3.0:1, which is fine for the gold CTA (its label identifies it) and no text uses it. The
+      two places gold alone marked a state now add a gold-text edge: the booking stepper's current step and the
+      highlighted tee on a hole page. No token values changed)
+- [x] Device pass: iPhone SE / 14 / Pro Max, Android 412px, iPad portrait/landscape, the register PC at 1366×768
       touch, 1920 desktop; print checks for schedules, statements, Z report and receipts
-- [ ] No emoji icons left (`grep` for emoji ranges in `src`); no `DeerLogo` imports; no inline hex colors outside
+      (Emulated in headless Chrome with device-width emulation: 10 public routes + register, tee sheet, on course and
+      sales previews at 375/390/430/412/768/1024/1366/1920, no horizontal overflow or console errors. Print media:
+      admin/staff schedules, statement, letter end-of-day report (drawer table fixed to fit portrait), Z slip,
+      scorecard, register receipt/No Sale slip — only the document prints. Still to do on real hardware: an iPhone,
+      an Android phone, an iPad, and the register PC with its touchscreen, scanner and receipt printer)
+- [x] No emoji icons left (`grep` for emoji ranges in `src`); no `DeerLogo` imports; no inline hex colors outside
       print components
-- [ ] Update `CLAUDE.md` (Design System, components, routes) and this file
+      (audit script: 0 emoji icons, 0 DeerLogo, 0 inline hex/rgba outside print components and tokens; legacy CSS in
+      main.css cut from 323 to 97 lines (`.hero-bg`, `.page-enter` still used); SectionLabel removed. Left: the
+      physical tee marker colors in `teeSets.js`; raw `fetch` in the auth/booking stores for public calls)
+- [x] Update `CLAUDE.md` (Design System, components, routes) and this file
+- [ ] Verify on staging with real data: sign in / sign up / password reset (Supabase now loads on demand), a real
+      online booking through Stripe, a register sale with the card reader, the PDF statement download

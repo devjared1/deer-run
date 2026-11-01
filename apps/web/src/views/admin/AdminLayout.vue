@@ -63,7 +63,7 @@
           <nav aria-label="Breadcrumb">
             <ol class="flex items-center gap-1 min-w-0">
               <li v-for="(crumb, i) in breadcrumbs" :key="i" class="flex items-center gap-1 min-w-0">
-                <span v-if="i > 0" aria-hidden="true">›</span>
+                <IconChevronRight v-if="i > 0" class="flex-none" aria-hidden="true" />
                 <RouterLink
                   v-if="crumb.to && i < breadcrumbs.length - 1"
                   :to="crumb.to"
@@ -161,6 +161,7 @@ import IconWallet from '~icons/material-symbols/account-balance-wallet-rounded'
 import IconGroup from '~icons/material-symbols/group-rounded'
 import IconSettings from '~icons/material-symbols/settings-rounded'
 import IconArrowBack from '~icons/material-symbols/arrow-back-rounded'
+import IconChevronRight from '~icons/material-symbols/chevron-right-rounded'
 import IconLogout from '~icons/material-symbols/logout-rounded'
 import IconAccount from '~icons/material-symbols/account-circle-rounded'
 

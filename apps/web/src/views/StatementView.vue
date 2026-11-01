@@ -52,9 +52,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
-import { apiFetch } from '@/lib/api'
+import { apiDownload, apiFetch } from '@/lib/api'
 import { formatLocalDate } from '@/lib/timeclock'
-import { useAuthStore } from '@/stores/auth'
 import { useSnackbar } from '@/composables/useSnackbar'
 import AppButton from '@/components/ui/AppButton.vue'
 import Card from '@/components/ui/Card.vue'
@@ -69,7 +68,6 @@ import IconPrint from '~icons/material-symbols/print-rounded'
 import IconReceipt from '~icons/material-symbols/receipt-long-rounded'
 
 const route    = useRoute()
-const auth     = useAuthStore()
 const snackbar = useSnackbar()
 
 const data        = ref(null)
@@ -101,33 +99,18 @@ async function load(retry = false) {
   }
 }
 
-// "attachment; filename="deer-run-statement-2026-10.pdf"" → the filename
-function filenameFrom(res) {
-  const m = /filename="?([^";]+)"?/i.exec(res.headers.get('Content-Disposition') || '')
-  return m ? m[1] : `deer-run-statement-${data.value.statement.periodStart.slice(0, 7)}.pdf`
-}
-
 async function downloadPdf() {
   downloading.value = true
   try {
-    const res = await fetch(`/api/account/statements/${encodeURIComponent(route.params.id)}?format=pdf`, {
-      headers: { Authorization: `Bearer ${auth.getToken()}` },
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      throw new Error(body.error || 'The PDF couldn\'t be downloaded. Please try again, or print the statement instead.')
-    }
-    const url = URL.createObjectURL(await res.blob())
-    const a = document.createElement('a')
-    a.href = url
-    a.download = filenameFrom(res)
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    await apiDownload(
+      `/api/account/statements/${encodeURIComponent(route.params.id)}?format=pdf`,
+      `deer-run-statement-${data.value.statement.periodStart.slice(0, 7)}.pdf`,
+    )
   } catch (e) {
     snackbar.show({
-      message: e instanceof TypeError ? 'Check your connection and try again.' : e.message,
+      message: e instanceof TypeError
+        ? 'Check your connection and try again.'
+        : e.message || 'The PDF couldn\'t be downloaded. Please try again, or print the statement instead.',
       tone: 'error',
     })
   } finally {

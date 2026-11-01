@@ -17,10 +17,11 @@
           </div>
           <div class="flex items-center gap-1 ml-auto">
             <template v-if="!isVoid && row.remaining > 0">
-              <IconButton :icon="IconRemove" variant="outlined" :label="`One fewer ${row.item.description}`" :disabled="row.quantity === 0" @click="row.quantity--" />
+              <!-- focusable-when-disabled: these disable themselves at the limit while focused (keyboard focus stays put) -->
+              <IconButton :icon="IconRemove" variant="outlined" :label="`One fewer ${row.item.description}`" :disabled="row.quantity === 0" focusable-when-disabled @click="row.quantity--" />
               <span class="w-8 text-center text-title-m tabular-nums" aria-live="polite">{{ row.quantity }}</span>
-              <IconButton :icon="IconAdd" variant="outlined" :label="`One more ${row.item.description}`" :disabled="row.quantity >= row.remaining" @click="row.quantity++" />
-              <AppButton variant="text" :disabled="row.quantity === row.remaining" @click="row.quantity = row.remaining">All</AppButton>
+              <IconButton :icon="IconAdd" variant="outlined" :label="`One more ${row.item.description}`" :disabled="row.quantity >= row.remaining" focusable-when-disabled @click="row.quantity++" />
+              <AppButton variant="text" :aria-label="`Refund all ${row.item.description}`" :disabled="row.quantity === row.remaining" focusable-when-disabled @click="row.quantity = row.remaining">All</AppButton>
             </template>
             <span v-else-if="isVoid" class="text-body-m text-on-surface-variant tabular-nums">× {{ row.remaining }}</span>
             <span v-else class="text-body-s text-on-surface-variant">Fully refunded</span>

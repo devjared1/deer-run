@@ -23,10 +23,11 @@
         />
 
         <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] items-start">
-          <!-- Who's approving: one big button per manager -->
+          <!-- Who's approving: one big button per manager. Toggle buttons, not radios: picking one moves focus to
+               the keypad, so there's no arrow-key radio group to promise -->
           <div
             v-if="managers.length"
-            role="radiogroup"
+            role="group"
             aria-label="Manager"
             class="grid grid-cols-1 gap-2 sm:max-h-[24rem] sm:overflow-y-auto"
           >
@@ -34,8 +35,7 @@
               v-for="m in managers"
               :key="m.id"
               type="button"
-              role="radio"
-              :aria-checked="String(managerId === m.id)"
+              :aria-pressed="String(managerId === m.id)"
               :class="[
                 'state-layer flex items-center gap-3 min-h-16 px-4 rounded-shape-lg border text-left text-title-m cursor-pointer',
                 managerId === m.id

@@ -1,21 +1,7 @@
-export const STATUS_LABELS = { ACTIVE: 'Active', SUSPENDED: 'Suspended', CLOSED: 'Closed' }
-
-export const STATUS_CLASSES = {
-  ACTIVE: 'bg-pine/15 text-pine',
-  SUSPENDED: 'bg-gold/20 text-gold-dark',
-  CLOSED: 'bg-gray-100 text-gray-500',
-}
-
 import { localDate } from '@/lib/timeclock'
 
-export const STATEMENT_STATUS_LABELS = { OPEN: 'Due', PAID: 'Paid', AUTOPAY_FAILED: 'Autopay failed', OVERDUE: 'Overdue' }
-
-export const STATEMENT_STATUS_CLASSES = {
-  OPEN: 'bg-gold/20 text-gold-dark',
-  PAID: 'bg-pine/15 text-pine',
-  AUTOPAY_FAILED: 'bg-red-100 text-red-600',
-  OVERDUE: 'bg-red-100 text-red-600',
-}
+// Account and statement status labels and colors live in the one status map (components/ui/statusChips.js →
+// 'houseAccount' / 'statement'); render them with <StatusChip>.
 
 /** Display status of a saved statement: an unpaid one past its due date shows as OVERDUE. */
 export function statementStatus(s) {

@@ -19,7 +19,7 @@
     >
       <div class="max-w-2xl">
         <BrandLogo :size="96" eager alt="" class="md:hidden" />
-        <BrandLogo :size="168" eager alt="" class="hidden md:inline-block" />
+        <BrandLogo :size="168" alt="" class="hidden md:inline-block" />
         <p class="mt-6 text-label-l uppercase tracking-[.2em] text-gold-container">
           An Earl Stone design · Moulton, Alabama
         </p>

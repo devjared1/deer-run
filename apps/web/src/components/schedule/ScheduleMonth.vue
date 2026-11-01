@@ -57,11 +57,13 @@
                        editable ? 'hover:ring-2 hover:ring-gold/60 cursor-pointer' : '',
                        warnings[shift.id] ? 'ring-1 ring-error print:ring-0' : '']"
               :title="chipTitle(shift)"
-              :aria-label="editable ? `Edit shift: ${chipTitle(shift).replace(/\n/g, '. ')}` : undefined"
               @click.stop="editable && $emit('edit', shift)"
             >
+              <!-- Named by the visible text (label in name), with "Edit shift" and any warning for screen readers -->
+              <span v-if="editable" class="sr-only">Edit shift: </span>
               <span class="truncate"><span class="font-bold">{{ shortTime(shift.startTime) }}–{{ shortTime(shift.endTime) }}</span> {{ name(shift.employeeId) }}</span>
               <IconWarning v-if="warnings[shift.id]" class="w-3 h-3 flex-none text-error print:hidden" aria-hidden="true" />
+              <span v-if="warnings[shift.id]" class="sr-only">. Warning: {{ warnings[shift.id].join('; ') }}</span>
             </component>
           </template>
         </div>

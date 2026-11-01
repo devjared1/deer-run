@@ -48,12 +48,13 @@
             <TeeSetSelector v-model="teeIndex" :tee-sets="teeSets" label="Highlight tees" />
           </div>
           <ul class="grid grid-cols-2 sm:grid-cols-4 gap-2" role="list">
+            <!-- Highlighted tee: gold-text border (the brand gold is under 3:1 on light surfaces) -->
             <li
               v-for="(tee, i) in teeSets"
               :key="tee.name"
               :class="[
                 'flex flex-col rounded-shape-md px-3 py-2 border',
-                i === teeIndex ? 'bg-gold-container text-on-gold-container border-gold' : 'bg-surface-container-lowest text-on-surface border-outline-variant',
+                i === teeIndex ? 'bg-gold-container text-on-gold-container border-gold-text' : 'bg-surface-container-lowest text-on-surface border-outline-variant',
               ]"
             >
               <span class="flex items-center gap-2 text-label-l">

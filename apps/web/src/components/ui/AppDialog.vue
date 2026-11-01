@@ -1,5 +1,5 @@
 <template>
-  <TransitionRoot appear :show="open" as="template" @after-leave="emit('after-leave')">
+  <TransitionRoot appear :show="open" as="template" @after-leave="onAfterLeave">
     <Dialog
       as="div"
       class="relative z-dialog print:hidden"
@@ -106,6 +106,7 @@ import { computed, ref } from 'vue'
 import { Dialog, DialogPanel, DialogTitle, TransitionChild, TransitionRoot } from '@headlessui/vue'
 import AppButton from './AppButton.vue'
 import IconButton from './IconButton.vue'
+import { useFocusReturn } from './useFocusReturn'
 import IconClose from '~icons/material-symbols/close-rounded'
 
 const props = defineProps({
@@ -134,13 +135,27 @@ function dismiss() {
   if (!props.persistent) close()
 }
 
+// Focus goes back to what had it when the dialog opened (see useFocusReturn.js)
+const restoreFocus = useFocusReturn(() => props.open)
+function onAfterLeave() {
+  restoreFocus()
+  emit('after-leave')
+}
+
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 // Headless UI focuses this element when it opens (it re-checks when the panel ref resolves)
 const initialFocusEl = computed(() => {
   const root = panel.value?.$el ?? panel.value
   const target = props.initialFocus
   if (target && typeof target !== 'string') return target.$el ?? target
   if (!(root instanceof HTMLElement)) return null
-  return root.querySelector(target || '[data-autofocus]')
+  if (target) return root.querySelector(target)
+  // Else [data-autofocus], else the first visible focusable that isn't aria-disabled (a focusable-when-disabled
+  // stepper button shouldn't take the initial focus); null leaves it to Headless UI
+  return root.querySelector('[data-autofocus]')
+    ?? [...root.querySelectorAll(FOCUSABLE)].find(el => el.getAttribute('aria-disabled') !== 'true' && el.getClientRects().length)
+    ?? null
 })
 
 const SIZES = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }

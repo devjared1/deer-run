@@ -59,12 +59,14 @@
             v-if="byHole.get(h.hole)?.length"
             type="button"
             class="state-layer flex flex-col items-stretch gap-1 min-h-[6rem] p-2 rounded-shape-md border-2 border-outline bg-surface-container-low text-left cursor-pointer"
-            :aria-label="`Hole ${h.hole}, par ${h.par}: ${tileSummary(h.hole)}. Show groups`"
             @click="emit('select-hole', h.hole)"
           >
+            <!-- Named from its content so the name contains the visible "4 Par 4" (label in name); the chips are
+                 summed up in the sr-only text -->
             <span class="flex flex-wrap items-baseline justify-between gap-x-1">
-              <span class="font-display text-title-l text-on-surface leading-none">{{ h.hole }}</span>
+              <span class="font-display text-title-l text-on-surface leading-none"><span class="sr-only">Hole </span>{{ h.hole }}{{ ' ' }}</span>
               <span class="text-label-m text-on-surface-variant whitespace-nowrap">Par {{ h.par }}</span>
+              <span class="sr-only">: {{ tileSummary(h.hole) }}. Show groups</span>
             </span>
             <span
               v-for="g in byHole.get(h.hole)"

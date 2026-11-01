@@ -107,7 +107,7 @@ const hintId = `keypad-${++uid}-hint`
 
 const LEFT = {
   clear: { id: 'clear', text: 'Clear', aria: 'Clear', kind: 'action' },
-  '00': { id: '00', text: '00', aria: 'Double zero', kind: 'digit' },
+  '00': { id: '00', text: '00', aria: undefined, kind: 'digit' }, // named by its visible "00" (label in name)
   '.': { id: '.', text: '.', aria: 'Decimal point', kind: 'digit' },
   none: { id: ' ', text: '', aria: undefined, kind: 'action' },
 }

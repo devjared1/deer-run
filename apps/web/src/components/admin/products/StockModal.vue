@@ -67,7 +67,9 @@
             <span :class="['w-12 tabular-nums font-bold', h.quantityChange >= 0 ? 'text-primary' : 'text-tertiary']">
               {{ h.quantityChange > 0 ? '+' : h.quantityChange < 0 ? '−' : '' }}{{ Math.abs(h.quantityChange) }}
             </span>
-            <span class="w-16 tabular-nums text-on-surface-variant">→ {{ h.stockAfter }}</span>
+            <span class="w-16 inline-flex items-center gap-1 self-center tabular-nums text-on-surface-variant">
+              <IconArrowForward aria-hidden="true" /><span class="sr-only">Stock after:</span>{{ h.stockAfter }}
+            </span>
             <span class="text-on-surface">
               {{ reasonLabels[h.reason] ?? h.reason }}<span v-if="h.note" class="text-on-surface-variant"> · {{ h.note }}</span>
             </span>
@@ -101,6 +103,7 @@ import StatusChip from '@/components/ui/StatusChip.vue'
 import TextField from '@/components/ui/TextField.vue'
 import IconTune from '~icons/material-symbols/tune-rounded'
 import IconHistory from '~icons/material-symbols/history-rounded'
+import IconArrowForward from '~icons/material-symbols/arrow-forward-rounded'
 
 // Mount with v-if; Done closes it and `close` fires after the exit animation. `changed` after each saved adjustment.
 const props = defineProps({

@@ -3,11 +3,14 @@
     :class="['hero-bg on-dark relative isolate overflow-hidden flex items-center', classes]"
     :style="{ minHeight: `min(${height}, 85vh)` }"
   >
-    <!-- The photo is a real <picture> (prioritized for LCP), under a pine gradient that keeps the text AA -->
+    <!-- The photo is a real <picture> (prioritized for LCP), under a pine gradient that keeps the text AA.
+         sizes asks phones for about half their screen density (the 640px file): under a 75–90% gradient a sharper
+         photo isn't visible, and it's a third of the bytes of the 1280px one on the page's critical path.
+         scripts/prerender.mjs preloads it with the same sizes (HERO_SIZES), so keep the two in step. -->
     <template v-if="photo">
       <ResponsivePicture
         :name="photo"
-        sizes="100vw"
+        sizes="(max-width: 767px) 50vw, 100vw"
         alt=""
         priority
         img-class="absolute inset-0 -z-10 w-full h-full object-cover"
