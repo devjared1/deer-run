@@ -44,12 +44,10 @@
         </div>
       </div>
 
+      <!-- Privacy Policy / Accessibility links come back with their pages (Feature 4 → Phase 3) -->
       <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(242,235,217,.2);">
+        <div style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(242,235,217,.6);">
           © {{ new Date().getFullYear() }} City of Moulton, AL · Deer Run Golf Course. All rights reserved.
-        </div>
-        <div class="flex gap-5">
-          <span v-for="l in footerLinks" :key="l" class="footer-small">{{ l }}</span>
         </div>
       </div>
     </div>
@@ -68,8 +66,6 @@ const pages = [
   { to: '/contact',     label: 'Contact' },
   { to: '/book',        label: 'Book a Tee Time' },
 ]
-
-const footerLinks = ['Privacy Policy', 'Accessibility', 'City of Moulton']
 </script>
 
 <style scoped>
@@ -90,13 +86,4 @@ const footerLinks = ['Privacy Policy', 'Accessibility', 'City of Moulton']
   text-decoration: none;
 }
 .footer-link-phone:hover { color: #c4873a; }
-
-.footer-small {
-  font-family: 'Lato', sans-serif;
-  font-size: 12px;
-  color: rgba(242, 235, 217, 0.3);
-  cursor: pointer;
-  transition: color 0.15s;
-}
-.footer-small:hover { color: rgba(242, 235, 217, 0.6); }
 </style>
