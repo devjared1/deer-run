@@ -4,7 +4,7 @@
       label="Get in Touch"
       title-html="Contact <em>Us</em>"
       description="Pro Shop staff are on-site daily. For the fastest response, call us at (256) 974-7384."
-      bg-image="/images/course-5.jpg"
+      photo="course-5"
     />
 
     <section class="topo py-14">

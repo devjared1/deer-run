@@ -4,9 +4,8 @@
       label="Green Fees"
       title-html="Rates &amp; <em>Services</em>"
       description="Simple weekday and weekend rates for 9 or 18 holes. Ride or walk."
-      bg-image="/images/course-3.jpg"
+      photo="course-3"
       height="650px"
-      :classes="['flex', 'items-center']"
     />
 
     <section class="topo py-14">

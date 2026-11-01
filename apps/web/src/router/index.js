@@ -17,6 +17,14 @@ const routes = [
     component: () => import('@/views/ScorecardView.vue'),
     meta: { title: 'The Course', description: 'Hole-by-hole scorecard for Deer Run Golf Course: par, handicap and yardage from every tee.' },
   },
+  { path: '/course', redirect: '/scorecard' },
+  {
+    // Hole-by-hole pages, 1–18 (other numbers go to the 404 page)
+    path: '/course/hole/:n(\\d+)',
+    component: () => import('@/views/HoleView.vue'),
+    meta: { title: 'Hole', description: 'Hole-by-hole guide to Deer Run Golf Course: par, handicap and yardage from every tee.' },
+    beforeEnter: to => (Number(to.params.n) >= 1 && Number(to.params.n) <= 18 ? true : { path: '/not-found' }),
+  },
   {
     path: '/rates',
     component: () => import('@/views/RatesView.vue'),
@@ -31,6 +39,16 @@ const routes = [
     path: '/tournaments',
     component: () => import('@/views/TournamentsView.vue'),
     meta: { title: 'Tournaments', description: 'Upcoming tournaments and events at Deer Run Golf Course, and results from past ones.' },
+  },
+  {
+    path: '/tournaments/:id',
+    component: () => import('@/views/EventView.vue'),
+    meta: { title: 'Event', description: 'Tournament details and registration at Deer Run Golf Course.' },
+  },
+  {
+    path: '/accessibility',
+    component: () => import('@/views/AccessibilityView.vue'),
+    meta: { title: 'Accessibility', description: 'Accessibility statement for the Deer Run Golf Course website.' },
   },
   {
     path: '/contact',
