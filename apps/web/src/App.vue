@@ -20,7 +20,7 @@ const route = useRoute()
 
 // Admin and staff pages have their own layouts (sidebar + header), so the public site's nav and
 // footer are hidden there. route.meta includes the parent /admin or /staff route's meta.
-const isPortal = computed(() => !!(route.meta.requiresAdmin || route.meta.requiresStaff))
+const isPortal = computed(() => !!(route.meta.requiresAdmin || route.meta.requiresStaff || route.meta.bare))
 
 onMounted(() => auth.init())
 </script>

@@ -54,6 +54,11 @@ const routes = [
       { path: 'pin',       component: () => import('@/views/staff/ManagerPinView.vue'), meta: { requiresRegisterManager: true } },
     ],
   },
+  // Component gallery for design review: every src/components/ui component in every state. Dev server only,
+  // or a build with VITE_UI_GALLERY=true (e.g. a staging preview).
+  ...(import.meta.env.DEV || import.meta.env.VITE_UI_GALLERY === 'true'
+    ? [{ path: '/dev/ui', component: () => import('@/views/dev/UiGalleryView.vue'), meta: { bare: true } }]
+    : []),
 ]
 
 const router = createRouter({
