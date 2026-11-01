@@ -4,9 +4,9 @@
     :class="classes"
     :style="[bgImage
       ? { backgroundImage: `linear-gradient(165deg, rgba(13,31,22,.84) 0%, rgba(20,42,32,.76) 28%, rgba(30,61,47,.62) 58%, rgba(15,32,25,.86) 100%), url('${bgImage}')`, backgroundSize: 'auto, cover', backgroundPosition: 'center, center' }
-      : {}, `height: ${height}`]"
+      : {}, { minHeight: `min(${height}, 85vh)` }]"
   >
-    <div class="relative z-10 max-w-7xl mx-auto px-5 py-14">
+    <div class="relative z-10 w-full max-w-7xl mx-auto px-5 py-14">
       <SectionLabel
         :text="label"
         dark
@@ -51,7 +51,8 @@ defineProps({
   subtitle:  { type: String, default: '' },
   description:  { type: String, default: '' },
   bgImage:   { type: String, default: '' },
+  // A minimum: the hero grows when the text wraps on a phone instead of clipping it
   height:    { type: String, default: '250px' },
-  classes: { type: Array, required: true}
+  classes:   { type: Array, default: () => ['flex', 'items-center'] },
 })
 </script>
