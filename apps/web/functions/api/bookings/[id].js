@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { stopPendingPayment } from './_holds.js'
+import { localDateTimeToUtc } from '../../../src/lib/timeclock.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -55,8 +56,9 @@ export async function onRequestDelete({ request, env, params }) {
     return json({ error: 'Booking cannot be cancelled' }, 400)
   }
 
-  const slotDate = new Date(booking.teeTimeSlot.date)
-  const msUntil = slotDate.getTime() - Date.now()
+  // 24 hours before the tee time itself (course time), not UTC midnight of the slot date
+  const teeTime = localDateTimeToUtc(String(booking.teeTimeSlot.date).slice(0, 10), booking.teeTimeSlot.startTime)
+  const msUntil = teeTime.getTime() - Date.now()
   if (msUntil <= 24 * 60 * 60 * 1000) {
     return json({ error: 'Bookings must be cancelled at least 24 hours in advance' }, 400)
   }
