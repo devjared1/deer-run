@@ -93,7 +93,7 @@
         </h2>
         <p
           style="font-family:'Lato',sans-serif;font-size:15px;color:rgba(61,43,26,.5);margin-bottom:28px;max-width:480px;margin-left:auto;margin-right:auto;line-height:1.7;">
-          Tee times available online. Rates starting at $45 with cart included.
+          Tee times available online. Weekday and weekend rates for 9 or 18 holes, riding or walking.
         </p>
         <RouterLink to="/book" class="btn-amber mr-3">Book Online</RouterLink>
         <RouterLink to="/rates" class="btn-outline-pine">View Rates</RouterLink>

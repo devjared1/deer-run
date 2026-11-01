@@ -48,7 +48,7 @@
                 <div>
                   <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#1E3D2F;">{{ formatTime(b.teeTimeSlot.startTime) }}</div>
                   <div style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-top:2px;">
-                    {{ b.players }} player{{ b.players > 1 ? 's' : '' }} · ${{ (b.totalCents / 100).toFixed(0) }} · Cart included
+                    {{ b.players }} player{{ b.players > 1 ? 's' : '' }} · ${{ (b.totalCents / 100).toFixed(2) }} · {{ b.roundHoles ?? 18 }} holes{{ b.cartIncluded ? ' · cart' : '' }}
                   </div>
                   <span
                     class="inline-block mt-1 px-2 py-0.5 rounded tier-badge"
