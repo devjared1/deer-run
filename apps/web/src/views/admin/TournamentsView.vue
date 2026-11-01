@@ -45,7 +45,7 @@
     </div>
 
     <!-- Create / Edit modal -->
-    <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+    <div v-if="showForm" class="modal-overlay">
       <div class="modal-box max-w-lg overflow-y-auto max-h-[90vh]">
         <h2 class="font-display font-bold text-bark mb-4">{{ formData.id ? 'Edit Event' : 'New Tournament Event' }}</h2>
         <div class="space-y-3">
