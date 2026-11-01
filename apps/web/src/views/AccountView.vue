@@ -103,7 +103,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter }    from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { formatLocalDate } from '@/lib/timeclock'
+import { formatLocalDate, localDate, localDateTimeToUtc } from '@/lib/timeclock'
 import PageHero         from '@/components/layout/PageHero.vue'
 import SectionLabel     from '@/components/ui/SectionLabel.vue'
 import HouseAccountPanel from '@/components/accounts/HouseAccountPanel.vue'
@@ -128,27 +128,21 @@ const roleLabel = computed(() => {
     : tier
 })
 
-const now = new Date()
-now.setHours(0, 0, 0, 0)
+// Course-local today; slot dates are YYYY-MM-DD, compared as strings
+const today = localDate()
 
 const upcomingBookings = computed(() =>
-  bookings.value.filter((b) => {
-    const d = new Date(b.teeTimeSlot.date)
-    return d >= now && !['CANCELLED', 'REFUNDED'].includes(b.status)
-  })
+  bookings.value.filter((b) => b.teeTimeSlot.date.slice(0, 10) >= today && !['CANCELLED', 'REFUNDED'].includes(b.status))
 )
 
 const pastBookings = computed(() =>
-  bookings.value.filter((b) => {
-    const d = new Date(b.teeTimeSlot.date)
-    return d < now || ['CANCELLED', 'REFUNDED'].includes(b.status)
-  })
+  bookings.value.filter((b) => b.teeTimeSlot.date.slice(0, 10) < today || ['CANCELLED', 'REFUNDED'].includes(b.status))
 )
 
+// Same rule as DELETE /api/bookings/:id: at least 24 hours before the tee time (course time)
 function canCancel(b) {
-  const slotDate = new Date(b.teeTimeSlot.date)
-  const msUntil  = slotDate.getTime() - Date.now()
-  return ['PENDING', 'CONFIRMED'].includes(b.status) && msUntil > 24 * 60 * 60 * 1000
+  const teeTime = localDateTimeToUtc(b.teeTimeSlot.date.slice(0, 10), b.teeTimeSlot.startTime)
+  return ['PENDING', 'CONFIRMED'].includes(b.status) && teeTime.getTime() - Date.now() > 24 * 60 * 60 * 1000
 }
 
 function formatMonth(date) { return MONTHS[new Date(date).getUTCMonth()] }
