@@ -17,11 +17,7 @@
           v-dompurify-html="titleHtml"
           style="font-size:clamp(44px,5vw,72px);font-weight: 700;margin-top: -20px"
         />
-        <!-- <img
-          src="/images/deerrunlogo.svg"
-          alt="Deer Run Logo"
-          style="height: clamp(175px, 8dvh, 250px);"
-        > -->
+        <BrandLogo v-if="logo" :size="logoSize" eager alt="" class="mb-2" />
         <h3
           v-if="subtitle"
           class="fade-up"
@@ -43,6 +39,7 @@
 </template>
 
 <script setup>
+import BrandLogo from '@/components/ui/BrandLogo.vue';
 import SectionLabel from '@/components/ui/SectionLabel.vue';
 
 defineProps({
@@ -54,5 +51,8 @@ defineProps({
   // A minimum: the hero grows when the text wraps on a phone instead of clipping it
   height:    { type: String, default: '250px' },
   classes:   { type: Array, default: () => ['flex', 'items-center'] },
+  // The emblem under the title (the home page's brand moment)
+  logo:      { type: Boolean, default: false },
+  logoSize:  { type: Number, default: 200 },
 })
 </script>
