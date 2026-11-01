@@ -1,236 +1,279 @@
 <template>
-  <div v-if="data?.account" class="mb-12">
-    <SectionLabel text="House Account" class="mb-5" />
+  <section v-if="data?.account || loadError" aria-labelledby="house-account-title" class="space-y-4">
+    <h2 id="house-account-title" class="font-display text-headline-s md:text-headline-m text-on-surface">House account</h2>
 
-    <div class="card rounded-lg p-6 mb-4">
-      <div class="flex flex-wrap items-start gap-x-10 gap-y-4">
-        <div>
-          <div class="label">
-            Balance
-          </div>
-          <div class="font-display font-bold text-3xl tabular-nums" :class="account.balanceCents > 0 ? 'text-bark' : 'text-pine'">
-            {{ formatCents(account.balanceCents) }}
-          </div>
-          <div class="text-xs text-bark/50 font-body">
-            {{ formatCents(account.availableCents) }} available of {{ formatCents(account.creditLimitCents) }}
-            <template v-if="account.status !== 'ACTIVE'">
-              · <span class="text-clay">{{ account.status === 'SUSPENDED' ? 'charging is paused' : 'closed' }}</span>
-            </template>
-          </div>
-        </div>
-        <div class="font-body text-sm text-bark/80 space-y-1">
-          <div>
-            <span class="text-bark/50">Billing:</span>
-            <template v-if="account.autopayEnabled">
-              autopay with {{ cardLabel(account) }}
-            </template>
-            <template v-else>
-              statement by email on the 1st
-            </template>
-          </div>
-          <div>
-            <span class="text-bark/50">PIN for the pro shop:</span>
-            <span v-if="account.pinLocked" class="text-clay"> locked, ask at the pro shop</span>
-            <span v-else>{{ account.hasPin ? ' set' : ' not set yet' }}</span>
-          </div>
-        </div>
-        <div class="ml-auto flex flex-wrap gap-2">
-          <button v-if="account.balanceCents >= 50" class="btn-amber" style="padding:10px 18px;font-size:12px;" @click="startPay">
-            Pay balance
-          </button>
-          <button class="btn-outline-pine" style="padding:9px 16px;font-size:12px;" @click="pinForm = { current: '', next: '', confirm: '', busy: false, error: null }">
-            {{ account.hasPin ? 'Change PIN' : 'Set PIN' }}
-          </button>
-          <button v-if="!account.autopayEnabled" class="btn-outline-pine" style="padding:9px 16px;font-size:12px;" @click="startAutopay">
-            Turn on autopay
-          </button>
-          <template v-else>
-            <button class="btn-outline-pine" style="padding:9px 16px;font-size:12px;" @click="startAutopay">
-              Replace card
-            </button>
-            <button class="btn-outline-pine" style="padding:9px 16px;font-size:12px;" @click="disableAutopay">
-              Turn off autopay
-            </button>
-          </template>
-        </div>
-      </div>
-      <p v-if="notice" class="text-pine text-sm font-body mt-4">
-        {{ notice }}
-      </p>
-      <p v-if="error" class="text-clay text-sm font-body mt-4">
-        {{ error }}
-      </p>
-    </div>
-
-    <div class="grid md:grid-cols-[1fr_16rem] gap-4">
-      <div class="card rounded-lg overflow-hidden">
-        <div class="px-5 py-3 font-body font-bold text-sm text-bark border-b border-bark/10">
-          Recent activity
-        </div>
-        <table class="w-full text-sm font-body">
-          <tbody>
-            <tr v-for="e in data.entries" :key="e.id" class="border-b border-bark/5 last:border-0">
-              <td class="px-5 py-2 text-bark/50 whitespace-nowrap">
-                {{ formatDate(e.createdAt) }}
-              </td>
-              <td class="px-2 py-2 text-bark">
-                {{ e.description }}
-              </td>
-              <td class="px-5 py-2 text-right tabular-nums" :class="e.amountCents < 0 ? 'text-pine' : 'text-bark'">
-                {{ e.amountCents < 0 ? '−' : '' }}{{ formatCents(Math.abs(e.amountCents)) }}
-              </td>
-            </tr>
-            <tr v-if="!data.entries.length">
-              <td class="px-5 py-6 text-center text-bark/40" colspan="3">
-                No charges yet.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div class="card rounded-lg overflow-hidden self-start">
-        <div class="px-5 py-3 font-body font-bold text-sm text-bark border-b border-bark/10">
-          Statements
-        </div>
-        <ul class="font-body text-sm">
-          <li v-for="s in data.statements" :key="s.id" class="px-5 py-2 border-b border-bark/5 last:border-0 flex items-center gap-2">
-            <RouterLink :to="`/account/statements/${s.id}`" class="text-lake hover:text-pine flex-1">
-              {{ formatLocalDate(s.periodStart, { month: 'long', year: 'numeric' }) }}
-            </RouterLink>
-            <span class="tabular-nums text-bark/70">{{ formatCents(s.closingCents) }}</span>
-            <span :class="['text-[11px] px-1.5 py-0.5 rounded-full', STATEMENT_STATUS_CLASSES[statementStatus(s)]]">{{ STATEMENT_STATUS_LABELS[statementStatus(s)] }}</span>
-          </li>
-          <li v-if="!data.statements.length" class="px-5 py-4 text-bark/40 text-center">
-            Your first statement comes on the 1st.
-          </li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- Pay: choose the amount -->
-    <div v-if="payForm" class="modal-overlay" @click.self="payForm = null">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-4">
-          Pay your house account
-        </h2>
-        <label class="block text-xs text-gray-500 mb-1 font-body">Amount ($)</label>
-        <input v-model="payForm.amount" type="number" min="0.50" :max="account.balanceCents / 100" step="0.01" class="input-field w-full text-lg">
-        <p class="text-xs text-gray-400 font-body mt-1">
-          Your balance is {{ formatCents(account.balanceCents) }}.
-        </p>
-        <p v-if="payForm.error" class="text-red-500 text-sm mt-2 font-body">
-          {{ payForm.error }}
-        </p>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="payForm = null">
-            Cancel
-          </button>
-          <button class="btn-amber px-5 py-2 text-sm disabled:opacity-50" :disabled="payForm.busy" @click="continuePay">
-            Continue
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <StripeElementModal
-      v-if="stripeForm"
-      :mode="stripeForm.mode"
-      :client-secret="stripeForm.clientSecret"
-      :title="stripeForm.title"
-      :subtitle="stripeForm.subtitle"
-      :submit-label="stripeForm.submitLabel"
-      :return-url="returnUrl"
-      @success="onStripeSuccess"
-      @close="stripeForm = null"
+    <ErrorBanner
+      v-if="loadError && !data?.account"
+      title="We couldn't load your house account"
+      :message="loadError"
+      :retrying="loading"
+      @retry="load"
     />
 
-    <!-- PIN -->
-    <div v-if="pinForm" class="modal-overlay" @click.self="pinForm = null">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-1">
-          {{ account.hasPin ? 'Change your PIN' : 'Set your PIN' }}
-        </h2>
-        <p class="text-gray-500 text-sm font-body mb-4">
+    <template v-if="account">
+      <Card variant="elevated" padding="lg">
+        <div class="flex flex-wrap items-start gap-x-10 gap-y-6">
+          <div class="min-w-0">
+            <p class="text-label-m uppercase tracking-wider text-on-surface-variant">Balance</p>
+            <p class="font-display text-headline-l text-on-surface tabular-nums">{{ formatCents(account.balanceCents) }}</p>
+            <p class="text-body-m text-on-surface-variant">
+              {{ formatCents(account.availableCents) }} available of {{ formatCents(account.creditLimitCents) }}
+            </p>
+            <StatusChip v-if="account.status !== 'ACTIVE'" kind="houseAccount" :status="account.status" class="mt-2" />
+            <p v-if="account.status === 'SUSPENDED'" class="text-body-m text-on-surface-variant mt-1">Charging is paused.</p>
+          </div>
+
+          <ul class="flex-1 min-w-[14rem] space-y-3 text-body-m text-on-surface">
+            <li class="flex gap-3">
+              <IconAutorenew class="w-6 h-6 flex-shrink-0 text-on-surface-variant" aria-hidden="true" />
+              <span>
+                <span class="block text-label-m uppercase tracking-wider text-on-surface-variant">Billing</span>
+                {{ account.autopayEnabled ? `Autopay with ${cardLabel(account)}` : 'Statement by email on the 1st' }}
+              </span>
+            </li>
+            <li class="flex gap-3">
+              <IconPassword class="w-6 h-6 flex-shrink-0 text-on-surface-variant" aria-hidden="true" />
+              <span>
+                <span class="block text-label-m uppercase tracking-wider text-on-surface-variant">Pro shop PIN</span>
+                <template v-if="account.pinLocked">Locked: ask at the pro shop to reset it</template>
+                <template v-else>{{ account.hasPin ? 'Set' : 'Not set yet' }}</template>
+              </span>
+            </li>
+          </ul>
+
+          <!-- One primary action; the rest in the overflow menu -->
+          <div class="flex items-center gap-1 ml-auto">
+            <AppButton v-if="primary" :variant="primary.key === 'pay' ? 'gold' : 'filled'" :icon="primary.icon" @click="primary.onClick">
+              {{ primary.label }}
+            </AppButton>
+            <RowActionsMenu v-if="menuItems.length" label="More house account actions" :items="menuItems" />
+          </div>
+        </div>
+
+        <ErrorBanner v-if="error" :message="error" class="mt-6" @dismiss="error = null" />
+      </Card>
+
+      <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_18rem] md:items-start">
+        <Card variant="outlined" padding="none">
+          <h3 class="px-4 sm:px-5 pt-4 pb-2 text-title-m text-on-surface">Recent activity</h3>
+          <ul v-if="data.entries.length" class="divide-y divide-outline-variant">
+            <li v-for="e in data.entries" :key="e.id" class="flex items-baseline gap-3 px-4 sm:px-5 py-3 text-body-m">
+              <span class="w-14 flex-shrink-0 text-on-surface-variant whitespace-nowrap">{{ formatDate(e.createdAt) }}</span>
+              <span class="flex-1 min-w-0 text-on-surface break-words">{{ e.description }}</span>
+              <span :class="['tabular-nums whitespace-nowrap', e.amountCents < 0 ? 'text-success' : 'text-on-surface']">
+                <span v-if="e.amountCents < 0" class="sr-only">Credit </span>{{ e.amountCents < 0 ? '−' : '' }}{{ formatCents(Math.abs(e.amountCents)) }}
+              </span>
+            </li>
+          </ul>
+          <EmptyState v-else compact :icon="IconReceipt" message="No charges yet." />
+        </Card>
+
+        <Card variant="outlined" padding="none">
+          <h3 class="px-4 sm:px-5 pt-4 pb-2 text-title-m text-on-surface">Statements</h3>
+          <ul v-if="data.statements.length" class="divide-y divide-outline-variant">
+            <li v-for="s in data.statements" :key="s.id">
+              <RouterLink
+                :to="`/account/statements/${s.id}`"
+                class="state-layer flex items-center gap-2 min-h-14 px-4 sm:px-5 py-2 no-underline text-on-surface"
+              >
+                <span class="flex-1 min-w-0">
+                  <span class="block text-body-l">{{ formatLocalDate(s.periodStart, { month: 'long', year: 'numeric' }) }}</span>
+                  <span class="block text-body-m text-on-surface-variant tabular-nums">{{ formatCents(s.closingCents) }}</span>
+                </span>
+                <StatusChip size="sm" kind="statement" :status="statementStatus(s)" />
+                <IconChevronRight class="w-6 h-6 text-on-surface-variant" aria-hidden="true" />
+              </RouterLink>
+            </li>
+          </ul>
+          <EmptyState v-else compact :icon="IconCalendar" message="Your first statement comes on the 1st." />
+        </Card>
+      </div>
+
+      <!-- Pay: choose the amount -->
+      <AppDialog v-model:open="payOpen" title="Pay your house account" persistent size="sm">
+        <form id="pay-form" novalidate class="space-y-2 pt-1" @submit.prevent="continuePay">
+          <MoneyField
+            v-model="payForm.amountCents"
+            label="Amount"
+            :min="50"
+            :max="account.balanceCents"
+            required
+            :helper="`Your balance is ${formatCents(account.balanceCents)}.`"
+            data-autofocus
+          />
+          <ErrorBanner v-if="payForm.error" :message="payForm.error" />
+        </form>
+        <template #actions="{ close }">
+          <AppButton variant="text" :disabled="payForm.busy" @click="close">Cancel</AppButton>
+          <AppButton type="submit" form="pay-form" variant="gold" :loading="payForm.busy" :icon="IconPayments">Continue</AppButton>
+        </template>
+      </AppDialog>
+
+      <StripeElementModal
+        v-if="stripeForm"
+        :mode="stripeForm.mode"
+        :client-secret="stripeForm.clientSecret"
+        :title="stripeForm.title"
+        :subtitle="stripeForm.subtitle"
+        :submit-label="stripeForm.submitLabel"
+        :return-url="returnUrl"
+        @success="onStripeSuccess"
+        @close="stripeForm = null"
+      />
+
+      <!-- PIN -->
+      <AppDialog v-model:open="pinOpen" :title="account.hasPin ? 'Change your PIN' : 'Set your PIN'" persistent size="sm">
+        <p class="text-body-m text-on-surface-variant mb-4">
           You'll type this 4–6 digit PIN at the pro shop to charge to your account. Don't share it.
         </p>
-        <div class="space-y-3">
-          <div v-if="account.hasPin">
-            <label class="block text-xs text-gray-500 mb-1 font-body">Current PIN</label>
-            <input v-model="pinForm.current" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input-field w-full tracking-widest">
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1 font-body">New PIN</label>
-            <input v-model="pinForm.next" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input-field w-full tracking-widest">
-          </div>
-          <div>
-            <label class="block text-xs text-gray-500 mb-1 font-body">New PIN again</label>
-            <input v-model="pinForm.confirm" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input-field w-full tracking-widest">
-          </div>
-        </div>
-        <p v-if="pinForm.error" class="text-red-500 text-sm mt-2 font-body">
-          {{ pinForm.error }}
-        </p>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="pinForm = null">
-            Cancel
-          </button>
-          <button class="btn-amber px-5 py-2 text-sm disabled:opacity-50" :disabled="pinForm.busy" @click="savePin">
-            Save PIN
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
+        <form id="pin-form" novalidate class="space-y-4" @submit.prevent="savePin">
+          <TextField
+            v-if="account.hasPin"
+            v-model="pinForm.current"
+            label="Current PIN"
+            type="password"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="off"
+            :error="pinForm.errors.current"
+            data-autofocus
+          />
+          <TextField
+            v-model="pinForm.next"
+            label="New PIN"
+            type="password"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="off"
+            helper="4 to 6 digits"
+            :error="pinForm.errors.next"
+            :data-autofocus="account.hasPin ? undefined : ''"
+          />
+          <TextField
+            v-model="pinForm.confirm"
+            label="New PIN again"
+            type="password"
+            inputmode="numeric"
+            maxlength="6"
+            autocomplete="off"
+            :error="pinForm.errors.confirm"
+          />
+          <ErrorBanner v-if="pinForm.error" :message="pinForm.error" />
+        </form>
+        <template #actions="{ close }">
+          <AppButton variant="text" :disabled="pinForm.busy" @click="close">Cancel</AppButton>
+          <AppButton type="submit" form="pin-form" :loading="pinForm.busy" :icon="IconPassword">Save PIN</AppButton>
+        </template>
+      </AppDialog>
+    </template>
+  </section>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+// The signed-in member's house account on My Account: balance, billing and PIN, one primary action (Pay balance,
+// else Set PIN, else Turn on autopay) with the rest in an overflow menu, recent activity and statements.
+// GET/POST /api/account/house-account. Renders nothing for someone without a house account.
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
-import { formatCents, dollarsToCents } from '@/lib/money'
-import { formatLocalDate, COURSE_TZ } from '@/lib/timeclock'
-import { STATEMENT_STATUS_LABELS, STATEMENT_STATUS_CLASSES, statementStatus, cardLabel } from './accountDisplay'
-import SectionLabel from '@/components/ui/SectionLabel.vue'
+import { formatCents } from '@/lib/money'
+import { formatLocalDate, COURSE_TZ, toUtcIso } from '@/lib/timeclock'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import Card from '@/components/ui/Card.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import MoneyField from '@/components/ui/MoneyField.vue'
+import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import TextField from '@/components/ui/TextField.vue'
+import { statementStatus, cardLabel } from './accountDisplay'
 import StripeElementModal from './StripeElementModal.vue'
+import IconAddCard from '~icons/material-symbols/add-card-rounded'
+import IconAutorenew from '~icons/material-symbols/autorenew-rounded'
+import IconCalendar from '~icons/material-symbols/calendar-month-rounded'
+import IconCardOff from '~icons/material-symbols/credit-card-off-rounded'
+import IconCheck from '~icons/material-symbols/check-circle-rounded'
+import IconChevronRight from '~icons/material-symbols/chevron-right-rounded'
+import IconCreditCard from '~icons/material-symbols/credit-card-rounded'
+import IconPassword from '~icons/material-symbols/password-rounded'
+import IconPayments from '~icons/material-symbols/payments-rounded'
+import IconReceipt from '~icons/material-symbols/receipt-long-rounded'
 
-const route  = useRoute()
-const router = useRouter()
+const route    = useRoute()
+const router   = useRouter()
+const confirm  = useConfirm()
+const snackbar = useSnackbar()
 
 const data       = ref(null)
+const loading    = ref(false)
+const loadError  = ref(null)
 const error      = ref(null)
-const notice     = ref(null)
-const payForm    = ref(null)
 const stripeForm = ref(null)
-const pinForm    = ref(null)
+
+const payOpen = ref(false)
+const payForm = reactive({ amountCents: null, busy: false, error: null })
+const pinOpen = ref(false)
+const pinForm = reactive({ current: '', next: '', confirm: '', busy: false, error: null, errors: { current: '', next: '', confirm: '' } })
 
 const account   = computed(() => data.value?.account)
 const returnUrl = `${window.location.origin}/account`
 
+// Every action the member can take; the first that applies in PRIMARY_ORDER is the button, the rest go in the menu
+const actions = computed(() => {
+  const a = account.value
+  if (!a) return []
+  return [
+    a.balanceCents >= 50 && { key: 'pay', label: 'Pay balance', icon: IconPayments, onClick: startPay },
+    { key: 'pin', label: a.hasPin ? 'Change PIN' : 'Set PIN', icon: IconPassword, onClick: openPin, disabled: a.pinLocked },
+    !a.autopayEnabled && { key: 'autopay', label: 'Turn on autopay', icon: IconAddCard, onClick: startAutopay },
+    a.autopayEnabled && { key: 'card', label: 'Replace card', icon: IconCreditCard, onClick: startAutopay },
+    a.autopayEnabled && { key: 'autopay-off', label: 'Turn off autopay', icon: IconCardOff, danger: true, onClick: disableAutopay },
+  ].filter(Boolean)
+})
+const primary = computed(() => {
+  const a = account.value
+  if (!a) return null
+  const key = a.balanceCents >= 50 ? 'pay' : !a.hasPin && !a.pinLocked ? 'pin' : !a.autopayEnabled ? 'autopay' : null
+  return actions.value.find(x => x.key === key) ?? null
+})
+const menuItems = computed(() => actions.value.filter(x => x !== primary.value))
+
 async function load() {
+  loading.value = true
   try {
     data.value = await apiFetch('/api/account/house-account')
+    loadError.value = null
   } catch (e) {
-    error.value = e.message
+    loadError.value = e.message || 'Please try again.'
+  } finally {
+    loading.value = false
   }
 }
 
 function startPay() {
-  payForm.value = { amount: (account.value.balanceCents / 100).toFixed(2), busy: false, error: null }
+  Object.assign(payForm, { amountCents: account.value.balanceCents, busy: false, error: null })
+  payOpen.value = true
 }
 
 async function continuePay() {
-  const f = payForm.value
-  f.busy  = true
-  f.error = null
+  payForm.error = null
+  const cents = payForm.amountCents
+  if (!cents || cents < 50 || cents > account.value.balanceCents) {
+    payForm.error = `Enter an amount between $0.50 and ${formatCents(account.value.balanceCents)}.`
+    return
+  }
+  payForm.busy = true
   try {
-    const cents = dollarsToCents(f.amount) ?? 0
     const { clientSecret } = await apiFetch('/api/account/house-account', { method: 'POST', body: { action: 'pay', amountCents: cents } })
-    payForm.value = null
+    payOpen.value = false
     stripeForm.value = { mode: 'payment', clientSecret, title: `Pay ${formatCents(cents)}`, subtitle: 'Card, or another method Stripe offers', submitLabel: `Pay ${formatCents(cents)}` }
   } catch (e) {
-    f.error = e.message
+    payForm.error = e.message
   } finally {
-    if (payForm.value) f.busy = false
+    payForm.busy = false
   }
 }
 
@@ -239,7 +282,7 @@ async function startAutopay() {
   try {
     const { clientSecret } = await apiFetch('/api/account/house-account', { method: 'POST', body: { action: 'autopay_setup' } })
     stripeForm.value = {
-      mode: 'setup', clientSecret, title: 'Turn on autopay',
+      mode: 'setup', clientSecret, title: account.value.autopayEnabled ? 'Replace your autopay card' : 'Turn on autopay',
       subtitle: 'Your statement balance is charged to this card on the 1st of each month. You can turn it off any time.',
       submitLabel: 'Save card',
     }
@@ -249,11 +292,19 @@ async function startAutopay() {
 }
 
 async function disableAutopay() {
-  if (!confirm('Turn off autopay? Your saved card is removed and statements come as invoices you pay online or at the pro shop.')) return
+  const ok = await confirm({
+    title: 'Turn off autopay?',
+    message: 'Your saved card is removed and statements come as invoices you pay online or at the pro shop.',
+    confirmLabel: 'Turn off autopay',
+    cancelLabel: 'Keep autopay',
+    destructive: true,
+    icon: IconCardOff,
+  })
+  if (!ok) return
   error.value = null
   try {
     await apiFetch('/api/account/house-account', { method: 'POST', body: { action: 'autopay_disable' } })
-    notice.value = 'Autopay is off.'
+    snackbar.show({ message: 'Autopay is off.', icon: IconCheck })
     await load()
   } catch (e) {
     error.value = e.message
@@ -266,10 +317,13 @@ async function finish(mode, id) {
   try {
     if (mode === 'payment') {
       const res = await apiFetch('/api/account/house-account', { method: 'POST', body: { action: 'confirm_payment', paymentIntentId: id } })
-      notice.value = res.status === 'succeeded' ? 'Thank you! Your payment was received.' : 'Your payment is processing. It shows here once it clears.'
+      snackbar.show({
+        message: res.status === 'succeeded' ? 'Thank you! Your payment was received.' : 'Your payment is processing. It shows here once it clears.',
+        icon: IconCheck,
+      })
     } else {
       const res = await apiFetch('/api/account/house-account', { method: 'POST', body: { action: 'autopay_confirm', setupIntentId: id } })
-      notice.value = `Autopay is on with ${cardLabel(res)}.`
+      snackbar.show({ message: `Autopay is on with ${cardLabel(res)}.`, icon: IconCheck })
     }
   } catch (e) {
     error.value = e.message
@@ -283,26 +337,35 @@ function onStripeSuccess({ id }) {
   finish(mode, id)
 }
 
+function openPin() {
+  Object.assign(pinForm, { current: '', next: '', confirm: '', busy: false, error: null, errors: { current: '', next: '', confirm: '' } })
+  pinOpen.value = true
+}
+
 async function savePin() {
-  const f = pinForm.value
+  const f = pinForm
   f.error = null
-  if (!/^\d{4,6}$/.test(f.next)) { f.error = 'The PIN must be 4 to 6 digits'; return }
-  if (f.next !== f.confirm) { f.error = 'The two new PINs don\'t match'; return }
+  f.errors = {
+    current: account.value.hasPin && !f.current ? 'Enter your current PIN' : '',
+    next: /^\d{4,6}$/.test(f.next) ? '' : 'The PIN must be 4 to 6 digits',
+    confirm: f.next && f.confirm !== f.next ? 'The two new PINs don\'t match' : '',
+  }
+  if (f.errors.current || f.errors.next || f.errors.confirm) return
   f.busy = true
   try {
     await apiFetch('/api/account/house-account', { method: 'POST', body: { action: 'set_pin', currentPin: f.current, newPin: f.next } })
-    pinForm.value = null
-    notice.value = 'Your PIN is saved.'
+    pinOpen.value = false
+    snackbar.show({ message: 'Your PIN is saved.', icon: IconCheck })
     await load()
   } catch (e) {
     f.error = e.message
   } finally {
-    if (pinForm.value) f.busy = false
+    f.busy = false
   }
 }
 
 function formatDate(ts) {
-  return new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: COURSE_TZ })
+  return new Date(toUtcIso(ts)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: COURSE_TZ })
 }
 
 onMounted(async () => {
@@ -315,11 +378,3 @@ onMounted(async () => {
   }
 })
 </script>
-
-<style scoped>
-.label          { @apply text-xs font-body uppercase tracking-wider text-bark/50 mb-1; }
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40; }
-</style>

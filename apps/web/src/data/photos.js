@@ -61,7 +61,7 @@ export const photos = {
     "alt": "Golf ball on the fairway at sunset with the flag and the ridge behind"
   },
   "course-hero": {
-    "width": 2532,
+    "width": 2462,
     "height": 1170,
     "widths": [
       640,

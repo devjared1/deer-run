@@ -61,6 +61,7 @@
 </template>
 
 <script setup>
+import { addDays, isValidYmd, localDate } from '@/lib/timeclock'
 import { useBookingStore } from '@/stores/booking'
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -72,8 +73,29 @@ import StepTime from './StepTime.vue'
 const steps = ['Date', 'Tee Time', 'Details', 'Payment']
 const bookingStore = useBookingStore()
 const route = useRoute()
+
+// Prefill from the Home tee time search: /book?date=YYYY-MM-DD&players=N&time=morning|midday|afternoon.
+// A valid date (today through the public booking window) starts the wizard on the tee time step.
+const PUBLIC_BOOK_DAYS = 7
+const TIMES_OF_DAY = ['morning', 'midday', 'afternoon']
+function applyQuery(q) {
+  const players = Number(q.players)
+  if (Number.isInteger(players) && players >= 1 && players <= 4) bookingStore.players = players
+  if (q.time !== undefined) bookingStore.timeOfDay = TIMES_OF_DAY.includes(q.time) ? q.time : null
+  const today = localDate()
+  const date = typeof q.date === 'string' ? q.date : ''
+  if (!isValidYmd(date) || date < today || date > addDays(today, PUBLIC_BOOK_DAYS)) return false
+  if (bookingStore.selectedDate !== date) bookingStore.selectedSlot = null
+  bookingStore.selectedDate = date
+  return true
+}
+
 // Back from signing in (StepDetails → /login?redirect=/book?resume=details): pick up at Details if a time is still chosen
-const currentStep = ref(route.query.resume === 'details' && bookingStore.selectedSlot ? 3 : 1)
+const currentStep = ref(
+  route.query.resume === 'details' && bookingStore.selectedSlot ? 3
+    : applyQuery(route.query) ? 2
+      : 1,
+)
 
 const stepMap = { 1: StepDate, 2: StepTime, 3: StepDetails, 4: StepPayment }
 const currentStepComponent = computed(() => stepMap[currentStep.value])

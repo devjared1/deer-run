@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -25,6 +26,23 @@ function preloadFonts() {
   }
 }
 
+// After the bundle is written: one HTML file per public route with its head tags, plus sitemap.xml
+// (scripts/prerender.mjs). A plugin rather than an npm script so the Cloudflare Pages build command (`vite build`)
+// runs it too.
+function prerenderPages() {
+  let outDir
+  return {
+    name: 'deer-run:prerender',
+    apply: 'build',
+    configResolved(config) { outDir = resolve(config.root, config.build.outDir) },
+    async closeBundle() {
+      const { prerender } = await import('./scripts/prerender.mjs')
+      const { pages, urls } = await prerender({ dist: outDir })
+      console.log(`deer-run:prerender: ${pages} pages, sitemap.xml with ${urls} URLs`)
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -37,6 +55,7 @@ export default defineConfig({
       customCollections: { deer: FileSystemIconLoader('./src/assets/icons') },
     }),
     preloadFonts(),
+    prerenderPages(),
   ],
   resolve: {
     alias: {

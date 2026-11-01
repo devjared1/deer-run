@@ -1,0 +1,10 @@
+# Deer Run Golf Course: the public site is open to crawlers; the portals, accounts and API are not.
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /staff
+Disallow: /account
+Disallow: /api/
+Disallow: /dev/
+
+Sitemap: https://deerrun.golf/sitemap.xml

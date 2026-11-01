@@ -1,6 +1,6 @@
 <template>
   <!-- Letter-size house account statement (screen and print) -->
-  <article class="statement bg-white rounded-xl border border-gray-200 p-8 font-body text-bark print:border-0 print:rounded-none print:p-0">
+  <article class="statement bg-surface-container-lowest rounded-shape-md border border-outline-variant shadow-elevation-1 p-6 sm:p-8 font-body text-bark print:bg-transparent print:shadow-none print:border-0 print:rounded-none print:p-0">
     <header class="flex justify-between gap-6 border-b border-gray-200 pb-4 mb-4">
       <div class="flex items-center gap-4">
         <BrandLogo :size="56" eager alt="" />

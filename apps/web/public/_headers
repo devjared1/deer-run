@@ -1,0 +1,18 @@
+# Cloudflare Pages response headers (https://developers.cloudflare.com/pages/configuration/headers/).
+# No Content-Security-Policy yet: Stripe (js.stripe.com, its iframes), Supabase and the map embed would all need to
+# be listed, so it's left for a dedicated pass.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: SAMEORIGIN
+  # payment (Apple Pay / Google Pay in Stripe's Payment Element) and geolocation are left at the browser default
+  Permissions-Policy: camera=(), microphone=()
+
+# Vite's hashed bundles (JS, CSS, fonts): the file name changes with the content
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# Photos and logos keep their names when replaced, so a day in the browser, a week at the edge
+/images/*
+  Cache-Control: public, max-age=86400, s-maxage=604800

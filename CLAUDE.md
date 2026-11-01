@@ -42,7 +42,7 @@ deer-run/
 │   │   │   │   ├── schedule/  # ScheduleGrid, ScheduleMonth, schedule/time off display helpers
 │   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
 │   │   │   │   ├── tournament/# EventCard, EventFilterBar
-│   │   │   │   └── ui/        # MD3 component set (see Design System) + SectionLabel, CourseDiagram, TreelineDivider
+│   │   │   │   └── ui/        # MD3 component set (see Design System) + SectionLabel, ResponsivePicture
 │   │   │   ├── composables/   # usePendingTimeOff (admin sidebar badge), useConfirm, useSnackbar
 │   │   │   ├── data/          # Static JS data (holes, rates, membershipTiers, teeSets, employeePositions)
 │   │   │   ├── lib/           # supabase.js, api.js, and shared logic (see "Shared libraries")
@@ -232,6 +232,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | GET | `/api/bookings/my` | Required | Signed-in user's bookings |
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
+| GET | `/api/events/:id` | Public | One event (404 if missing) |
 | POST | `/api/inquiries/membership`, `/api/inquiries/contact` | Public | Save inquiry/message + email `CONTACT_EMAIL_TO` |
 | POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email (`metadata.bookingId`), saves a register card sale (`metadata.cardCheckoutId`), or records a house account payment (`metadata.houseAccountId`); `payment_intent.payment_failed` → autopay failed |
 
@@ -307,7 +308,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | Path | Methods | Description |
 |------|---------|-------------|
 | `/api/account/house-account` | GET, POST | Own account, activity, statements; `set_pin`, `pay` / `confirm_payment`, `autopay_setup` / `autopay_confirm` / `autopay_disable` |
-| `/api/account/statements/:id` | GET | One own statement with its entries (printable) |
+| `/api/account/statements/:id[?format=pdf]` | GET | One own statement with its entries (printable); `format=pdf` downloads the PDF |
 
 ### Auth helpers in Functions
 `functions/api/admin/_auth.js` and `functions/api/staff/_auth.js` hold the helpers. Each returns either a
@@ -424,7 +425,9 @@ register, house accounts with statements, events and inquiries. It skips itself 
 | Path            | View                  | Guard |
 |-----------------|-----------------------|---------------|
 | `/`             | `HomeView.vue`        | — |
-| `/scorecard`, `/rates`, `/memberships`, `/tournaments`, `/contact` | matching `*View.vue` | — |
+| `/scorecard`, `/rates`, `/memberships`, `/tournaments`, `/contact`, `/accessibility` | matching `*View.vue` | — |
+| `/course/hole/:n` (1–18) | `HoleView.vue` (`/course` → `/scorecard`) | — |
+| `/tournaments/:id` | `EventView.vue` (details, registration inquiry, .ics, `Event` JSON-LD) | — |
 | `/book`         | `BookView.vue`        | — |
 | `/confirmation` | `ConfirmationView.vue` (`?booking_id=`) | — |
 | `/login`        | `LoginView.vue`       | — |
@@ -615,6 +618,18 @@ Material Symbols Rounded via `unplugin-icons` (inline SVG components, tree-shake
 `BrandLogo` (`variant="emblem"` full logo, or `"mark"` round stag-and-sun badge; `size` = height in px; `eager` above
 the fold). Optimized WebP/PNG files are in `public/images/logo`; masters and the original SVG in `docs/brand`.
 Favicons, `apple-touch-icon.png`, `icon-192/512.png` and `site.webmanifest` are in `public/`.
+
+### Photos and SEO
+- Course photos: originals in `apps/web/photos-src` (not deployed). `python scripts/gen-photos.py` (from
+  `apps/web`, needs Pillow) writes AVIF/WebP/JPEG at 640/1280/1920 to `public/images/photos` and the manifest
+  `src/data/photos.js` (size, widths, alt text). Render with `ResponsivePicture` (`name`, `sizes`, `priority` for the
+  LCP image); `PageHero` takes `photo="<name>"`. Only course photos; a professional shoot is planned.
+- Course facts (address, phone, email, hours by day, map links, social, city page) are in `src/data/site.js`; the
+  footer, Contact, Home and JSON-LD all read it.
+- Head tags: `src/lib/seo.js` builds title, description, canonical, Open Graph/Twitter (`meta.ogImage` = a photo
+  name) and the GolfCourse/LocalBusiness JSON-LD; `App.vue` applies them with `useHead`, and the `deer-run:prerender`
+  Vite plugin (`scripts/prerender.mjs`) writes one HTML file per public route (`dist/rates.html`, head only) plus
+  `dist/sitemap.xml` at build time. `public/robots.txt`, `public/_headers` (caching, basic security headers).
 
 ### Components (`src/components/ui/`, each file starts with a usage comment)
 | Area | Components |

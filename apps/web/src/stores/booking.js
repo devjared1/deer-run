@@ -12,6 +12,9 @@ export const useBookingStore = defineStore('booking', () => {
   const guestEmail    = ref('')
   const roundHoles    = ref(18)
   const cart          = ref(true)
+  // 'morning' | 'midday' | 'afternoon' | null (any): from the Home tee time search (/book?time=). Not used to
+  // filter slots yet (Feature 4 Phase 4 redoes the wizard).
+  const timeOfDay     = ref(null)
 
   // Greens fee + cart rates from GET /api/rates (defaults until loaded). Display only: the server prices the booking.
   const rates        = ref({ ...DEFAULT_RATES })
@@ -93,10 +96,11 @@ export const useBookingStore = defineStore('booking', () => {
     guestEmail.value = ''
     roundHoles.value = 18
     cart.value = true
+    timeOfDay.value = null
   }
 
   return {
-    selectedDate, selectedSlot, players, guestName, guestEmail, roundHoles, cart,
+    selectedDate, selectedSlot, players, guestName, guestEmail, roundHoles, cart, timeOfDay,
     rates, holidayDates, loadRates, price, totalPrice, fetchAvailableSlots, createBooking, reset,
   }
 })

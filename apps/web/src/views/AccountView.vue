@@ -1,181 +1,234 @@
 <template>
-  <div class="page-enter">
-    <PageHero
-      label="My Account"
-      title-html="Your <em>Bookings</em>"
-    />
+  <div>
+    <PageHero label="My Account" title-html="Your <em>Account</em>" />
 
-    <section class="topo py-12">
-      <div class="max-w-4xl mx-auto px-5">
-
-        <!-- User info strip -->
-        <div class="card rounded-lg p-6 mb-8 flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:#1E3D2F;">
-              {{ authStore.profile?.name || authStore.profile?.email || 'Member' }}
-            </div>
-            <div style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.45);margin-top:2px;">
-              {{ roleLabel }} · {{ authStore.profile?.email }}
-            </div>
-          </div>
-          <button @click="logout" class="btn-outline-pine" style="padding:8px 18px;font-size:12px;">Sign Out</button>
-        </div>
-
-        <HouseAccountPanel />
-
-        <!-- Upcoming bookings -->
-        <div class="mb-12">
-          <SectionLabel text="Upcoming Tee Times" class="mb-5" />
-
-          <div v-if="loading" class="text-center py-10" style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.4);">Loading…</div>
-
-          <div v-else-if="upcomingBookings.length === 0" class="card rounded-lg p-8 text-center">
-            <p style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(61,43,26,.45);margin-bottom:16px;">No upcoming tee times.</p>
-            <RouterLink to="/book" class="btn-amber inline-flex">Book a Tee Time</RouterLink>
-          </div>
-
-          <div v-else class="space-y-4">
-            <div
-              v-for="b in upcomingBookings"
-              :key="b.id"
-              class="card rounded-lg p-6 flex items-center justify-between flex-wrap gap-4"
-            >
-              <div class="flex items-center gap-5">
-                <div class="flex-shrink-0 w-14 text-center rounded" style="background:#1E3D2F;padding:6px 4px;">
-                  <div style="font-family:'Lato',sans-serif;font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;color:rgba(196,135,58,.8);">{{ formatMonth(b.teeTimeSlot.date) }}</div>
-                  <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:900;color:#F2EBD9;line-height:1;">{{ formatDay(b.teeTimeSlot.date) }}</div>
-                </div>
-                <div>
-                  <div style="font-family:'Playfair Display',serif;font-size:18px;font-weight:700;color:#1E3D2F;">{{ formatTime(b.teeTimeSlot.startTime) }}</div>
-                  <div style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-top:2px;">
-                    {{ b.players }} player{{ b.players > 1 ? 's' : '' }} · ${{ (b.totalCents / 100).toFixed(2) }} · {{ b.roundHoles ?? 18 }} holes{{ b.cartIncluded ? ' · cart' : '' }}
-                  </div>
-                  <span
-                    class="inline-block mt-1 px-2 py-0.5 rounded tier-badge"
-                    :style="b.status === 'CONFIRMED'
-                      ? 'background:rgba(30,61,47,.1);color:#1E3D2F;'
-                      : 'background:rgba(196,135,58,.15);color:#A06E28;'"
-                  >{{ b.status }}</span>
-                </div>
-              </div>
-              <button
-                v-if="canCancel(b)"
-                @click="cancelBooking(b)"
-                :disabled="cancelling === b.id"
-                class="btn-outline-pine"
-                style="padding:8px 16px;font-size:12px;border-color:rgba(140,74,47,.3);color:#8C4A2F;"
-              >
-                {{ cancelling === b.id ? 'Cancelling…' : 'Cancel' }}
-              </button>
-              <p v-if="cancelError?.id === b.id" class="w-full text-right" role="alert" style="font-family:'Lato',sans-serif;font-size:13px;color:#8C4A2F;">
-                {{ cancelError.message }}
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 py-10 md:py-12 space-y-10 md:space-y-12">
+      <!-- Who's signed in -->
+      <Card variant="elevated" padding="lg">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div class="flex items-center gap-4 min-w-0">
+            <span class="inline-flex items-center justify-center w-12 h-12 flex-shrink-0 rounded-full bg-primary-container text-on-primary-container" aria-hidden="true">
+              <IconPerson class="w-6 h-6" />
+            </span>
+            <div class="min-w-0">
+              <p class="font-display text-headline-s text-on-surface break-words">
+                {{ authStore.profile?.name || authStore.profile?.email || 'My account' }}
               </p>
+              <p v-if="authStore.profile?.name" class="text-body-m text-on-surface-variant break-all">{{ authStore.profile?.email }}</p>
+              <div class="flex flex-wrap items-center gap-2 mt-2">
+                <StatusChip v-if="authStore.profile?.role" size="sm" kind="role" :status="authStore.profile.role" />
+                <span v-if="membershipLine" class="text-body-m text-on-surface-variant">{{ membershipLine }}</span>
+              </div>
             </div>
           </div>
+          <AppButton variant="outlined" :icon="IconLogout" @click="logout">Sign out</AppButton>
+        </div>
+      </Card>
+
+      <HouseAccountPanel />
+
+      <!-- Upcoming bookings -->
+      <section aria-labelledby="upcoming-title" :aria-busy="loading ? 'true' : undefined">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h2 id="upcoming-title" class="font-display text-headline-s md:text-headline-m text-on-surface">Upcoming tee times</h2>
+          <AppButton v-if="!loading && !loadError && upcomingBookings.length" variant="text" to="/book" :icon="IconAdd">Book another</AppButton>
         </div>
 
-        <!-- Past bookings -->
-        <div v-if="!loading && pastBookings.length > 0">
-          <SectionLabel text="Past Tee Times" class="mb-5" />
-          <div class="space-y-3">
-            <div
-              v-for="b in pastBookings"
-              :key="b.id"
-              class="card rounded-lg p-5 flex items-center gap-5 opacity-60"
-            >
-              <div class="flex-shrink-0 w-12 text-center rounded" style="background:rgba(61,43,26,.1);padding:4px;">
-                <div style="font-family:'Lato',sans-serif;font-size:9px;font-weight:900;text-transform:uppercase;color:rgba(61,43,26,.5);">{{ formatMonth(b.teeTimeSlot.date) }}</div>
-                <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:#3D2B1A;line-height:1;">{{ formatDay(b.teeTimeSlot.date) }}</div>
-              </div>
-              <div>
-                <div style="font-family:'Lato',sans-serif;font-size:14px;font-weight:700;color:#3D2B1A;">{{ formatTime(b.teeTimeSlot.startTime) }}</div>
-                <div style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(61,43,26,.45);">
-                  {{ b.players }} player{{ b.players > 1 ? 's' : '' }} · {{ b.status }}
+        <div v-if="loading" class="space-y-3">
+          <Skeleton v-for="n in 2" :key="n" variant="card" :label="n === 1 ? 'Loading your bookings' : ''" />
+        </div>
+
+        <ErrorBanner
+          v-else-if="loadError"
+          title="We couldn't load your bookings"
+          :message="loadError"
+          :retrying="retrying"
+          @retry="load(true)"
+        />
+
+        <Card v-else-if="!upcomingBookings.length" variant="outlined">
+          <EmptyState
+            :icon="IconGolf"
+            title="No upcoming tee times"
+            message="Pick a day and time, and your booking shows up here."
+            action-label="Book a tee time"
+            :action-icon="IconEventAvailable"
+            to="/book"
+          />
+        </Card>
+
+        <ul v-else class="space-y-3" role="list">
+          <li v-for="b in upcomingBookings" :key="b.id">
+            <Card variant="elevated">
+              <div class="flex flex-wrap items-center gap-4">
+                <div class="flex items-center gap-4 flex-1 min-w-[14rem]">
+                  <div class="flex-shrink-0 w-16 py-2 flex flex-col items-center rounded-shape-sm bg-primary text-on-primary" role="img" :aria-label="longDate(b)">
+                    <span class="text-label-m uppercase tracking-widest text-gold-container">{{ formatLocalDate(slotDate(b), { month: 'short' }) }}</span>
+                    <span class="font-display text-headline-m leading-none">{{ formatLocalDate(slotDate(b), { day: 'numeric' }) }}</span>
+                    <span class="text-label-s">{{ formatLocalDate(slotDate(b), { weekday: 'short' }) }}</span>
+                  </div>
+                  <div class="min-w-0">
+                    <p class="text-title-l text-on-surface">{{ teeTime(b.teeTimeSlot.startTime) }}</p>
+                    <p class="text-body-m text-on-surface-variant">{{ summary(b) }}</p>
+                    <StatusChip size="sm" kind="booking" :status="displayStatus(b)" class="mt-2" />
+                  </div>
                 </div>
+                <AppButton
+                  v-if="canCancel(b)"
+                  variant="outlined"
+                  :icon="IconEventBusy"
+                  :loading="cancelling === b.id"
+                  :disabled="!!cancelling && cancelling !== b.id"
+                  class="ml-auto"
+                  @click="cancelBooking(b)"
+                >
+                  Cancel<span class="sr-only"> tee time on {{ longDate(b) }}</span>
+                </AppButton>
+                <p v-else-if="['PENDING', 'CONFIRMED'].includes(b.status)" class="ml-auto text-body-s text-on-surface-variant max-w-[14rem]">
+                  Within 24 hours of the tee time: call {{ phone.display }} to make changes.
+                </p>
               </div>
-            </div>
-          </div>
-        </div>
+              <ErrorBanner v-if="cancelError?.id === b.id" :message="cancelError.message" class="mt-4" @dismiss="cancelError = null" />
+            </Card>
+          </li>
+        </ul>
+      </section>
 
-      </div>
-    </section>
+      <!-- Past and cancelled bookings: quieter surface, full-contrast text -->
+      <section v-if="!loading && !loadError && pastBookings.length" aria-labelledby="past-title">
+        <h2 id="past-title" class="font-display text-headline-s text-on-surface mb-4">Past &amp; cancelled</h2>
+        <Card variant="filled" padding="none">
+          <ul class="divide-y divide-outline-variant" role="list">
+            <li v-for="b in pastBookings" :key="b.id" class="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+              <div class="flex-shrink-0 w-12 py-1 flex flex-col items-center rounded-shape-sm bg-surface-container-lowest text-on-surface" role="img" :aria-label="longDate(b)">
+                <span class="text-label-s uppercase text-on-surface-variant">{{ formatLocalDate(slotDate(b), { month: 'short' }) }}</span>
+                <span class="font-display text-title-l leading-none">{{ formatLocalDate(slotDate(b), { day: 'numeric' }) }}</span>
+              </div>
+              <div class="flex-1 min-w-[10rem]">
+                <p class="text-title-s text-on-surface">{{ teeTime(b.teeTimeSlot.startTime) }} · {{ formatLocalDate(slotDate(b), { year: 'numeric' }) }}</p>
+                <p class="text-body-m text-on-surface-variant">{{ summary(b) }}</p>
+              </div>
+              <StatusChip size="sm" kind="booking" :status="displayStatus(b)" />
+            </li>
+          </ul>
+        </Card>
+      </section>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter }    from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { apiFetch } from '@/lib/api'
+import { formatCents } from '@/lib/money'
+import { isExpiredHold, teeTime } from '@/lib/teesheet'
 import { formatLocalDate, localDate, localDateTimeToUtc } from '@/lib/timeclock'
-import PageHero         from '@/components/layout/PageHero.vue'
-import SectionLabel     from '@/components/ui/SectionLabel.vue'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { phone } from '@/data/site'
+import PageHero from '@/components/layout/PageHero.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import Card from '@/components/ui/Card.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import { bookingStatus } from '@/components/ui/statusChips'
 import HouseAccountPanel from '@/components/accounts/HouseAccountPanel.vue'
+import IconAdd from '~icons/material-symbols/add-rounded'
+import IconCheck from '~icons/material-symbols/check-circle-rounded'
+import IconEventAvailable from '~icons/material-symbols/event-available-rounded'
+import IconEventBusy from '~icons/material-symbols/event-busy-rounded'
+import IconGolf from '~icons/material-symbols/golf-course-rounded'
+import IconLogout from '~icons/material-symbols/logout-rounded'
+import IconPerson from '~icons/material-symbols/person-rounded'
 
 const router    = useRouter()
 const authStore = useAuthStore()
+const confirm   = useConfirm()
+const snackbar  = useSnackbar()
 
-const bookings   = ref([])
-const loading    = ref(true)
-const cancelling = ref(null)
+const bookings    = ref([])
+const loading     = ref(true)
+const retrying    = ref(false)
+const loadError   = ref(null)
+const cancelling  = ref(null)
 const cancelError = ref(null) // { id, message } when a cancel fails
 
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-
-// "Premier member through Nov 30, 2027", "Member", "Guest" or "Admin"
-const roleLabel = computed(() => {
+// "Premier member through Nov 30, 2027" (the role chip says Member / Guest / Admin)
+const membershipLine = computed(() => {
   const p = authStore.profile
-  if (p?.role === 'ADMIN') return 'Admin'
-  if (p?.role !== 'MEMBER') return 'Guest'
-  const tier = p.membershipTier ? `${p.membershipTier} member` : 'Member'
-  return p.memberUntil
-    ? `${tier} through ${formatLocalDate(p.memberUntil, { month: 'short', day: 'numeric', year: 'numeric' })}`
-    : tier
+  if (p?.role !== 'MEMBER') return ''
+  const tier = p.membershipTier ? `${p.membershipTier} member` : ''
+  const until = p.memberUntil ? `through ${formatLocalDate(p.memberUntil, { month: 'short', day: 'numeric', year: 'numeric' })}` : ''
+  return [tier, until].filter(Boolean).join(' ')
 })
 
 // Course-local today; slot dates are YYYY-MM-DD, compared as strings
 const today = localDate()
+const slotDate = b => String(b.teeTimeSlot.date).slice(0, 10)
+const sortKey  = b => `${slotDate(b)} ${b.teeTimeSlot.startTime}`
+// An unpaid online booking past its 30-minute hold is released, so it's history, not upcoming
+const isReleased = b => isExpiredHold(b)
+const displayStatus = b => bookingStatus({ ...b, holdExpired: isReleased(b) })
 
 const upcomingBookings = computed(() =>
-  bookings.value.filter((b) => b.teeTimeSlot.date.slice(0, 10) >= today && !['CANCELLED', 'REFUNDED'].includes(b.status))
+  bookings.value
+    .filter(b => slotDate(b) >= today && ['PENDING', 'CONFIRMED'].includes(b.status) && !isReleased(b))
+    .sort((a, b) => sortKey(a).localeCompare(sortKey(b))),
 )
-
-const pastBookings = computed(() =>
-  bookings.value.filter((b) => b.teeTimeSlot.date.slice(0, 10) < today || ['CANCELLED', 'REFUNDED'].includes(b.status))
-)
+const pastBookings = computed(() => {
+  const upcoming = new Set(upcomingBookings.value.map(b => b.id))
+  return bookings.value.filter(b => !upcoming.has(b.id)).sort((a, b) => sortKey(b).localeCompare(sortKey(a)))
+})
 
 // Same rule as DELETE /api/bookings/:id: at least 24 hours before the tee time (course time)
 function canCancel(b) {
-  const teeTime = localDateTimeToUtc(b.teeTimeSlot.date.slice(0, 10), b.teeTimeSlot.startTime)
-  return ['PENDING', 'CONFIRMED'].includes(b.status) && teeTime.getTime() - Date.now() > 24 * 60 * 60 * 1000
+  const teeTimeAt = localDateTimeToUtc(slotDate(b), b.teeTimeSlot.startTime)
+  return ['PENDING', 'CONFIRMED'].includes(b.status) && teeTimeAt.getTime() - Date.now() > 24 * 60 * 60 * 1000
 }
 
-function formatMonth(date) { return MONTHS[new Date(date).getUTCMonth()] }
-function formatDay(date)   { return new Date(date).getUTCDate() }
-function formatTime(t) {
-  const [h, m] = t.split(':').map(Number)
-  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+function longDate(b) {
+  return formatLocalDate(slotDate(b), { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+}
+
+function summary(b) {
+  return [
+    `${b.players} player${b.players === 1 ? '' : 's'}`,
+    `${b.roundHoles ?? 18} holes`,
+    b.cartIncluded ? 'cart' : '',
+    formatCents(b.totalCents),
+  ].filter(Boolean).join(' · ')
 }
 
 async function cancelBooking(b) {
-  const when = `${formatLocalDate(b.teeTimeSlot.date.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' })} at ${formatTime(b.teeTimeSlot.startTime)}`
-  if (!window.confirm(`Cancel your tee time on ${when}? This can't be undone.`)) return
+  const when = `${formatLocalDate(slotDate(b), { weekday: 'short', month: 'short', day: 'numeric' })} at ${teeTime(b.teeTimeSlot.startTime)}`
+  const ok = await confirm({
+    title: 'Cancel this tee time?',
+    message: `${when}, ${b.players} player${b.players === 1 ? '' : 's'}. Your spot is released and this can't be undone. Questions about payment? Call the pro shop at ${phone.display}.`,
+    confirmLabel: 'Cancel tee time',
+    cancelLabel: 'Keep it',
+    destructive: true,
+    icon: IconEventBusy,
+  })
+  if (!ok) return
   const id = b.id
   cancelling.value = id
   cancelError.value = null
   try {
-    const res = await fetch(`/api/bookings/${id}`, {
-      method:  'DELETE',
-      headers: { Authorization: `Bearer ${authStore.getToken()}` },
-    })
-    if (res.ok) {
-      const idx = bookings.value.findIndex((x) => x.id === id)
-      if (idx !== -1) bookings.value[idx].status = 'CANCELLED'
-    } else {
-      const data = await res.json().catch(() => ({}))
-      cancelError.value = { id, message: data.error || 'Could not cancel this tee time. Please try again or call the pro shop.' }
+    await apiFetch(`/api/bookings/${id}`, { method: 'DELETE' })
+    const row = bookings.value.find(x => x.id === id)
+    if (row) row.status = 'CANCELLED'
+    snackbar.show({ message: `Tee time on ${when} cancelled.`, icon: IconCheck })
+  } catch (e) {
+    cancelError.value = {
+      id,
+      message: e.status
+        ? e.message || `Could not cancel this tee time. Please try again or call ${phone.display}.`
+        : 'Could not reach the server. Check your connection and try again.',
     }
-  } catch {
-    cancelError.value = { id, message: 'Could not reach the server. Check your connection and try again.' }
   } finally {
     cancelling.value = null
   }
@@ -186,14 +239,18 @@ async function logout() {
   router.push('/')
 }
 
-onMounted(async () => {
+async function load(retry = false) {
+  if (retry) retrying.value = true
   try {
-    const res = await fetch('/api/bookings/my', {
-      headers: { Authorization: `Bearer ${authStore.getToken()}` },
-    })
-    if (res.ok) bookings.value = await res.json()
+    bookings.value = await apiFetch('/api/bookings/my')
+    loadError.value = null
+  } catch (e) {
+    loadError.value = e.status ? (e.message || 'Please try again.') : 'Check your connection and try again.'
   } finally {
     loading.value = false
+    retrying.value = false
   }
-})
+}
+
+onMounted(load)
 </script>

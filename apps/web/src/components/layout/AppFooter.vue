@@ -95,6 +95,7 @@
             <li class="flex items-start gap-3 py-2 text-on-primary">
               <IconSchedule class="w-5 h-5 mt-0.5 flex-shrink-0 text-gold-container" aria-hidden="true" />
               <span>
+                <!-- site.hours: the same hours as the Contact page (site.hoursByDay) -->
                 <span class="sr-only">Hours: </span>
                 <span v-for="h in site.hours" :key="h" class="block">{{ h }}</span>
               </span>
@@ -128,10 +129,13 @@
         </div>
       </div>
 
-      <!-- Legal. Privacy Policy and Accessibility links come with their pages (Feature 4 → Phase 3). -->
+      <!-- Legal. A Privacy Policy link comes with its page (Feature 4 → Phase 3). -->
       <div class="pt-6 flex flex-col-reverse sm:flex-row sm:items-center justify-between gap-3 text-body-s text-inverse-primary">
         <p>© {{ year }} City of Moulton, AL · Deer Run Golf Course. All rights reserved.</p>
         <ul class="flex flex-wrap gap-x-4">
+          <li>
+            <RouterLink to="/accessibility" class="footer-link">Accessibility</RouterLink>
+          </li>
           <li>
             <a :href="site.cityPageUrl" target="_blank" rel="noopener" class="footer-link inline-flex items-center gap-1">
               City of Moulton

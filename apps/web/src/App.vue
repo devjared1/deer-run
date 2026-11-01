@@ -22,13 +22,11 @@ import AppFooter from '@/components/layout/AppFooter.vue'
 import AppNav from '@/components/layout/AppNav.vue'
 import AppSnackbar from '@/components/ui/AppSnackbar.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import { headTags, pageSeo } from '@/lib/seo'
 import { useAuthStore } from '@/stores/auth'
 import { useHead } from '@unhead/vue'
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-
-// Same text as the static description in index.html (what crawlers without JavaScript see)
-const DEFAULT_DESCRIPTION = '18-hole public golf course nestled at the entrance to the Bankhead National Forest in Moulton, Alabama. Earl Stone design, open since 1980.'
 
 const auth   = useAuthStore()
 const route  = useRoute()
@@ -39,17 +37,12 @@ const main   = ref(null)
 // footer are hidden there. route.meta includes the parent /admin or /staff route's meta.
 const isPortal = computed(() => !!(route.meta.requiresAdmin || route.meta.requiresStaff || route.meta.bare))
 
-// <title> and the description meta from the route's meta.title / meta.description (unhead, registered in main.js).
-// Child routes' meta wins over the parent's (route.meta is merged), so /admin/sales gets "Sales & Reports".
-const SITE = 'Deer Run Golf Course'
-useHead({
-  title: computed(() => (route.path === '/' || !route.meta.title ? `${SITE} — Moulton, Alabama` : `${route.meta.title} · ${SITE}`)),
-  meta: [
-    { name: 'description', content: computed(() => route.meta.description || DEFAULT_DESCRIPTION) },
-    // Portals, the 404 page and anything with meta.noindex stay out of search results
-    { name: 'robots', content: computed(() => (route.meta.noindex || isPortal.value ? 'noindex' : 'index, follow')) },
-  ],
-})
+// Head tags from the route (src/lib/seo.js; unhead is registered in main.js): <title> from meta.title, the
+// description, robots (portals, the 404 page and meta.noindex stay out of search results), canonical, Open Graph and
+// Twitter card (share image from meta.ogImage) and the course JSON-LD on the home page. Child routes' meta wins over
+// the parent's (route.meta is merged), so /admin/sales gets "Sales & Reports". The build writes the same tags into
+// each public page's HTML (scripts/prerender.mjs); unhead adopts those instead of adding a second copy.
+useHead(computed(() => headTags(pageSeo(route))))
 
 // After a client-side navigation, move focus to the new page's content so screen readers start there (and the
 // next Tab continues from the top of the page), as a full page load would. Not on the first load, not when only

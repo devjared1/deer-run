@@ -538,7 +538,11 @@ dialogs. Receipts and slips aren't redesigned.
       member events by tier, hole names in `data/holes.js`
       Answer: Deer Run does not have any twilight rates. See above about trying to find actual rates online.
       Done so far: twilight removed everywhere (Rates page, products), 9-hole / walking / junior / senior lines
-      replaced by the live rates. Still open: hours (footer vs Contact), member events by tier, hole names
+      replaced by the live rates. Footer and Contact now share one hours list (`src/data/site.js`), still unconfirmed.
+      Still open: hours (and "last tee time 5:00 PM" vs closing at 5:00), member events by tier (Family: no "club events"
+      in the table but "priority event registration" on its card), carts in membership (table says included, cards
+      don't), hole names, tee totals (`teeSets.js` 6,745/6,242/5,612/5,398 vs the hole sums 7,105/6,554/5,952/5,576),
+      rating/slope, course coordinates, extra fees and policies on Rates, entry fees per player or per team
 
 ### Phase 1: Design system foundation
 - [x] Logo assets: ask the course for the original vector file. Meanwhile, export the emblem from
@@ -588,36 +592,41 @@ dialogs. Receipts and slips aren't redesigned.
 - [x] All nav emoji replaced (brief §8)
 
 ### Phase 3: Public site redesign (benchmark level)
-- [ ] Image pipeline: `vite-imagetools` (AVIF/WebP at 640/1280/1920, `srcset`/`sizes`), width/height on every image,
+- [x] Image pipeline: `vite-imagetools` (AVIF/WebP at 640/1280/1920, `srcset`/`sizes`), width/height on every image,
       `loading="lazy"` below the fold, heroes as `<picture fetchpriority="high">` instead of CSS backgrounds
-- [ ] Home: full-bleed cinematic hero with the emblem and an **instant tee-time search** (date, players, time of day →
+      (pre-generated with `scripts/gen-photos.py` + `ResponsivePicture` instead: vite-imagetools needs a second Vite)
+- [x] Home: full-bleed cinematic hero with the emblem and an **instant tee-time search** (date, players, time of day →
       `/book` prefilled); three photo-led cards (Course, Tee Times & Rates, Events); "Plan your visit" strip (address,
       hours, phone, directions, weather); next 3 events from `/api/events`; testimonials/rating; membership teaser;
       responsive gallery with lightbox (snap carousel on mobile); remove dead `quickInfo`
-- [ ] Course: standard scorecard (all tees, men's/ladies' handicap, sticky first column, caption/scope, computed par
+      (testimonials/rating left out: no real ones to show yet)
+- [x] Course: standard scorecard (all tees, men's/ladies' handicap, sticky first column, caption/scope, computed par
       totals, printable PDF); hazard icons with visible legend (no `title`-only meaning); `TeeSetSelector` as a radiogroup
-- [ ] Hole-by-hole pages `/course/hole/:n`: photo, yardage per tee, hole diagram, pro tip, previous/next swipe
+- [x] Hole-by-hole pages `/course/hole/:n`: photo, yardage per tee, hole diagram, pro tip, previous/next swipe
       (flyover/drone media when available)
-- [ ] Rates: fee notes visible on mobile (stacked), table header/caption, one elevation for the featured card, honest
+      (tips, photos, doglegs, ladies' handicap render when added to `data/holes.js`; none exist yet)
+- [x] Rates: fee notes visible on mobile (stacked), table header/caption, one elevation for the featured card, honest
       Book buttons (per the Phase 0 pricing decision)
-- [ ] Memberships: per-tier stacked comparison on mobile with sr-only "Included/Not included", Best Value emphasis,
+- [x] Memberships: per-tier stacked comparison on mobile with sr-only "Included/Not included", Best Value emphasis,
       inquiry as a real `<form>` (labels, `autocomplete`, inline validation, 1-column on mobile), icon success state
-- [ ] Tournaments: sorted upcoming/past, skeleton loading, empty state with action, event images, **event detail page
+- [x] Tournaments: sorted upcoming/past, skeleton loading, empty state with action, event images, **event detail page
       with registration/inquiry form**, Add to calendar, share, `Event` JSON-LD
-- [ ] Contact: labeled form with `autocomplete` and validation, tappable phone, template links instead of `v-html`,
+- [x] Contact: labeled form with `autocomplete` and validation, tappable phone, template links instead of `v-html`,
       **Get directions** (Google/Apple Maps), icon tiles
-- [ ] Login: compact header, "Sign in" (not "Member Sign In"), forgot password, create account, show/hide password,
+- [x] Login: compact header, "Sign in" (not "Member Sign In"), forgot password, create account, show/hide password,
       `autocomplete`, friendly errors
-- [ ] Account: friendly status chips, cancel with confirmation and error feedback, contrast-safe past bookings,
+- [x] Account: friendly status chips, cancel with confirmation and error feedback, contrast-safe past bookings,
       error state; `HouseAccountPanel` / `StripeElementModal` moved onto the shared components and tokens, one primary
       action + overflow menu
-- [ ] Statement: Download PDF (server already builds it), Print with icons, 48dp back button, logo on the printed
+- [x] Statement: Download PDF (server already builds it), Print with icons, 48dp back button, logo on the printed
       statement
-- [ ] SEO: OG/Twitter tags and share images per page, canonical, `robots.txt`, `sitemap.xml`, `GolfCourse` +
+- [x] SEO: OG/Twitter tags and share images per page, canonical, `robots.txt`, `sitemap.xml`, `GolfCourse` +
       `LocalBusiness` JSON-LD (address, geo, phone, hours, `ReserveAction` → `/book`), prerender public routes
       (`vite-ssg` or build-time prerender)
-- [ ] Accessibility statement page (linked from the footer)
-- [ ] ❓ Professional photography (drone, golden hour, holes 1–18, clubhouse, grill, people playing) and an optional
+      (head-only prerender: `dist/<route>.html` per public route + sitemap; page content still renders client-side;
+      geo is approximate and hours aren't in the JSON-LD until confirmed)
+- [x] Accessibility statement page (linked from the footer)
+- [x] ❓ Professional photography (drone, golden hour, holes 1–18, clubhouse, grill, people playing) and an optional
       muted hero video loop
       Answer: Use the current photography pics where you can. Will need to get professional photos done at a later date.
 

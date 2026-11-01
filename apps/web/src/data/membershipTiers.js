@@ -1,8 +1,10 @@
+// Membership tiers: names (used by products, Admin → Users and the API validator), prices, Pro Shop discount
+// (src/lib/pricing.js) and the copy on the Memberships page. Plain JS, no '@/' imports.
 export const membershipTiers = [
   {
     name: 'Individual',
     badge: 'Individual',
-    color: '#4A6670',
+    tone: 'secondary', // color role of the card's band (MembershipTierCard maps it to token classes)
     featured: false,
     annual: 750,
     monthly: 70,
@@ -19,7 +21,7 @@ export const membershipTiers = [
   {
     name: 'Premier',
     badge: 'Best Value',
-    color: '#1E3D2F',
+    tone: 'primary',
     featured: true,
     annual: 1200,
     monthly: 110,
@@ -37,7 +39,7 @@ export const membershipTiers = [
   {
     name: 'Family',
     badge: 'Family Plan',
-    color: '#8C4A2F',
+    tone: 'tertiary',
     featured: false,
     annual: 1650,
     monthly: 150,
@@ -52,4 +54,19 @@ export const membershipTiers = [
       'Holiday event invitations',
     ],
   },
+]
+
+// The Memberships page comparison: one row per benefit, a value per tier name
+// (true = included, false = not included, a string = the amount)
+export const tierComparison = [
+  { label: 'Advance booking window',    values: { Individual: '14 days', Premier: '14 days', Family: '14 days' } },
+  { label: 'Unlimited rounds',          values: { Individual: true,      Premier: true,      Family: true       } },
+  { label: 'Cart included every round', values: { Individual: true,      Premier: true,      Family: true       } },
+  { label: 'Range balls included',      values: { Individual: true,      Premier: true,      Family: true       } },
+  { label: 'Member-only events',        values: { Individual: true,      Premier: true,      Family: true       } },
+  { label: 'Spouse / partner',          values: { Individual: false,     Premier: true,      Family: true       } },
+  { label: 'Children (under 18)',       values: { Individual: false,     Premier: false,     Family: true       } },
+  { label: 'Junior lesson discount',    values: { Individual: false,     Premier: false,     Family: '20%'      } },
+  { label: 'Pro Shop discount',         values: { Individual: '10%',     Premier: '15%',     Family: '15%'      } },
+  { label: 'Club events & socials',     values: { Individual: false,     Premier: true,      Family: false      } },
 ]
