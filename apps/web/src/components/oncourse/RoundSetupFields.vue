@@ -1,61 +1,63 @@
 <template>
-  <div class="space-y-3 font-body">
+  <div class="space-y-4 font-body">
     <div>
-      <label class="label-sm">Cart numbers</label>
-      <input
+      <TextField
         v-model="form.cartText"
+        label="Cart numbers"
         type="text"
         maxlength="60"
         inputmode="numeric"
-        class="input-field w-full"
+        autocomplete="off"
         placeholder="e.g. 12, 14"
+        :leading-icon="IconGolfCart"
+        :helper="cartWarnings.length ? '' : 'Separate numbers with a comma or space'"
+      />
+      <p
+        v-for="w in cartWarnings"
+        :key="w"
+        class="mt-1 flex items-start gap-2 text-body-m text-on-surface"
+        role="status"
       >
-      <p v-for="w in cartWarnings" :key="w" class="text-xs text-clay mt-1">
-        {{ w }}
+        <IconWarning class="w-5 h-5 flex-none text-warning" aria-hidden="true" />
+        <span>{{ w }}</span>
       </p>
     </div>
-    <label class="flex items-center gap-2 text-sm text-bark cursor-pointer">
-      <input v-model="form.ownCart" type="checkbox" class="rounded">
-      Brought their own cart, or walking (some or all of the group)
-    </label>
-    <div class="flex flex-wrap gap-4">
-      <div>
-        <label class="label-sm">Starting hole</label>
-        <div class="toggle">
-          <button
-            v-for="h in [1, 10]"
-            :key="h"
-            type="button"
-            :class="form.startHole === h ? 'on' : ''"
-            @click="form.startHole = h"
-          >
-            {{ h }}
-          </button>
-        </div>
+
+    <Switch
+      v-model="form.ownCart"
+      label="Own cart or walking"
+      helper="Some or all of the group brought their own cart or are walking"
+    />
+
+    <div class="flex flex-wrap gap-x-6 gap-y-4">
+      <div class="space-y-2">
+        <p class="text-label-l text-on-surface-variant" aria-hidden="true">
+          Starting hole
+        </p>
+        <SegmentedButton v-model="form.startHole" size="lg" label="Starting hole" :options="START_HOLE_OPTIONS" />
       </div>
-      <div>
-        <label class="label-sm">Playing</label>
-        <div class="toggle">
-          <button
-            v-for="n in [18, 9]"
-            :key="n"
-            type="button"
-            :class="form.roundHoles === n ? 'on' : ''"
-            @click="form.roundHoles = n"
-          >
-            {{ n }} holes
-          </button>
-        </div>
+      <div class="space-y-2">
+        <p class="text-label-l text-on-surface-variant" aria-hidden="true">
+          Playing
+        </p>
+        <SegmentedButton v-model="form.roundHoles" size="lg" label="Holes to play" :options="ROUND_HOLE_OPTIONS" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+// Round setup at check-in (Tee Sheet) and on the On Course page: cart numbers, own cart / walking, starting hole and
+// 9 or 18. v-model is a setupForm() object from ./roundSetup.js (mutated in place); cartsOut is a Map of cart number →
+// group name (pace.js cartsInUse) for the "still out" warnings.
 import { computed } from 'vue'
-import { cartList } from './roundSetup'
+import TextField from '@/components/ui/TextField.vue'
+import Switch from '@/components/ui/Switch.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import IconGolfCart from '~icons/deer/golf-cart'
+import IconWarning from '~icons/material-symbols/warning-rounded'
+import { cartList, START_HOLE_OPTIONS, ROUND_HOLE_OPTIONS } from './roundSetup'
 
-// form: setupForm() from ./roundSetup.js; cartsOut: Map of cart number → group name (pace.js cartsInUse)
 const form = defineModel({ type: Object, required: true })
 const props = defineProps({
   cartsOut: { type: Map, default: () => new Map() },
@@ -65,11 +67,3 @@ const cartWarnings = computed(() => cartList(form.value.cartText)
   .filter(c => props.cartsOut.has(c))
   .map(c => `Cart ${c} is still out with ${props.cartsOut.get(c)}.`))
 </script>
-
-<style scoped>
-.input-field { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm    { @apply block text-xs text-gray-500 mb-1 font-body; }
-.toggle      { @apply flex rounded-lg border border-gray-300 overflow-hidden w-fit; }
-.toggle button    { @apply px-3 py-2 text-sm text-gray-600 hover:bg-gray-50; }
-.toggle button.on { @apply bg-pine text-parch hover:bg-pine; }
-</style>

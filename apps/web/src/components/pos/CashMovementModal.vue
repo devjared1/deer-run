@@ -1,45 +1,66 @@
 <template>
-  <div class="modal-overlay">
-    <div class="modal-box max-w-sm">
-      <h2 class="font-display font-bold text-bark mb-1">{{ copy.title }}</h2>
-      <p class="text-gray-500 text-sm font-body mb-4">{{ copy.help }}</p>
+  <AppDialog :open="true" :title="copy.title" :icon="copy.icon" size="lg" persistent initial-focus="[data-autofocus]">
+    <div class="font-body">
+      <p class="text-center text-body-m text-on-surface-variant mb-4">{{ copy.help }}</p>
 
-      <label class="label-sm">Amount ($)</label>
-      <input
-        ref="amountInput"
-        v-model="amount"
-        type="number"
-        min="0.01"
-        step="0.01"
-        class="input-field w-full text-lg"
-        @keyup.enter="submit"
-      />
-      <template v-if="type === 'PAID_OUT'">
-        <label class="label-sm mt-3">What for *</label>
-        <input v-model="reason" type="text" maxlength="300" class="input-field w-full" placeholder="e.g. Ice for the beverage cart" />
-        <label class="label-sm mt-3">Paid to (optional)</label>
-        <input v-model="recipient" type="text" maxlength="300" class="input-field w-full" placeholder="e.g. Ice delivery driver" />
-      </template>
-      <template v-else>
-        <label class="label-sm mt-3">Note (optional)</label>
-        <input v-model="reason" type="text" maxlength="300" class="input-field w-full" :placeholder="copy.placeholder" />
-      </template>
+      <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] items-start">
+        <div class="min-w-0 space-y-3 sm:pt-1">
+          <template v-if="type === 'PAID_OUT'">
+            <TextField v-model="reason" label="What for" required maxlength="300" placeholder="e.g. Ice for the beverage cart" />
+            <TextField v-model="recipient" label="Paid to (optional)" maxlength="300" placeholder="e.g. Ice delivery driver" />
+          </template>
+          <TextField v-else v-model="reason" label="Note (optional)" maxlength="300" :placeholder="copy.placeholder" />
 
-      <p v-if="error" class="text-red-500 text-xs mt-2 font-body">{{ error }}</p>
-      <div class="flex justify-end gap-3 mt-5">
-        <button class="btn-outline-sm" :disabled="busy" @click="$emit('cancel')">Cancel</button>
-        <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="busy || !canSubmit" @click="submit">
-          {{ busy ? 'Working…' : copy.button }}
-        </button>
+          <div class="rounded-shape-md bg-surface-container-highest px-4 py-3 flex items-center justify-between gap-3">
+            <span class="text-body-l text-on-surface-variant">{{ copy.amountLabel }}</span>
+            <span class="font-display text-headline-m text-on-surface tabular-nums">{{ cents > 0 ? formatCents(cents) : '—' }}</span>
+          </div>
+          <p class="text-body-s text-on-surface-variant">A manager approves, then the drawer opens and a slip prints.</p>
+        </div>
+
+        <div class="w-full max-w-[22rem] mx-auto sm:w-[22rem] rounded-shape-lg bg-surface-container-lowest p-2">
+          <NumericKeypad
+            :model-value="amount"
+            data-autofocus
+            label="Amount"
+            placeholder="$0.00"
+            left-key="."
+            :max-length="9"
+            :format="keypadDollars"
+            @update:model-value="v => amount = trimCents(v)"
+            @submit="submit"
+          />
+        </div>
       </div>
-      <p class="text-gray-400 text-xs font-body mt-2 text-right">A manager approves, then the drawer opens and a slip prints.</p>
+
+      <ErrorBanner v-if="error" :message="error" class="mt-4" />
     </div>
-  </div>
+
+    <template #actions>
+      <AppButton variant="outlined" size="xl" :disabled="busy" @click="$emit('cancel')">Cancel</AppButton>
+      <AppButton size="xl" :disabled="!canSubmit" :loading="busy" @click="submit">
+        {{ busy ? 'Working…' : copy.button }}
+      </AppButton>
+    </template>
+  </AppDialog>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
-import { dollarsToCents } from '@/lib/money'
+// Paid in / paid out / safe drop on the open cash drawer: amount on the keypad (the physical keyboard types too;
+// Enter submits), reason (required for a paid out) and "paid to". The register then asks a manager to approve.
+//   <CashMovementModal type="PAID_OUT" :busy="busy" :error="error" @submit="record" @cancel="close" />
+// Props: type 'PAID_IN' | 'PAID_OUT' | 'SAFE_DROP', busy, error. Emits submit({ amountCents, reason, recipient }), cancel.
+import { ref, computed } from 'vue'
+import { dollarsToCents, formatCents } from '@/lib/money'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import NumericKeypad from '@/components/ui/NumericKeypad.vue'
+import TextField from '@/components/ui/TextField.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import { trimCents, keypadDollars } from './keypadMoney.js'
+import IconPaidIn from '~icons/material-symbols/move-to-inbox-rounded'
+import IconPaidOut from '~icons/material-symbols/outbox-rounded'
+import IconSafe from '~icons/material-symbols/savings-rounded'
 
 const props = defineProps({
   type: { type: String, required: true }, // 'PAID_IN' | 'PAID_OUT' | 'SAFE_DROP'
@@ -50,46 +71,41 @@ const emit = defineEmits(['submit', 'cancel'])
 
 const COPY = {
   PAID_IN: {
-    title: 'Paid In',
+    title: 'Paid in',
+    icon: IconPaidIn,
     help: 'Cash added to the drawer that isn\'t a sale, e.g. more change from the safe.',
     placeholder: 'e.g. Change from the safe',
-    button: 'Record Paid In',
+    amountLabel: 'Into the drawer',
+    button: 'Record paid in',
   },
   PAID_OUT: {
-    title: 'Paid Out',
+    title: 'Paid out',
+    icon: IconPaidOut,
     help: 'Cash taken from the drawer to pay for something. Keep the receipt with the slip.',
     placeholder: '',
-    button: 'Record Paid Out',
+    amountLabel: 'Out of the drawer',
+    button: 'Record paid out',
   },
   SAFE_DROP: {
-    title: 'Safe Drop',
+    title: 'Safe drop',
+    icon: IconSafe,
     help: 'Extra cash moved from the drawer to the safe.',
     placeholder: 'e.g. Bag #12',
-    button: 'Record Safe Drop',
+    amountLabel: 'To the safe',
+    button: 'Record safe drop',
   },
 }
 const copy = computed(() => COPY[props.type])
 
-const amount      = ref('')
-const reason      = ref('')
-const recipient   = ref('')
-const amountInput = ref(null)
+const amount    = ref('')
+const reason    = ref('')
+const recipient = ref('')
 
-const cents = computed(() => dollarsToCents(amount.value))
-const canSubmit = computed(() => Number.isInteger(cents.value) && cents.value > 0 && (props.type !== 'PAID_OUT' || reason.value.trim()))
+const cents = computed(() => dollarsToCents(amount.value) || 0)
+const canSubmit = computed(() => !props.busy && Number.isInteger(cents.value) && cents.value > 0 && (props.type !== 'PAID_OUT' || reason.value.trim()))
 
 function submit() {
-  if (props.busy || !canSubmit.value) return
+  if (!canSubmit.value) return
   emit('submit', { amountCents: cents.value, reason: reason.value.trim(), recipient: recipient.value.trim() })
 }
-
-onMounted(() => nextTick(() => amountInput.value?.focus()))
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

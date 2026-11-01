@@ -663,32 +663,35 @@ dialogs. Receipts and slips aren't redesigned.
 - [x] Time Off: red Deny/Revoke; House account detail: scroll to the shown statement, busy labels on saves
 
 ### Phase 6: Staff portal and POS
-- [ ] Register layout: Total `text-3xl`, Charge as an xl filled button, icon toolbar + overflow for Recent sales / No
+- [x] Register layout: Total `text-3xl`, Charge as an xl filled button, icon toolbar + overflow for Recent sales / No
       sale / Account payment / End of day / Change register and the drawer actions, scrolling 48dp category chip row,
       48dp qty ± and line icon buttons
-- [ ] Scanner: document-level scanner buffer (works whenever no input/dialog has focus), scan during "Sale complete"
+- [x] Scanner: document-level scanner buffer (works whenever no input/dialog has focus), scan during "Sale complete"
       starts a new sale with that item, error tone on a miss, `inputmode="none"` on the scan field with a keyboard toggle
-- [ ] Tender: 64dp quick-cash buttons, Enter on an empty cash field = Exact, split asks for the cash part and
+- [x] Tender: 64dp quick-cash buttons, Enter on an empty cash field = Exact, split asks for the cash part and
       computes the card remainder, errors above the buttons, Print/Email receipt as a segmented control, defaults to
       Card (or warns) while the drawer is closed
-- [ ] Card: reader online/offline chip in the cart header (Card disabled when offline), "Pay with cash instead" on a
+- [ ] Reader status for the register: no staff endpoint reports it yet. The cart chip and TenderModal's `readerOnline`
+      read an optional `readerStatus: 'online' | 'offline'` on the catalog's registers; add it to
+      `/api/staff/register/catalog` (one Stripe Terminal reader lookup) to light them up
+- [x] Card: reader online/offline chip in the cart header (Card disabled when offline), "Pay with cash instead" on a
       decline
-- [ ] Manager approval with large name buttons + `NumericKeypad` (also house account PIN, drawer counts, Manager PIN
+- [x] Manager approval with large name buttons + `NumericKeypad` (also house account PIN, drawer counts, Manager PIN
       page); refund reason chips; one `ResultDialog` for sale / refund / drawer / account payment results
-- [ ] Check-in path: "No add-ons, done" (no $0 sale needed) and "Back to tee sheet" after a check-in sale
-- [ ] All POS modals on `AppDialog` (consistent z-stack, print-hidden, Esc, no backdrop-close with input); verify only
+- [x] Check-in path: "No add-ons, done" (no $0 sale needed) and "Back to tee sheet" after a check-in sale
+- [x] All POS modals on `AppDialog` (consistent z-stack, print-hidden, Esc, no backdrop-close with input); verify only
       the slip prints during refund/approval flows
-- [ ] Tee Sheet: one card per booking (name + players, one icon status chip, one primary action, overflow menu),
+- [x] Tee Sheet: one card per booking (name + players, one icon status chip, one primary action, overflow menu),
       inline "Open: tap to book" rows, `DateStepper`, help text behind an info icon, AA contrast
-- [ ] On Course: group cards with one big **Update position** action, bottom-sheet update flow (group → hole → stage,
+- [x] On Course: group cards with one big **Update position** action, bottom-sheet update flow (group → hole → stage,
       56dp+ hole picker in 5–6 columns, full-width stage control), whole hole tile as the map target, pace shown with
       arrows/"+6" text (not color only), estimates as a different fill, compact sticky pace bar
-- [ ] High-contrast mode for outdoor pages (On Course, Tee Sheet): dark text, 16px minimum, heavier weights
-- [ ] `RoundSetupFields`: 48dp toggles, MD3 switch for own cart
-- [ ] Time Clock: action first and full width on phones; My Timesheet: day list below sm; My Schedule: top app bar +
+- [x] High-contrast mode for outdoor pages (On Course, Tee Sheet): dark text, 16px minimum, heavier weights
+- [x] `RoundSetupFields`: 48dp toggles, MD3 switch for own cart
+- [x] Time Clock: action first and full width on phones; My Timesheet: day list below sm; My Schedule: top app bar +
       chip row, agenda list on phones; Time Off: extended FAB + full-screen request dialog, `useConfirm()` for cancel;
       Manager PIN: snackbar
-- [ ] Remaining emoji (✓ ✕ ⚠ 🖨 🛺 etc.) replaced; `apiFetch` in TimeClock and MyTimesheet
+- [x] Remaining emoji (✓ ✕ ⚠ 🖨 🛺 etc.) replaced; `apiFetch` in TimeClock and MyTimesheet
 
 ### Phase 7: Quality pass
 - [ ] Lighthouse ≥ 90 (Performance, Accessibility, Best Practices, SEO) on every public route; LCP < 2.5 s on 4G,

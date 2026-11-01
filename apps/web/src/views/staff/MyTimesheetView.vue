@@ -1,83 +1,264 @@
 <template>
-  <div class="max-w-4xl">
+  <div class="max-w-4xl space-y-4">
     <!-- Pay period navigation -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap items-center gap-3">
-      <button class="btn-outline-sm" :disabled="!sheet" @click="load(sheet.period.prevStart)">← Previous</button>
-      <button class="btn-outline-sm" :disabled="!sheet || isCurrent" @click="load(null)">Current Period</button>
-      <button class="btn-outline-sm" :disabled="!sheet || isCurrent" @click="load(sheet.period.nextStart)">Next →</button>
-      <div v-if="sheet" class="font-display font-bold text-bark ml-auto">
-        {{ formatLocalDate(sheet.period.start, { month: 'short', day: 'numeric' }) }} –
-        {{ formatLocalDate(sheet.period.end, { month: 'short', day: 'numeric', year: 'numeric' }) }}
-      </div>
+    <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <DateStepper
+        :model-value="stepperDate"
+        :step="sheet?.period.lengthDays ?? 14"
+        :format-title="periodTitle"
+        :max="currentStart || ''"
+        :disabled="!sheet"
+        class="max-w-full"
+        @update:model-value="load"
+      />
+      <AppButton
+        v-if="sheet && !isCurrent"
+        variant="text"
+        :disabled="loading"
+        @click="load(null)"
+      >
+        Current period
+      </AppButton>
     </div>
 
-    <div v-if="loading && !sheet" class="text-gray-400 text-sm">Loading…</div>
-    <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
+    <template v-if="loading && !sheet">
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <StatCard
+          v-for="n in 3"
+          :key="n"
+          label="Hours"
+          loading
+          :class="n === 1 ? 'col-span-2 sm:col-span-1' : ''"
+        />
+      </div>
+      <Skeleton
+        variant="rect"
+        height="320px"
+        label="Loading your timesheet"
+      />
+    </template>
+    <ErrorBanner
+      v-else-if="error"
+      :message="error"
+      :retrying="loading"
+      @retry="load(sheet?.period.start ?? null)"
+    />
 
     <template v-else-if="sheet">
       <!-- Totals -->
-      <div class="grid grid-cols-3 gap-4 mb-6">
-        <div class="stat-card">
-          <div class="stat-label">Total</div>
-          <div class="stat-value">{{ formatMinutes(sheet.workedMinutes) }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Regular</div>
-          <div class="stat-value">{{ formatMinutes(sheet.regular) }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Overtime</div>
-          <div class="stat-value" :class="sheet.overtime > 0 ? 'text-clay' : ''">{{ formatMinutes(sheet.overtime) }}</div>
-        </div>
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <StatCard
+          label="Total"
+          :icon="IconSchedule"
+          class="col-span-2 sm:col-span-1"
+        >
+          <template #value>
+            <span class="tabular-nums">{{ formatMinutes(sheet.workedMinutes) }}</span>
+          </template>
+        </StatCard>
+        <StatCard label="Regular">
+          <template #value>
+            <span class="text-headline-s sm:text-headline-l tabular-nums">{{ formatMinutes(sheet.regular) }}</span>
+          </template>
+        </StatCard>
+        <StatCard label="Overtime">
+          <template #value>
+            <span :class="['text-headline-s sm:text-headline-l tabular-nums', sheet.overtime > 0 ? 'text-error' : '']">
+              {{ formatMinutes(sheet.overtime) }}
+            </span>
+          </template>
+        </StatCard>
       </div>
 
-      <!-- One table per workweek -->
-      <div v-for="week in weeks" :key="week.weekStart" class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-4">
-        <div class="px-5 py-3 border-b border-gray-100 flex items-center justify-between font-body text-sm">
-          <span class="font-semibold text-bark">Week of {{ formatLocalDate(week.weekStart, { month: 'short', day: 'numeric' }) }}</span>
-          <span class="text-gray-500">
+      <!-- One section per workweek -->
+      <section
+        v-for="week in weeks"
+        :key="week.weekStart"
+        :aria-labelledby="`week-${week.weekStart}`"
+        class="space-y-2"
+      >
+        <div class="flex flex-wrap items-baseline justify-between gap-x-3 pt-2">
+          <h2
+            :id="`week-${week.weekStart}`"
+            class="text-title-m text-on-surface"
+          >
+            Week of {{ formatLocalDate(week.weekStart, { month: 'short', day: 'numeric' }) }}
+          </h2>
+          <span class="text-body-m text-on-surface-variant tabular-nums">
             {{ formatMinutes(week.workedMinutes) }}
-            <span v-if="week.overtime > 0" class="text-clay ml-1">({{ formatMinutes(week.overtime) }} overtime)</span>
+            <span
+              v-if="week.overtime > 0"
+              class="text-error"
+            >· {{ formatMinutes(week.overtime) }} overtime</span>
           </span>
         </div>
-        <table class="w-full text-sm font-body">
-          <thead>
-            <tr class="bg-gray-50 border-b border-gray-100 text-left">
-              <th class="th">Day</th>
-              <th class="th">In</th>
-              <th class="th">Out</th>
-              <th class="th">Breaks</th>
-              <th class="th text-right">Hours</th>
-            </tr>
-          </thead>
-          <tbody>
-            <template v-for="day in week.days" :key="day.date">
-              <tr v-if="!day.entries.length" class="border-b border-gray-50">
-                <td class="td text-gray-400">{{ formatLocalDate(day.date) }}</td>
-                <td class="td text-gray-300" colspan="4">—</td>
-              </tr>
-              <tr
-                v-for="(entry, i) in day.entries"
+
+        <!-- Phones: a card per day -->
+        <ul class="sm:hidden space-y-2">
+          <li
+            v-for="day in week.days"
+            :key="day.date"
+          >
+            <Card
+              :variant="day.entries.length ? 'elevated' : 'outlined'"
+              padding="sm"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div :class="['text-title-s', day.entries.length ? 'text-on-surface' : 'text-on-surface-variant']">
+                  {{ formatLocalDate(day.date) }}
+                </div>
+                <div
+                  v-if="day.entries.length"
+                  class="text-title-s text-on-surface tabular-nums"
+                >
+                  {{ formatMinutes(day.workedMinutes) }}
+                </div>
+                <div
+                  v-else
+                  class="text-body-m text-on-surface-variant"
+                >
+                  No time
+                </div>
+              </div>
+              <div
+                v-for="entry in day.entries"
                 :key="entry.id"
-                :class="i === day.entries.length - 1 ? 'border-b border-gray-50' : ''"
+                class="mt-1 flex flex-wrap items-center gap-x-2 text-body-m text-on-surface-variant"
               >
-                <td class="td text-bark font-semibold">
-                  <template v-if="i === 0">{{ formatLocalDate(day.date) }}</template>
-                </td>
-                <td class="td text-gray-600">{{ formatClockTime(entry.clockIn) }}</td>
-                <td class="td text-gray-600">
-                  <span v-if="entry.clockOut">{{ formatClockTime(entry.clockOut) }}</span>
-                  <span v-else class="text-pine">On the clock</span>
-                  <span v-if="entry.editedAt" class="ml-1 text-xs text-gray-400" title="Corrected by a manager">(edited)</span>
-                </td>
-                <td class="td text-gray-500">{{ entry.breakMinutes ? formatMinutes(entry.breakMinutes) : '—' }}</td>
-                <td class="td text-right text-bark tabular-nums">{{ formatMinutes(entry.workedMinutes) }}</td>
+                <span class="text-on-surface">
+                  {{ formatClockTime(entry.clockIn) }} –
+                  <template v-if="entry.clockOut">{{ formatClockTime(entry.clockOut) }}</template>
+                  <span
+                    v-else
+                    class="text-primary"
+                  >on the clock</span>
+                </span>
+                <span v-if="entry.breakMinutes">· {{ formatMinutes(entry.breakMinutes) }} break</span>
+                <span
+                  v-if="entry.editedAt"
+                  class="inline-flex items-center gap-1"
+                >
+                  · <IconEdit
+                    class="w-4 h-4"
+                    aria-hidden="true"
+                  />Edited by a manager
+                </span>
+              </div>
+            </Card>
+          </li>
+        </ul>
+
+        <!-- sm+: a table -->
+        <Card
+          padding="none"
+          class="hidden sm:block overflow-hidden"
+        >
+          <table class="w-full table-fixed text-body-m">
+            <caption class="sr-only">
+              Punches for the week of {{ formatLocalDate(week.weekStart, { month: 'long', day: 'numeric' }) }}
+            </caption>
+            <thead>
+              <tr class="bg-surface-container text-left">
+                <th
+                  scope="col"
+                  class="th w-[24%]"
+                >
+                  Day
+                </th>
+                <th
+                  scope="col"
+                  class="th w-[16%]"
+                >
+                  In
+                </th>
+                <th
+                  scope="col"
+                  class="th w-[28%]"
+                >
+                  Out
+                </th>
+                <th
+                  scope="col"
+                  class="th w-[14%]"
+                >
+                  Breaks
+                </th>
+                <th
+                  scope="col"
+                  class="th text-right"
+                >
+                  Hours
+                </th>
               </tr>
-            </template>
-          </tbody>
-        </table>
-      </div>
-      <p class="text-gray-400 text-xs font-body mt-3">
+            </thead>
+            <tbody>
+              <template
+                v-for="day in week.days"
+                :key="day.date"
+              >
+                <tr
+                  v-if="!day.entries.length"
+                  class="border-t border-outline-variant"
+                >
+                  <th
+                    scope="row"
+                    class="td text-left font-normal text-on-surface-variant"
+                  >
+                    {{ formatLocalDate(day.date) }}
+                  </th>
+                  <td
+                    class="td text-on-surface-variant"
+                    colspan="4"
+                  >
+                    <span aria-hidden="true">—</span><span class="sr-only">No time</span>
+                  </td>
+                </tr>
+                <tr
+                  v-for="(entry, i) in day.entries"
+                  :key="entry.id"
+                  :class="i === 0 ? 'border-t border-outline-variant' : ''"
+                >
+                  <th
+                    scope="row"
+                    class="td text-left text-title-s text-on-surface"
+                  >
+                    <template v-if="i === 0">
+                      {{ formatLocalDate(day.date) }}
+                    </template>
+                  </th>
+                  <td class="td text-on-surface">
+                    {{ formatClockTime(entry.clockIn) }}
+                  </td>
+                  <td class="td text-on-surface">
+                    <span v-if="entry.clockOut">{{ formatClockTime(entry.clockOut) }}</span>
+                    <span
+                      v-else
+                      class="text-primary"
+                    >On the clock</span>
+                    <span
+                      v-if="entry.editedAt"
+                      class="ml-2 inline-flex items-center gap-1 text-body-s text-on-surface-variant"
+                    >
+                      <IconEdit
+                        class="w-4 h-4"
+                        aria-hidden="true"
+                      />Edited
+                    </span>
+                  </td>
+                  <td class="td text-on-surface-variant tabular-nums">
+                    {{ entry.breakMinutes ? formatMinutes(entry.breakMinutes) : '—' }}
+                  </td>
+                  <td class="td text-right text-on-surface tabular-nums">
+                    {{ formatMinutes(entry.workedMinutes) }}
+                  </td>
+                </tr>
+              </template>
+            </tbody>
+          </table>
+        </Card>
+      </section>
+
+      <p class="text-body-s text-on-surface-variant">
         Hours count toward the day you clocked in. Overtime is time over 40 hours in a workweek.
         If a punch is wrong, ask a manager to correct it.
       </p>
@@ -87,21 +268,41 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
+import { apiFetch } from '@/lib/api'
 import {
   localDate, formatMinutes, formatClockTime, formatLocalDate, weekStart,
 } from '@/lib/timeclock'
+import AppButton from '@/components/ui/AppButton.vue'
+import Card from '@/components/ui/Card.vue'
+import DateStepper from '@/components/ui/DateStepper.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import StatCard from '@/components/ui/StatCard.vue'
+import IconSchedule from '~icons/material-symbols/schedule-rounded'
+import IconEdit from '~icons/material-symbols/edit-rounded'
 
-const authStore = useAuthStore()
 const sheet   = ref(null)
 const loading = ref(false)
 const error   = ref(null)
+// Start of the current pay period (from the first load), so the stepper can't go past it
+const currentStart = ref(null)
 
 const isCurrent = computed(() => {
   if (!sheet.value) return true
   const today = localDate()
   return sheet.value.period.start <= today && today <= sheet.value.period.end
 })
+
+const stepperDate = computed(() => sheet.value?.period.start ?? localDate())
+
+// "Oct 25 – Nov 7" (the year only when it isn't this year)
+function periodTitle() {
+  if (!sheet.value) return 'Loading…'
+  const { start, end } = sheet.value.period
+  const thisYear = start.slice(0, 4) === localDate().slice(0, 4) && end.slice(0, 4) === start.slice(0, 4)
+  const opts = { month: 'short', day: 'numeric', ...(thisYear ? {} : { year: 'numeric' }) }
+  return `${formatLocalDate(start, opts)} – ${formatLocalDate(end, opts)}`
+}
 
 // Attach each workweek's days for display
 const weeks = computed(() => (sheet.value?.weeks ?? []).map(w => ({
@@ -114,11 +315,8 @@ async function load(date) {
   error.value   = null
   try {
     const params = date ? `?${new URLSearchParams({ date })}` : ''
-    const res = await fetch(`/api/staff/timesheet${params}`, {
-      headers: { Authorization: `Bearer ${authStore.getToken()}` },
-    })
-    if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-    sheet.value = await res.json()
+    sheet.value = await apiFetch(`/api/staff/timesheet${params}`)
+    if (isCurrent.value) currentStart.value = sheet.value.period.start
   } catch (e) {
     error.value = e.message
   } finally {
@@ -130,10 +328,6 @@ onMounted(() => load(null))
 </script>
 
 <style scoped>
-.th             { @apply px-5 py-3 text-xs text-gray-500 uppercase tracking-wider font-semibold; }
-.td             { @apply px-5 py-2.5; }
-.stat-card      { @apply bg-white rounded-xl border border-gray-200 p-5; }
-.stat-label     { @apply text-gray-400 text-xs font-body uppercase tracking-wider mb-1; }
-.stat-value     { @apply text-2xl font-display font-bold text-bark tabular-nums; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:hover:bg-transparent; }
+.th { @apply px-4 py-3 text-label-m text-on-surface-variant uppercase tracking-wider; }
+.td { @apply px-4 py-2.5; }
 </style>

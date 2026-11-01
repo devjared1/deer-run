@@ -39,7 +39,7 @@
           'state-layer flex items-center justify-center h-16 rounded-shape-lg select-none transition-colors duration-short-2',
           k.kind === 'digit' ? 'text-headline-s tabular-nums' : 'text-title-m',
           !k.id.trim() ? 'invisible' : '',
-          disabled ? 'bg-on-surface/[.12] text-on-surface/[.38] cursor-not-allowed' : k.kind === 'digit' ? 'bg-surface-container-high text-on-surface cursor-pointer' : 'bg-secondary-container text-on-secondary-container cursor-pointer',
+          disabled ? 'bg-on-surface/[.12] text-on-surface/[.38] cursor-not-allowed' : k.kind === 'digit' ? 'bg-surface-container-lowest border border-outline-variant text-on-surface cursor-pointer' : 'bg-secondary-container text-on-secondary-container cursor-pointer',
         ]"
         @mousedown.prevent
         @click="press(k.id)"
