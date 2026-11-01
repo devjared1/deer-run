@@ -25,24 +25,26 @@
         <div class="max-w-4xl mx-auto mb-16">
           <SectionLabel text="Compare Plans" center class="mb-7" />
           <div class="card rounded-lg overflow-hidden">
-            <table class="w-full">
-              <thead>
-                <tr style="background:#1E3D2F;">
-                  <th class="py-3 px-5 text-left" style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(242,235,217,.5);">Benefit</th>
-                  <th v-for="t in membershipTiers" :key="t.name" class="py-3 px-4 text-center" style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;" :style="`color:${t.color}`">{{ t.name }}</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="(perk, i) in comparisonPerks" :key="perk.label" :class="i % 2 === 0 ? '' : 'sc-row'" style="border-bottom:1px solid rgba(61,43,26,.07);">
-                  <td class="py-3 px-5" style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.7);">{{ perk.label }}</td>
-                  <td v-for="t in membershipTiers" :key="t.name" class="py-3 px-4 text-center" style="font-size:14px;">
-                    <span v-if="perk.values[t.name] === true" style="color:#1E3D2F;">✓</span>
-                    <span v-else-if="perk.values[t.name] === false" style="color:rgba(61,43,26,.2);">—</span>
-                    <span v-else style="font-family:'Lato',sans-serif;font-size:12px;font-weight:700;color:#1E3D2F;">{{ perk.values[t.name] }}</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="overflow-x-auto">
+              <table class="w-full">
+                <thead>
+                  <tr style="background:#1E3D2F;">
+                    <th class="py-3 px-5 text-left" style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:rgba(242,235,217,.5);">Benefit</th>
+                    <th v-for="t in membershipTiers" :key="t.name" class="py-3 px-4 text-center" style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;" :style="`color:${t.color}`">{{ t.name }}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(perk, i) in comparisonPerks" :key="perk.label" :class="i % 2 === 0 ? '' : 'sc-row'" style="border-bottom:1px solid rgba(61,43,26,.07);">
+                    <td class="py-3 px-5" style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.7);">{{ perk.label }}</td>
+                    <td v-for="t in membershipTiers" :key="t.name" class="py-3 px-4 text-center" style="font-size:14px;">
+                      <span v-if="perk.values[t.name] === true" style="color:#1E3D2F;">✓</span>
+                      <span v-else-if="perk.values[t.name] === false" style="color:rgba(61,43,26,.2);">—</span>
+                      <span v-else style="font-family:'Lato',sans-serif;font-size:12px;font-weight:700;color:#1E3D2F;">{{ perk.values[t.name] }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 

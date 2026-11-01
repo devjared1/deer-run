@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="!busy && $emit('cancel')">
+  <div class="modal-overlay">
     <div class="modal-box max-w-lg max-h-[92vh] overflow-y-auto">
       <h2 class="font-display font-bold text-bark mb-1">{{ isVoid ? 'Void' : 'Refund' }} Sale #{{ sale.number }}</h2>
       <p class="text-gray-500 text-sm font-body mb-4">

@@ -125,8 +125,13 @@
           </div>
 
           <!-- Lines -->
-          <div class="flex-1 overflow-y-auto divide-y divide-gray-50 min-h-[8rem]">
-            <div v-for="line in pricedLines" :key="line.key" class="px-4 py-2.5">
+          <div ref="linesEl" class="flex-1 overflow-y-auto divide-y divide-gray-50 min-h-[8rem]">
+            <div
+              v-for="line in pricedLines"
+              :key="line.key"
+              :data-line-key="line.key"
+              :class="['cart-line px-4 py-2.5', { 'bg-amber/15': line.key === highlightLineKey }]"
+            >
               <div class="flex justify-between gap-2">
                 <span class="font-body text-sm text-bark">{{ line.description }}</span>
                 <span class="font-body text-sm text-bark tabular-nums">{{ formatCents(line.subtotalCents) }}</span>
@@ -248,7 +253,7 @@
     </div>
 
     <!-- Open the drawer -->
-    <div v-if="drawerForm?.mode === 'open'" class="modal-overlay print:hidden" @click.self="drawerForm = null">
+    <div v-if="drawerForm?.mode === 'open'" class="modal-overlay print:hidden">
       <div class="modal-box max-w-sm">
         <h2 class="font-display font-bold text-bark mb-1">Open the cash drawer</h2>
         <p class="text-gray-500 text-sm font-body mb-4">
@@ -269,7 +274,7 @@
     </div>
 
     <!-- Close the drawer (blind count: the expected amount shows after) -->
-    <div v-if="drawerForm?.mode === 'close'" class="modal-overlay print:hidden" @click.self="!drawerForm.result && (drawerForm = null)">
+    <div v-if="drawerForm?.mode === 'close'" class="modal-overlay print:hidden">
       <div class="modal-box max-w-sm">
         <template v-if="!drawerForm.result">
           <h2 class="font-display font-bold text-bark mb-1">Close the cash drawer</h2>
@@ -429,7 +434,7 @@
     />
 
     <!-- Line discount -->
-    <div v-if="discounting" class="modal-overlay print:hidden" @click.self="discounting = null">
+    <div v-if="discounting" class="modal-overlay print:hidden">
       <div class="modal-box max-w-xs">
         <h2 class="font-display font-bold text-bark mb-1">Discount</h2>
         <p class="text-gray-400 text-xs font-body mb-3">{{ discounting.line.description }} · {{ formatCents(discounting.gross) }}</p>
@@ -445,6 +450,7 @@
         </div>
         <input v-model="discounting.value" type="number" min="0" step="0.01" class="input-field w-full" @keyup.enter="applyDiscount" />
         <div class="flex justify-end gap-2 mt-4">
+          <button class="btn-outline-sm mr-auto" @click="discounting = null">Cancel</button>
           <button class="btn-outline-sm" @click="discounting.value = ''; applyDiscount()">Remove</button>
           <button class="btn-amber px-4 py-2 text-sm" @click="applyDiscount">Apply</button>
         </div>
@@ -452,7 +458,7 @@
     </div>
 
     <!-- Custom item -->
-    <div v-if="customItem" class="modal-overlay print:hidden" @click.self="customItem = null">
+    <div v-if="customItem" class="modal-overlay print:hidden">
       <div class="modal-box max-w-sm">
         <h2 class="font-display font-bold text-bark mb-3">Custom Item</h2>
         <div class="space-y-3">
@@ -513,6 +519,8 @@ const search           = ref('')
 const scanMessage      = ref(null)
 const activeCategoryId = ref(null)
 const searchInput      = ref(null)
+const linesEl          = ref(null)
+const highlightLineKey = ref(null) // the cart line just added to, briefly highlighted
 
 // { key, variantId, custom: { description, priceCents }, quantity, discountCents }
 // Tee time lines ($0, quantity 1): { key, booking: { bookingId }, label } or { key, newBooking: {...}, label }
@@ -640,10 +648,20 @@ function focusSearch() {
   nextTick(() => searchInput.value?.focus())
 }
 
+// Scroll the cart line into view and flash it, so the cashier sees what a scan or tap added
+let highlightTimer = null
+function showLine(key) {
+  highlightLineKey.value = key
+  clearTimeout(highlightTimer)
+  highlightTimer = setTimeout(() => { highlightLineKey.value = null }, 1200)
+  nextTick(() => linesEl.value?.querySelector(`[data-line-key="${key}"]`)?.scrollIntoView({ block: 'nearest' }))
+}
+
 function addVariant(product, variant) {
   const existing = cart.value.find(l => l.variantId === variant.id && !l.discountCents)
   if (existing) existing.quantity += 1
   else cart.value.push({ key: keySeq++, variantId: variant.id, custom: null, quantity: 1, discountCents: 0 })
+  showLine(existing ? existing.key : cart.value[cart.value.length - 1].key)
   focusSearch()
 }
 
@@ -667,6 +685,8 @@ function onSearchEnter() {
     return
   }
   scanMessage.value = visibleProducts.value.length ? 'Pick a product below.' : `Nothing matches "${term}".`
+  // A missed scan: select it so the next scan replaces it instead of appending
+  if (!visibleProducts.value.length) nextTick(() => searchInput.value?.select())
 }
 
 function changeQty(line, delta) {
@@ -772,13 +792,15 @@ const customItemValid = computed(() => customItem.value?.description.trim() && d
 
 function addCustomItem() {
   if (!customItemValid.value) return
+  const key = keySeq++
   cart.value.push({
-    key: keySeq++,
+    key,
     variantId: null,
     custom: { description: customItem.value.description.trim(), priceCents: dollarsToCents(customItem.value.price) },
     quantity: 1,
     discountCents: 0,
   })
+  showLine(key)
   customItem.value = null
   focusSearch()
 }
@@ -1194,6 +1216,9 @@ onMounted(async () => {
 .modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full; }
 .input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
 .label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
+/* The just-added line's highlight fades out (no fade with reduced motion) */
+.cart-line      { transition: background-color 0.6s ease-out; }
+@media (prefers-reduced-motion: reduce) { .cart-line { transition: none; } }
 .qty-btn        { @apply w-7 h-7 rounded-lg border border-gray-300 text-bark font-body leading-none hover:bg-gray-50; }
 .btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40; }
 </style>
