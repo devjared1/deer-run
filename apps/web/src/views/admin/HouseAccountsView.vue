@@ -41,73 +41,75 @@
       {{ error }}
     </div>
     <div v-else-if="data" class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <table class="w-full text-sm font-body">
-        <thead>
-          <tr class="bg-gray-50 border-b border-gray-100 text-left">
-            <th class="th">
-              Member
-            </th>
-            <th class="th text-right">
-              Balance
-            </th>
-            <th class="th text-right">
-              Limit
-            </th>
-            <th class="th">
-              Autopay
-            </th>
-            <th class="th">
-              PIN
-            </th>
-            <th class="th">
-              Status
-            </th>
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-50">
-          <tr
-            v-for="a in data.accounts"
-            :key="a.id"
-            class="hover:bg-amber/5 cursor-pointer"
-            @click="$router.push(`/admin/house-accounts/${a.id}`)"
-          >
-            <td class="td">
-              <div class="font-semibold text-bark">
-                {{ a.user?.name || a.user?.email }}
-              </div>
-              <div v-if="a.user?.name" class="text-xs text-gray-400">
-                {{ a.user.email }}
-              </div>
-            </td>
-            <td class="td text-right tabular-nums" :class="a.balanceCents > 0 ? 'text-bark font-semibold' : 'text-gray-500'">
-              {{ formatCents(a.balanceCents) }}
-              <div v-if="a.balanceCents > a.creditLimitCents" class="text-xs text-red-500 font-normal">
-                over limit
-              </div>
-            </td>
-            <td class="td text-right tabular-nums text-gray-500">
-              {{ formatCents(a.creditLimitCents) }}
-            </td>
-            <td class="td text-xs">
-              <span v-if="a.autopayEnabled" class="text-pine">{{ cardLabel(a) }}</span>
-              <span v-else class="text-gray-400">Invoice</span>
-            </td>
-            <td class="td text-xs">
-              <span v-if="a.pinLocked" class="text-red-500">Locked</span>
-              <span v-else-if="a.hasPin" class="text-gray-500">Set</span>
-              <span v-else class="text-gray-400">Not set</span>
-            </td>
-            <td class="td">
-              <span :class="['text-xs px-2 py-0.5 rounded-full', STATUS_CLASSES[a.status]]">{{ STATUS_LABELS[a.status] }}</span>
-            </td>
-          </tr>
-          <tr v-if="!data.accounts.length">
-            <td colspan="6" class="px-5 py-8 text-center text-gray-400">
-              No house accounts yet.
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm font-body">
+          <thead>
+            <tr class="bg-gray-50 border-b border-gray-100 text-left">
+              <th class="th">
+                Member
+              </th>
+              <th class="th text-right">
+                Balance
+              </th>
+              <th class="th text-right">
+                Limit
+              </th>
+              <th class="th">
+                Autopay
+              </th>
+              <th class="th">
+                PIN
+              </th>
+              <th class="th">
+                Status
+              </th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <tr
+              v-for="a in data.accounts"
+              :key="a.id"
+              class="hover:bg-amber/5 cursor-pointer"
+              @click="$router.push(`/admin/house-accounts/${a.id}`)"
+            >
+              <td class="td">
+                <div class="font-semibold text-bark">
+                  {{ a.user?.name || a.user?.email }}
+                </div>
+                <div v-if="a.user?.name" class="text-xs text-gray-400">
+                  {{ a.user.email }}
+                </div>
+              </td>
+              <td class="td text-right tabular-nums" :class="a.balanceCents > 0 ? 'text-bark font-semibold' : 'text-gray-500'">
+                {{ formatCents(a.balanceCents) }}
+                <div v-if="a.balanceCents > a.creditLimitCents" class="text-xs text-red-500 font-normal">
+                  over limit
+                </div>
+              </td>
+              <td class="td text-right tabular-nums text-gray-500">
+                {{ formatCents(a.creditLimitCents) }}
+              </td>
+              <td class="td text-xs">
+                <span v-if="a.autopayEnabled" class="text-pine">{{ cardLabel(a) }}</span>
+                <span v-else class="text-gray-400">Invoice</span>
+              </td>
+              <td class="td text-xs">
+                <span v-if="a.pinLocked" class="text-red-500">Locked</span>
+                <span v-else-if="a.hasPin" class="text-gray-500">Set</span>
+                <span v-else class="text-gray-400">Not set</span>
+              </td>
+              <td class="td">
+                <span :class="['text-xs px-2 py-0.5 rounded-full', STATUS_CLASSES[a.status]]">{{ STATUS_LABELS[a.status] }}</span>
+              </td>
+            </tr>
+            <tr v-if="!data.accounts.length">
+              <td colspan="6" class="px-5 py-8 text-center text-gray-400">
+                No house accounts yet.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
     <p class="text-gray-400 text-xs font-body mt-3">
       Members charge to their account at the register with their PIN. Statements go out on the 1st for the previous

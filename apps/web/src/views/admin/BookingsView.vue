@@ -88,8 +88,12 @@
           >
             <input type="radio" :value="s" v-model="newStatus" class="text-pine" />
             <span :class="statusClass(s)" class="text-xs px-2 py-0.5 rounded-full">{{ s }}</span>
+            <span v-if="STATUS_ONLY.includes(s)" class="text-gray-500 text-xs font-body">(status only, no money moves)</span>
           </label>
         </div>
+        <p class="text-gray-400 text-xs mt-3 font-body">
+          This changes the booking's status only. To give money back, refund the sale on the register or in Stripe.
+        </p>
         <div class="flex justify-end gap-3 mt-5">
           <button @click="editing = null" class="btn-outline-sm">Cancel</button>
           <button @click="updateStatus" :disabled="saving || newStatus === editing.status" class="btn-amber px-4 py-2 text-sm disabled:opacity-50">
@@ -119,6 +123,9 @@ const editing   = ref(null)
 const newStatus = ref('')
 const saving    = ref(false)
 const formError = ref(null)
+
+// Statuses an admin can set here that sound like money moves but don't
+const STATUS_ONLY = ['CANCELLED', 'REFUNDED']
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit)))
 
@@ -156,6 +163,10 @@ function openStatusModal(booking) {
 }
 
 async function updateStatus() {
+  if (STATUS_ONLY.includes(newStatus.value) && !window.confirm(
+    `Mark this booking ${newStatus.value}? This changes the status only: no money is refunded through this. ` +
+    'Refund the payment on the register or in Stripe.',
+  )) return
   saving.value = true
   formError.value = null
   try {

@@ -468,6 +468,9 @@ async function saveShift() {
 }
 
 async function deleteShift() {
+  const who = formEmployee.value ? `${formEmployee.value.firstName} ${formEmployee.value.lastName}'s` : 'this'
+  const day = formatLocalDate(form.value.date, { weekday: 'short', month: 'short', day: 'numeric' })
+  if (!window.confirm(`Delete ${who} shift on ${day} (${form.value.startTime}–${form.value.endTime})? This can't be undone.`)) return
   saving.value    = true
   formError.value = null
   try {

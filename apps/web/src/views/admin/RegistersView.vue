@@ -11,58 +11,64 @@
     <div v-if="loading" class="text-gray-400 text-sm">Loading…</div>
     <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
 
-    <div v-else class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <table class="w-full text-sm font-body">
-        <thead>
-          <tr class="bg-gray-50 border-b border-gray-100 text-left">
-            <th class="th">Name</th>
-            <th class="th">Card Reader</th>
-            <th class="th">Status</th>
-            <th class="th" />
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-50">
-          <tr v-for="r in registers" :key="r.id">
-            <td class="td text-bark font-semibold">{{ r.name }}</td>
-            <td class="td text-gray-600">
-              <template v-if="r.stripeReaderId">
-                <div class="flex items-center gap-2">
-                  <span
-                    :class="['w-2 h-2 rounded-full flex-shrink-0', readerFor(r)?.status === 'online' ? 'bg-pine' : readerFor(r) ? 'bg-red-400' : 'bg-gray-300']"
-                    :title="readerFor(r)?.status ?? 'unknown'"
-                  />
-                  <span v-if="readerFor(r)" class="text-sm">
-                    {{ readerFor(r).label }}
-                    <span class="text-xs" :class="readerFor(r).status === 'online' ? 'text-pine' : 'text-red-500'">
-                      {{ readerFor(r).status === 'online' ? 'Online' : 'Offline' }}
-                    </span>
-                    <span v-if="readerFor(r).simulated" class="text-xs text-amber-dark"> · simulated</span>
+    <template v-else>
+      <p v-if="actionError" class="text-red-500 text-sm mb-3">{{ actionError }}</p>
+
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm font-body">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-100 text-left">
+                <th class="th">Name</th>
+                <th class="th">Card Reader</th>
+                <th class="th">Status</th>
+                <th class="th" />
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <tr v-for="r in registers" :key="r.id">
+                <td class="td text-bark font-semibold">{{ r.name }}</td>
+                <td class="td text-gray-600">
+                  <template v-if="r.stripeReaderId">
+                    <div class="flex items-center gap-2">
+                      <span
+                        :class="['w-2 h-2 rounded-full flex-shrink-0', readerFor(r)?.status === 'online' ? 'bg-pine' : readerFor(r) ? 'bg-red-400' : 'bg-gray-300']"
+                        :title="readerFor(r)?.status ?? 'unknown'"
+                      />
+                      <span v-if="readerFor(r)" class="text-sm">
+                        {{ readerFor(r).label }}
+                        <span class="text-xs" :class="readerFor(r).status === 'online' ? 'text-pine' : 'text-red-500'">
+                          {{ readerFor(r).status === 'online' ? 'Online' : 'Offline' }}
+                        </span>
+                        <span v-if="readerFor(r).simulated" class="text-xs text-amber-dark"> · simulated</span>
+                      </span>
+                      <span v-else-if="readers" class="text-xs text-red-500">Not found in Stripe</span>
+                    </div>
+                    <code class="text-[11px] text-gray-400">{{ r.stripeReaderId }}</code>
+                  </template>
+                  <button v-else-if="readers?.configured" class="text-xs text-lake hover:text-pine" @click="openPair(r)">
+                    + Pair a reader
+                  </button>
+                  <span v-else class="text-gray-400 text-xs">Not assigned</span>
+                </td>
+                <td class="td">
+                  <span :class="r.active ? 'bg-lake/20 text-lake' : 'bg-gray-100 text-gray-500'" class="text-xs px-2 py-0.5 rounded-full">
+                    {{ r.active ? 'Active' : 'Inactive' }}
                   </span>
-                  <span v-else-if="readers" class="text-xs text-red-500">Not found in Stripe</span>
-                </div>
-                <code class="text-[11px] text-gray-400">{{ r.stripeReaderId }}</code>
-              </template>
-              <button v-else-if="readers?.configured" class="text-xs text-lake hover:text-pine" @click="openPair(r)">
-                + Pair a reader
-              </button>
-              <span v-else class="text-gray-400 text-xs">Not assigned</span>
-            </td>
-            <td class="td">
-              <span :class="r.active ? 'bg-lake/20 text-lake' : 'bg-gray-100 text-gray-500'" class="text-xs px-2 py-0.5 rounded-full">
-                {{ r.active ? 'Active' : 'Inactive' }}
-              </span>
-            </td>
-            <td class="td text-right whitespace-nowrap space-x-3 text-xs">
-              <button class="text-lake hover:text-pine" @click="openForm(r)">Edit</button>
-              <button class="text-red-400 hover:text-red-600" @click="remove(r)">Delete</button>
-            </td>
-          </tr>
-          <tr v-if="!registers.length">
-            <td colspan="4" class="px-5 py-8 text-center text-gray-400">No registers yet.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+                </td>
+                <td class="td text-right whitespace-nowrap space-x-3 text-xs">
+                  <button class="text-lake hover:text-pine" @click="openForm(r)">Edit</button>
+                  <button class="text-red-400 hover:text-red-600" @click="remove(r)">Delete</button>
+                </td>
+              </tr>
+              <tr v-if="!registers.length">
+                <td colspan="4" class="px-5 py-8 text-center text-gray-400">No registers yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
 
     <p v-if="readers && !readers.configured" class="text-gray-400 text-xs font-body mt-3">
       Card readers need Stripe (STRIPE_SECRET_KEY) set in the Pages project.
@@ -137,7 +143,8 @@ import { apiFetch } from '@/lib/api'
 const registers = ref([])
 const loading   = ref(false)
 const error     = ref(null)
-const form      = ref(null)
+const actionError = ref(null) // a failed row action (delete); shown above the table instead of replacing it
+const form     = ref(null)
 const saving    = ref(false)
 const formError = ref(null)
 
@@ -214,12 +221,13 @@ async function save() {
 }
 
 async function remove(r) {
-  error.value = null
+  actionError.value = null
+  if (!window.confirm(`Delete register "${r.name}"? This can't be undone.`)) return
   try {
     await apiFetch(`/api/admin/registers/${r.id}`, { method: 'DELETE' })
     await load()
   } catch (e) {
-    error.value = e.message
+    actionError.value = e.message
   }
 }
 

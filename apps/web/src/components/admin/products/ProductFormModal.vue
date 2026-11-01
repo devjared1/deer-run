@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay">
     <div class="modal-box max-w-3xl overflow-y-auto max-h-[92vh]">
       <h2 class="font-display font-bold text-bark mb-4">{{ product ? 'Edit Product' : 'New Product' }}</h2>
 

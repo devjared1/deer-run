@@ -39,6 +39,7 @@
     <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
 
     <template v-else>
+      <p v-if="actionError" class="text-red-500 text-sm mb-3">{{ actionError }}</p>
       <div v-for="group in groups" :key="group.category.id" class="bg-white rounded-xl border border-gray-200 overflow-hidden mb-5">
         <div class="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
           <h2 class="font-display font-bold text-bark text-sm">{{ group.category.name }}</h2>
@@ -144,7 +145,8 @@ const categories = ref([])
 const taxBps     = ref(null)
 const loading    = ref(false)
 const error      = ref(null)
-const notice     = ref(null)
+const actionError = ref(null) // a failed row action (activate/deactivate); shown above the list instead of replacing it
+const notice    = ref(null)
 const filters    = ref({ search: '', categoryId: '', status: 'all' })
 
 const editing        = ref(null) // { product } — product null for a new one
@@ -207,12 +209,13 @@ function onSaved(saved) {
 }
 
 async function toggleActive(p) {
-  error.value = null
+  actionError.value = null
+  if (p.active && !window.confirm(`Deactivate "${p.name}"? It won't show on the register until it's activated again.`)) return
   try {
     await apiFetch(`/api/admin/products/${p.id}`, { method: 'PUT', body: { active: !p.active } })
     await load()
   } catch (e) {
-    error.value = e.message
+    actionError.value = e.message
   }
 }
 

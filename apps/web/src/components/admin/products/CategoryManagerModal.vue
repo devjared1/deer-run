@@ -9,46 +9,48 @@
         </template>
       </p>
 
-      <table class="w-full text-sm font-body">
-        <thead>
-          <tr class="text-left text-xs text-gray-500 uppercase tracking-wider">
-            <th class="py-1 pr-2">Name</th>
-            <th class="py-1 pr-2 w-20">Sort</th>
-            <th class="py-1 pr-2 text-center">Tax Exempt</th>
-            <th v-if="hasMemberDiscount" class="py-1 pr-2 text-center">Member Discount</th>
-            <th class="py-1 pr-2 text-center">Active</th>
-            <th class="py-1 pr-2 text-right">Products</th>
-            <th class="py-1 w-28" />
-          </tr>
-        </thead>
-        <tbody class="divide-y divide-gray-50">
-          <tr v-for="row in rows" :key="row.key">
-            <td class="py-1.5 pr-2"><input v-model="row.name" type="text" class="input-field w-full" placeholder="New category" /></td>
-            <td class="py-1.5 pr-2"><input v-model="row.sortOrder" type="number" step="1" class="input-field w-20" /></td>
-            <td class="py-1.5 pr-2 text-center"><input v-model="row.taxExempt" type="checkbox" class="rounded" /></td>
-            <td v-if="hasMemberDiscount" class="py-1.5 pr-2 text-center"><input v-model="row.memberDiscount" type="checkbox" class="rounded" /></td>
-            <td class="py-1.5 pr-2 text-center"><input v-model="row.active" type="checkbox" class="rounded" /></td>
-            <td class="py-1.5 pr-2 text-right text-gray-500 tabular-nums">{{ row.id ? row.productCount : '—' }}</td>
-            <td class="py-1.5 text-right space-x-2 whitespace-nowrap">
-              <button
-                v-if="isDirty(row)"
-                :disabled="row.saving"
-                class="text-xs text-pine font-semibold hover:underline disabled:opacity-50"
-                @click="saveRow(row)"
-              >
-                {{ row.id ? 'Save' : 'Add' }}
-              </button>
-              <button
-                v-if="!row.id || row.productCount === 0"
-                class="text-xs text-red-400 hover:text-red-600"
-                @click="removeRow(row)"
-              >
-                {{ row.id ? 'Delete' : 'Cancel' }}
-              </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm font-body">
+          <thead>
+            <tr class="text-left text-xs text-gray-500 uppercase tracking-wider">
+              <th class="py-1 pr-2">Name</th>
+              <th class="py-1 pr-2 w-20">Sort</th>
+              <th class="py-1 pr-2 text-center">Tax Exempt</th>
+              <th v-if="hasMemberDiscount" class="py-1 pr-2 text-center">Member Discount</th>
+              <th class="py-1 pr-2 text-center">Active</th>
+              <th class="py-1 pr-2 text-right">Products</th>
+              <th class="py-1 w-28" />
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-50">
+            <tr v-for="row in rows" :key="row.key">
+              <td class="py-1.5 pr-2"><input v-model="row.name" type="text" class="input-field w-full" placeholder="New category" /></td>
+              <td class="py-1.5 pr-2"><input v-model="row.sortOrder" type="number" step="1" class="input-field w-20" /></td>
+              <td class="py-1.5 pr-2 text-center"><input v-model="row.taxExempt" type="checkbox" class="rounded" /></td>
+              <td v-if="hasMemberDiscount" class="py-1.5 pr-2 text-center"><input v-model="row.memberDiscount" type="checkbox" class="rounded" /></td>
+              <td class="py-1.5 pr-2 text-center"><input v-model="row.active" type="checkbox" class="rounded" /></td>
+              <td class="py-1.5 pr-2 text-right text-gray-500 tabular-nums">{{ row.id ? row.productCount : '—' }}</td>
+              <td class="py-1.5 text-right space-x-2 whitespace-nowrap">
+                <button
+                  v-if="isDirty(row)"
+                  :disabled="row.saving"
+                  class="text-xs text-pine font-semibold hover:underline disabled:opacity-50"
+                  @click="saveRow(row)"
+                >
+                  {{ row.id ? 'Save' : 'Add' }}
+                </button>
+                <button
+                  v-if="!row.id || row.productCount === 0"
+                  class="text-xs text-red-400 hover:text-red-600"
+                  @click="removeRow(row)"
+                >
+                  {{ row.id ? 'Delete' : 'Cancel' }}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <button class="text-xs text-lake hover:text-pine font-body mt-3" @click="addRow">+ Add category</button>
       <p v-if="error" class="text-red-500 text-xs mt-2">{{ error }}</p>
 
@@ -122,6 +124,7 @@ async function saveRow(row) {
 async function removeRow(row) {
   error.value = null
   if (row.id) {
+    if (!window.confirm(`Delete category "${row.original?.name ?? row.name}"? This can't be undone.`)) return
     try {
       await apiFetch(`/api/admin/product-categories/${row.id}`, { method: 'DELETE' })
       emit('changed')

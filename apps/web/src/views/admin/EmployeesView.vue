@@ -31,79 +31,83 @@
     <div v-if="loading" class="text-gray-400 text-sm">Loading…</div>
     <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
 
-    <div v-else class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full text-sm font-body">
-          <thead>
-            <tr class="bg-gray-50 border-b border-gray-100 text-left">
-              <th class="th">Name</th>
-              <th class="th">Position</th>
-              <th class="th">Contact</th>
-              <th class="th">Rate</th>
-              <th class="th">Hired</th>
-              <th class="th">Login</th>
-              <th class="th">Status</th>
-              <th class="px-5 py-3"></th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-gray-50">
-            <tr v-for="emp in employees" :key="emp.id" class="hover:bg-gray-50/50 transition-colors">
-              <td class="px-5 py-3 text-bark font-semibold whitespace-nowrap">{{ emp.firstName }} {{ emp.lastName }}</td>
-              <td class="px-5 py-3 text-gray-600">{{ positionLabel(emp.position) }}</td>
-              <td class="px-5 py-3 text-gray-600">
-                <div>{{ emp.email }}</div>
-                <div v-if="emp.phone" class="text-gray-400 text-xs">{{ emp.phone }}</div>
-              </td>
-              <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ formatRate(emp.hourlyRateCents) }}</td>
-              <td class="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">{{ formatDate(emp.hireDate) }}</td>
-              <td class="px-5 py-3">
-                <span
-                  v-if="emp.userId"
-                  class="text-xs px-2 py-0.5 rounded-full bg-pine/20 text-pine"
-                >Linked</span>
-                <span
-                  v-else
-                  class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"
-                  title="No site account uses this email yet. It links automatically the first time they sign in with it."
-                >No account</span>
-              </td>
-              <td class="px-5 py-3">
-                <span
-                  :class="emp.active ? 'bg-lake/20 text-lake' : 'bg-gray-100 text-gray-500'"
-                  class="text-xs px-2 py-0.5 rounded-full"
-                >{{ emp.active ? 'Active' : 'Inactive' }}</span>
-                <div v-if="emp.managerPinLocked" class="text-xs text-red-600 mt-1">PIN locked</div>
-                <div v-else-if="emp.hasManagerPin" class="text-xs text-gray-400 mt-1">Manager PIN set</div>
-              </td>
-              <td class="px-5 py-3 whitespace-nowrap text-right space-x-3">
-                <button @click="openEdit(emp)" class="text-xs text-lake hover:text-pine">Edit</button>
-                <button @click="toggleActive(emp)" class="text-xs text-amber hover:text-clay">
-                  {{ emp.active ? 'Deactivate' : 'Reactivate' }}
-                </button>
-                <button
-                  v-if="emp.hasManagerPin"
-                  class="text-xs text-lake hover:text-pine"
-                  title="Clear the manager PIN so they can set a new one"
-                  @click="resetPin(emp)"
-                >
-                  Reset PIN
-                </button>
-                <button @click="confirmDelete(emp)" class="text-xs text-red-400 hover:text-red-600">Delete</button>
-              </td>
-            </tr>
-            <tr v-if="!employees.length">
-              <td colspan="8" class="px-5 py-8 text-center text-gray-400">No employees found.</td>
-            </tr>
-          </tbody>
-        </table>
+    <template v-else>
+      <p v-if="actionError" class="text-red-500 text-sm mb-3">{{ actionError }}</p>
+
+      <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm font-body">
+            <thead>
+              <tr class="bg-gray-50 border-b border-gray-100 text-left">
+                <th class="th">Name</th>
+                <th class="th">Position</th>
+                <th class="th">Contact</th>
+                <th class="th">Rate</th>
+                <th class="th">Hired</th>
+                <th class="th">Login</th>
+                <th class="th">Status</th>
+                <th class="px-5 py-3"></th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-gray-50">
+              <tr v-for="emp in employees" :key="emp.id" class="hover:bg-gray-50/50 transition-colors">
+                <td class="px-5 py-3 text-bark font-semibold whitespace-nowrap">{{ emp.firstName }} {{ emp.lastName }}</td>
+                <td class="px-5 py-3 text-gray-600">{{ positionLabel(emp.position) }}</td>
+                <td class="px-5 py-3 text-gray-600">
+                  <div>{{ emp.email }}</div>
+                  <div v-if="emp.phone" class="text-gray-400 text-xs">{{ emp.phone }}</div>
+                </td>
+                <td class="px-5 py-3 text-gray-600 whitespace-nowrap">{{ formatRate(emp.hourlyRateCents) }}</td>
+                <td class="px-5 py-3 text-gray-400 text-xs whitespace-nowrap">{{ formatDate(emp.hireDate) }}</td>
+                <td class="px-5 py-3">
+                  <span
+                    v-if="emp.userId"
+                    class="text-xs px-2 py-0.5 rounded-full bg-pine/20 text-pine"
+                  >Linked</span>
+                  <span
+                    v-else
+                    class="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-500"
+                    title="No site account uses this email yet. It links automatically the first time they sign in with it."
+                  >No account</span>
+                </td>
+                <td class="px-5 py-3">
+                  <span
+                    :class="emp.active ? 'bg-lake/20 text-lake' : 'bg-gray-100 text-gray-500'"
+                    class="text-xs px-2 py-0.5 rounded-full"
+                  >{{ emp.active ? 'Active' : 'Inactive' }}</span>
+                  <div v-if="emp.managerPinLocked" class="text-xs text-red-600 mt-1">PIN locked</div>
+                  <div v-else-if="emp.hasManagerPin" class="text-xs text-gray-400 mt-1">Manager PIN set</div>
+                </td>
+                <td class="px-5 py-3 whitespace-nowrap text-right space-x-3">
+                  <button @click="openEdit(emp)" class="text-xs text-lake hover:text-pine">Edit</button>
+                  <button @click="toggleActive(emp)" class="text-xs text-amber hover:text-clay">
+                    {{ emp.active ? 'Deactivate' : 'Reactivate' }}
+                  </button>
+                  <button
+                    v-if="emp.hasManagerPin"
+                    class="text-xs text-lake hover:text-pine"
+                    title="Clear the manager PIN so they can set a new one"
+                    @click="resetPin(emp)"
+                  >
+                    Reset PIN
+                  </button>
+                  <button @click="confirmDelete(emp)" class="text-xs text-red-400 hover:text-red-600">Delete</button>
+                </td>
+              </tr>
+              <tr v-if="!employees.length">
+                <td colspan="8" class="px-5 py-8 text-center text-gray-400">No employees found.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="employees.length" class="px-5 py-3 border-t border-gray-100 text-xs text-gray-500 font-body">
+          {{ employees.length }} employee{{ employees.length === 1 ? '' : 's' }}
+        </div>
       </div>
-      <div v-if="employees.length" class="px-5 py-3 border-t border-gray-100 text-xs text-gray-500 font-body">
-        {{ employees.length }} employee{{ employees.length === 1 ? '' : 's' }}
-      </div>
-    </div>
+    </template>
 
     <!-- Create / Edit modal -->
-    <div v-if="showForm" class="modal-overlay" @click.self="showForm = false">
+    <div v-if="showForm" class="modal-overlay">
       <div class="modal-box max-w-lg overflow-y-auto max-h-[90vh]">
         <h2 class="font-display font-bold text-bark mb-4">{{ formData.id ? 'Edit Employee' : 'New Employee' }}</h2>
         <div class="space-y-3">
@@ -190,7 +194,8 @@ const authStore = useAuthStore()
 const employees = ref([])
 const loading   = ref(false)
 const error     = ref(null)
-const saving    = ref(false)
+const actionError = ref(null) // a failed row action (deactivate, reset PIN); shown above the table instead of replacing it
+const saving   = ref(false)
 const formError = ref(null)
 
 const filters  = ref({ search: '', position: '', status: 'active' })
@@ -287,7 +292,10 @@ async function saveEmployee() {
 }
 
 async function toggleActive(emp) {
-  error.value = null
+  actionError.value = null
+  if (emp.active && !window.confirm(
+    `Deactivate ${emp.firstName} ${emp.lastName}? They won't be able to use the staff portal until they're reactivated.`,
+  )) return
   try {
     await api(`/api/admin/employees/${emp.id}`, {
       method: 'PUT',
@@ -295,17 +303,20 @@ async function toggleActive(emp) {
     })
     await load()
   } catch (e) {
-    error.value = e.message
+    actionError.value = e.message
   }
 }
 
 async function resetPin(emp) {
-  error.value = null
+  actionError.value = null
+  if (!window.confirm(
+    `Reset ${emp.firstName} ${emp.lastName}'s manager PIN? Their current PIN stops working until they set a new one.`,
+  )) return
   try {
     await api(`/api/admin/employees/${emp.id}`, { method: 'PUT', body: JSON.stringify({ resetManagerPin: true }) })
     await load()
   } catch (e) {
-    error.value = e.message
+    actionError.value = e.message
   }
 }
 

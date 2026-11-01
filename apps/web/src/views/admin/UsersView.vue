@@ -188,6 +188,9 @@ function openRoleModal(user) {
 }
 
 async function updateRole() {
+  if (newRole.value === 'ADMIN' && editing.value.role !== 'ADMIN' && !window.confirm(
+    `Make ${editing.value.name || editing.value.email} an admin? They'll get full access to the admin panel.`,
+  )) return
   saving.value = true
   formError.value = null
   try {

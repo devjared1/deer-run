@@ -71,27 +71,29 @@
             <div class="px-5 py-3 border-b border-gray-100 font-semibold text-bark font-body text-sm">
               Activity
             </div>
-            <table class="w-full text-sm font-body">
-              <tbody class="divide-y divide-gray-50">
-                <tr v-for="e in data.entries" :key="e.id">
-                  <td class="td text-gray-500 whitespace-nowrap">
-                    {{ formatWhen(e.createdAt) }}
-                  </td>
-                  <td class="td">
-                    {{ e.description }}
-                    <span class="text-xs text-gray-400"> · {{ ENTRY_TYPE_LABELS[e.type] }}</span>
-                  </td>
-                  <td class="td text-right tabular-nums" :class="e.amountCents < 0 ? 'text-pine' : 'text-bark'">
-                    {{ e.amountCents < 0 ? '−' : '' }}{{ formatCents(Math.abs(e.amountCents)) }}
-                  </td>
-                </tr>
-                <tr v-if="!data.entries.length">
-                  <td class="td text-gray-400 text-center py-8" colspan="3">
-                    No activity yet.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm font-body">
+                <tbody class="divide-y divide-gray-50">
+                  <tr v-for="e in data.entries" :key="e.id">
+                    <td class="td text-gray-500 whitespace-nowrap">
+                      {{ formatWhen(e.createdAt) }}
+                    </td>
+                    <td class="td">
+                      {{ e.description }}
+                      <span class="text-xs text-gray-400"> · {{ ENTRY_TYPE_LABELS[e.type] }}</span>
+                    </td>
+                    <td class="td text-right tabular-nums" :class="e.amountCents < 0 ? 'text-pine' : 'text-bark'">
+                      {{ e.amountCents < 0 ? '−' : '' }}{{ formatCents(Math.abs(e.amountCents)) }}
+                    </td>
+                  </tr>
+                  <tr v-if="!data.entries.length">
+                    <td class="td text-gray-400 text-center py-8" colspan="3">
+                      No activity yet.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- Statements -->
