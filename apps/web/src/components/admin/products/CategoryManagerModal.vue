@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="$emit('close')">
+  <div class="modal-overlay">
     <div class="modal-box max-w-2xl overflow-y-auto max-h-[92vh]">
       <h2 class="font-display font-bold text-bark mb-1">Categories</h2>
       <p class="text-gray-400 text-xs font-body mb-4">

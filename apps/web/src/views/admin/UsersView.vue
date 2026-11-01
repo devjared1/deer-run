@@ -76,7 +76,7 @@
     </template>
 
     <!-- Role modal -->
-    <div v-if="editing" class="modal-overlay" @click.self="editing = null">
+    <div v-if="editing" class="modal-overlay">
       <div class="modal-box">
         <h2 class="font-display font-bold text-bark mb-1">Edit User</h2>
         <p class="text-gray-400 text-xs mb-4 font-body">{{ editing.email }}</p>

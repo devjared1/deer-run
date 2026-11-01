@@ -115,7 +115,7 @@
     </template>
 
     <!-- Add / edit shift -->
-    <div v-if="form" class="modal-overlay print:hidden" @click.self="form = null">
+    <div v-if="form" class="modal-overlay print:hidden">
       <div class="modal-box max-w-md">
         <h2 class="font-display font-bold text-bark mb-4">
           {{ form.id ? 'Edit Shift' : 'Add Shift' }}
