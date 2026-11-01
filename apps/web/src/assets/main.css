@@ -58,6 +58,21 @@
 .card-pine { background: #1E3D2F; border: 1px solid rgba(255,255,255,.07); }
 .card-dark { background: #142A20; border: 1px solid rgba(255,255,255,.06); }
 .card-light { background: rgba(247, 243, 234, 0.96); border: 1px solid rgba(61,43,26,.09);}
+
+/* Membership tier cards: "Best Value" stands out */
+.price-card { transition: box-shadow .18s, transform .18s; }
+.price-featured {
+  border: 2px solid #C4873A;
+  box-shadow: 0 10px 32px rgba(30,61,47,.16), 0 2px 6px rgba(30,61,47,.08);
+}
+@media (min-width: 768px) {
+  .price-featured { transform: translateY(-8px); }
+}
+
+/* Tournament rows: past events sit back */
+.event-row { transition: box-shadow .18s; }
+.event-past { background: #ECE4D0; box-shadow: none; }
+.event-past h3 { color: #52392A !important; }
 }
 
 /* ── Section label ── */
