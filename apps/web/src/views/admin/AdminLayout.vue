@@ -40,6 +40,13 @@
         <RouterLink to="/" class="mt-3 flex items-center gap-2 text-parch/60 hover:text-parch text-xs font-body transition-colors">
           ← Back to site
         </RouterLink>
+        <button
+          type="button"
+          class="mt-2 flex items-center gap-2 text-parch/60 hover:text-parch text-xs font-body transition-colors"
+          @click="signOut"
+        >
+          Sign out
+        </button>
       </div>
     </aside>
 
@@ -76,14 +83,20 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePendingTimeOff } from '@/composables/usePendingTimeOff'
 import DeerLogo from '@/components/ui/DeerLogo.vue'
 
 const route     = useRoute()
+const router    = useRouter()
 const authStore = useAuthStore()
 const sidebarOpen = ref(false)
+
+async function signOut() {
+  await authStore.logout()
+  router.push('/')
+}
 
 // Pending time off badge, refreshed on every admin page change
 const { pending: pendingTimeOff, refresh: refreshPendingTimeOff } = usePendingTimeOff()
