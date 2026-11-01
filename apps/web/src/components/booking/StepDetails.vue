@@ -41,12 +41,14 @@
     <!-- Member info -->
     <div v-else class="mb-6">
       <div v-if="authStore.isLoggedIn" class="p-4 rounded" style="background:rgba(30,61,47,.06);">
-        <div style="font-family:'Lato',sans-serif;font-size:13px;font-weight:700;color:#1E3D2F;">Signed in as member</div>
+        <div style="font-family:'Lato',sans-serif;font-size:13px;font-weight:700;color:#1E3D2F;">
+          Signed in{{ authStore.isMember ? ' as a member' : '' }}{{ authStore.profile?.name ? ` · ${authStore.profile.name}` : '' }}
+        </div>
         <div style="font-family:'Lato',sans-serif;font-size:12px;color:rgba(61,43,26,.5);margin-top:2px;">{{ authStore.profile?.email }}</div>
       </div>
       <div v-else class="space-y-4">
         <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.55);">Sign in to access member rates and advance booking.</p>
-        <RouterLink to="/login" class="btn-primary inline-flex">Sign In to My Account</RouterLink>
+        <RouterLink :to="{ path: '/login', query: { redirect: '/book?resume=details' } }" class="btn-primary inline-flex">Sign In to My Account</RouterLink>
       </div>
     </div>
 
