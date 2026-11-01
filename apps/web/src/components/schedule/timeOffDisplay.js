@@ -1,13 +1,25 @@
 import { formatLocalDate } from '@/lib/timeclock'
+import { statusInfo } from '@/components/ui/statusChips.js'
 
-export const STATUS_LABELS = { PENDING: 'Pending', APPROVED: 'Approved', DENIED: 'Denied', CANCELLED: 'Cancelled' }
+// Labels and colors come from the one status map (statusChips.js → 'timeOff'), so they match <StatusChip kind="timeOff">.
+// Prefer <StatusChip kind="timeOff" :status="…" /> in new code; these stay for pages that still render their own pill.
+const STATUSES = ['PENDING', 'APPROVED', 'DENIED', 'CANCELLED']
 
-export const STATUS_CLASSES = {
-  PENDING:   'bg-gold/20 text-gold-dark',
-  APPROVED:  'bg-pine/15 text-pine',
-  DENIED:    'bg-red-100 text-red-600',
-  CANCELLED: 'bg-gray-100 text-gray-500',
+// Same tone → class map as StatusChip (literal strings for Tailwind)
+const TONE_CLASSES = {
+  neutral: 'bg-surface-container-highest text-on-surface-variant',
+  primary: 'bg-primary-container text-on-primary-container',
+  success: 'bg-success-container text-on-success-container',
+  warning: 'bg-warning-container text-on-warning-container',
+  error:   'bg-error-container text-on-error-container',
+  info:    'bg-secondary-container text-on-secondary-container',
 }
+
+export const STATUS_LABELS = Object.fromEntries(STATUSES.map(s => [s, statusInfo('timeOff', s).label]))
+
+export const STATUS_CLASSES = Object.fromEntries(
+  STATUSES.map(s => [s, TONE_CLASSES[statusInfo('timeOff', s).tone] ?? TONE_CLASSES.neutral]),
+)
 
 /** "Mon, Nov 2" or "Mon, Nov 2 – Fri, Nov 6, 2026". */
 export function formatRange(r) {

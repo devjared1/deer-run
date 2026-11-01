@@ -108,6 +108,8 @@ const props = defineProps({
   clearOnSelect: { type: Boolean, default: false },
   disabled:      { type: Boolean, default: false },
   autofocus:     { type: Boolean, default: false },
+  // When the endpoint wraps the list in an object (e.g. /api/admin/users → { users }), the key holding the array
+  resultsKey:    { type: String, default: '' },
 })
 const emit = defineEmits(['select'])
 
@@ -144,7 +146,8 @@ async function search(value) {
   open.value = true
   try {
     const sep = props.searchUrl.includes('?') ? '&' : '?'
-    const data = await apiFetch(`${props.searchUrl}${sep}search=${encodeURIComponent(t)}`)
+    const body = await apiFetch(`${props.searchUrl}${sep}search=${encodeURIComponent(t)}`)
+    const data = props.resultsKey ? body?.[props.resultsKey] : body
     if (no !== requestNo) return
     if (!Array.isArray(data)) throw new Error('Unexpected response')
     results.value = data

@@ -64,7 +64,7 @@
               </AppButton>
             </div>
 
-            <div :class="['flex-1 overflow-y-auto px-6 text-body-m text-on-surface-variant', $slots.actions ? '' : 'pb-6', fullscreenOnMobile ? 'pt-4 sm:pt-0' : '']">
+            <div :class="['flex-1 overflow-y-auto px-6 text-body-m text-on-surface-variant', $slots.actions ? '' : 'pb-6', fullscreenOnMobile ? 'pt-4 sm:pt-2' : 'pt-2']">
               <slot />
             </div>
 
@@ -96,7 +96,7 @@
 //     </template>
 //   </AppDialog>
 //
-// Props: title (or #title slot; without one pass aria-label), icon (component, centers the header), size sm | md | lg,
+// Props: title (or #title slot; without one pass aria-label), icon (component, centers the header), size sm | md | lg | xl,
 // persistent (Esc and backdrop taps don't close: use it whenever the dialog holds typed input), initialFocus (a CSS
 // selector inside the dialog, or an element; else the first [data-autofocus] element, else the first focusable).
 // fullscreenOnMobile: full screen below `sm` with a top bar (close icon, title, optional confirmLabel button that emits
@@ -113,7 +113,7 @@ const props = defineProps({
   title:              { type: String, default: '' },
   ariaLabel:          { type: String, default: undefined },
   icon:               { type: [Object, Function], default: null },
-  size:               { type: String, default: 'md', validator: v => ['sm', 'md', 'lg'].includes(v) },
+  size:               { type: String, default: 'md', validator: v => ['sm', 'md', 'lg', 'xl'].includes(v) },
   persistent:         { type: Boolean, default: false },
   initialFocus:       { type: [String, Object], default: null },
   fullscreenOnMobile: { type: Boolean, default: false },
@@ -143,8 +143,8 @@ const initialFocusEl = computed(() => {
   return root.querySelector(target || '[data-autofocus]')
 })
 
-const SIZES = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' }
-const SIZES_FROM_SM = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl' }
+const SIZES = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl', xl: 'max-w-4xl' }
+const SIZES_FROM_SM = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl' }
 
 const panelClass = computed(() => [
   'relative flex flex-col w-full bg-surface-container-high text-on-surface shadow-elevation-3 origin-top',

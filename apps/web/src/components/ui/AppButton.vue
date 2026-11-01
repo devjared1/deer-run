@@ -16,7 +16,8 @@
 </template>
 
 <script setup>
-// MD3 common button. variant: filled (pine) | gold (the brand call to action) | tonal | outlined | text | danger.
+// MD3 common button. variant: filled (pine) | gold (the brand call to action) | tonal | outlined | text | danger |
+// text-danger (a low-emphasis destructive action, e.g. Delete in a dialog).
 // size: md (40px; still a 48px touch target through padding of the hit area) | lg (48px) | xl (64px, POS).
 // `to` renders a RouterLink, `href` an <a>. `loading` shows a spinner and disables the button.
 // Icons: pass a component, e.g. :icon="IconAdd" (import IconAdd from '~icons/material-symbols/add-rounded').
@@ -25,7 +26,7 @@ import { RouterLink } from 'vue-router'
 import ProgressIndicator from './ProgressIndicator.vue'
 
 const props = defineProps({
-  variant:      { type: String, default: 'filled', validator: v => ['filled', 'gold', 'tonal', 'outlined', 'text', 'danger'].includes(v) },
+  variant:      { type: String, default: 'filled', validator: v => ['filled', 'gold', 'tonal', 'outlined', 'text', 'danger', 'text-danger'].includes(v) },
   size:         { type: String, default: 'md', validator: v => ['md', 'lg', 'xl'].includes(v) },
   type:         { type: String, default: 'button' },
   to:           { type: [String, Object], default: null },
@@ -57,6 +58,7 @@ const VARIANTS = {
   outlined: 'border border-outline text-primary bg-transparent',
   text:     'text-primary bg-transparent px-3',
   danger:   'bg-error text-on-error hover:shadow-elevation-1',
+  'text-danger': 'text-error bg-transparent px-3',
 }
 // MD3 disabled: content 38%, container 12%
 const DISABLED = {
@@ -66,6 +68,7 @@ const DISABLED = {
   outlined: 'border border-on-surface/[.12] text-on-surface/[.38]',
   text: 'text-on-surface/[.38] px-3',
   danger: 'bg-on-surface/[.12] text-on-surface/[.38]',
+  'text-danger': 'text-on-surface/[.38] px-3',
 }
 
 const classes = computed(() => [

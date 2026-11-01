@@ -1,124 +1,232 @@
 <template>
-  <div class="max-w-5xl">
-    <!-- Status tabs -->
-    <div class="bg-white rounded-xl border border-gray-200 p-4 mb-6 flex flex-wrap items-center gap-3">
-      <div class="flex rounded-lg border border-gray-300 overflow-hidden">
-        <button
-          v-for="tab in TABS"
-          :key="tab.value"
-          type="button"
-          :class="['px-3 py-2 text-sm font-body transition-colors', status === tab.value ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-          @click="status = tab.value"
-        >
-          {{ tab.label }}
-        </button>
-      </div>
-      <label class="flex items-center gap-2 text-sm text-gray-600 font-body">
-        <input v-model="upcomingOnly" type="checkbox" class="rounded"> Upcoming and current only
-      </label>
-      <RouterLink to="/admin/schedule" class="ml-auto text-sm text-lake hover:text-pine font-body">
-        Open schedule →
-      </RouterLink>
+  <div class="max-w-5xl space-y-4">
+    <!-- Filters -->
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+      <ChipGroup
+        v-model="status"
+        type="choice"
+        label="Status"
+        :options="TABS"
+      />
+      <FilterChip
+        :selected="upcomingOnly"
+        label="Upcoming and current only"
+        @click="upcomingOnly = !upcomingOnly"
+      />
+      <AppButton
+        variant="text"
+        :icon="IconCalendar"
+        to="/admin/schedule"
+        class="ml-auto"
+      >
+        Open schedule
+      </AppButton>
     </div>
 
-    <div v-if="loading" class="text-gray-400 text-sm">
-      Loading…
+    <div
+      v-if="loading && !requests.length"
+      class="space-y-3"
+      role="status"
+    >
+      <span class="sr-only">Loading time off requests</span>
+      <Skeleton
+        v-for="n in 3"
+        :key="n"
+        variant="card"
+      />
     </div>
-    <div v-else-if="error" class="text-red-500 text-sm">
-      {{ error }}
-    </div>
-    <div v-else-if="!requests.length" class="bg-white rounded-xl border border-gray-200 px-5 py-10 text-center text-gray-400 text-sm font-body">
-      {{ status === 'PENDING' ? 'No requests waiting for a decision.' : 'No requests found.' }}
-    </div>
+    <ErrorBanner
+      v-else-if="error"
+      :message="error"
+      :retrying="loading"
+      @retry="load"
+    />
+    <EmptyState
+      v-else-if="!requests.length"
+      :icon="IconBeach"
+      :title="status === 'PENDING' ? 'No requests waiting for a decision' : 'No requests found'"
+      :message="upcomingOnly ? 'Only upcoming and current requests are shown.' : ''"
+      class="rounded-shape-md bg-surface-container-low"
+    />
 
-    <ul v-else class="space-y-3">
-      <li v-for="r in requests" :key="r.id" class="bg-white rounded-xl border border-gray-200 p-5 font-body">
-        <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
-          <div class="flex-1 min-w-[14rem]">
-            <div class="font-semibold text-bark">
-              {{ r.employee?.firstName }} {{ r.employee?.lastName }}
-              <span class="font-normal text-gray-400 text-sm">· {{ positionLabel(r.employee?.position) }}</span>
-              <span v-if="r.employee && !r.employee.active" class="text-xs text-red-500 ml-1">inactive</span>
+    <ul
+      v-else
+      class="space-y-3"
+      :aria-busy="loading ? 'true' : undefined"
+    >
+      <li
+        v-for="r in requests"
+        :key="r.id"
+        class="rounded-shape-md border border-outline-variant bg-surface-container-lowest p-4 sm:p-5 font-body"
+      >
+        <div class="flex flex-wrap items-start gap-x-4 gap-y-3">
+          <div class="flex-1 min-w-[14rem] space-y-1">
+            <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <h3 class="text-title-m text-on-surface">
+                {{ r.employee?.firstName }} {{ r.employee?.lastName }}
+              </h3>
+              <span class="text-body-m text-on-surface-variant">{{ positionLabel(r.employee?.position) }}</span>
+              <StatusChip
+                v-if="r.employee && !r.employee.active"
+                size="sm"
+                label="Inactive"
+                tone="neutral"
+                icon="block"
+              />
             </div>
-            <div class="text-bark mt-0.5">
+            <p class="text-body-l text-on-surface">
               {{ formatRange(r) }}
-              <span class="text-gray-400 text-sm">· {{ r.days }} day{{ r.days === 1 ? '' : 's' }} · {{ TIME_OFF_LABELS[r.type] }}</span>
-            </div>
-            <div v-if="r.reason" class="text-gray-600 text-sm mt-1">
+              <span class="text-body-m text-on-surface-variant">· {{ r.days }} day{{ r.days === 1 ? '' : 's' }} · {{ TIME_OFF_LABELS[r.type] ?? r.type }}</span>
+            </p>
+            <p
+              v-if="r.reason"
+              class="text-body-m text-on-surface-variant"
+            >
               “{{ r.reason }}”
+            </p>
+            <div
+              v-if="r.scheduledShifts.length"
+              class="flex items-start gap-2 mt-2 rounded-shape-sm bg-warning-container text-on-warning-container px-3 py-2 text-body-m"
+            >
+              <IconWarning
+                class="w-5 h-5 flex-none mt-px"
+                aria-hidden="true"
+              />
+              <div>
+                <span class="sr-only">Warning: </span>
+                {{ r.scheduledShifts.length }} shift{{ r.scheduledShifts.length === 1 ? '' : 's' }} scheduled during this time:
+                <ul class="mt-0.5">
+                  <li
+                    v-for="(s, i) in r.scheduledShifts"
+                    :key="s.id ?? i"
+                  >
+                    {{ formatLocalDate(s.date) }}, {{ longTime(s.startTime) }} – {{ longTime(s.endTime) }}
+                  </li>
+                </ul>
+              </div>
             </div>
-            <div v-if="r.scheduledShifts.length" class="text-sm mt-2 text-clay">
-              ⚠ Scheduled {{ r.scheduledShifts.length }} shift{{ r.scheduledShifts.length === 1 ? '' : 's' }} during this time:
-              {{ r.scheduledShifts.map(s => `${formatLocalDate(s.date)} ${shortTime(s.startTime)}–${shortTime(s.endTime)}`).join(', ') }}
-            </div>
-            <div class="text-xs text-gray-400 mt-2">
+            <p class="text-body-s text-on-surface-variant pt-1">
               Requested {{ formatTimestamp(r.createdAt) }}
               <template v-if="r.reviewedAt">
                 · {{ STATUS_LABELS[r.status] }} {{ formatTimestamp(r.reviewedAt) }}{{ r.reviewedByName ? ` by ${r.reviewedByName}` : '' }}
               </template>
-            </div>
-            <div v-if="r.reviewNote" class="text-xs text-bark mt-1">
+            </p>
+            <p
+              v-if="r.reviewNote"
+              class="text-body-s text-on-surface"
+            >
               Note: {{ r.reviewNote }}
-            </div>
+            </p>
           </div>
-          <span :class="['text-xs px-2 py-0.5 rounded-full', STATUS_CLASSES[r.status]]">{{ STATUS_LABELS[r.status] }}</span>
-          <div v-if="r.status === 'PENDING'" class="flex gap-2 w-full sm:w-auto">
-            <button class="btn-pine px-4 py-2 text-sm" @click="openDecision(r, 'approve')">
+          <StatusChip
+            kind="timeOff"
+            :status="r.status"
+          />
+          <div
+            v-if="r.status === 'PENDING'"
+            class="flex flex-wrap gap-2 w-full sm:w-auto"
+          >
+            <AppButton
+              :icon="IconCheck"
+              @click="openDecision(r, 'approve')"
+            >
               Approve
-            </button>
-            <button class="btn-outline-sm text-red-500" @click="openDecision(r, 'deny')">
+            </AppButton>
+            <AppButton
+              variant="danger"
+              :icon="IconClose"
+              @click="openDecision(r, 'deny')"
+            >
               Deny
-            </button>
+            </AppButton>
           </div>
-          <div v-else-if="r.status === 'APPROVED' && r.endDate >= today" class="flex gap-2 w-full sm:w-auto">
-            <button class="btn-outline-sm text-red-500" @click="openDecision(r, 'revoke')">
+          <div
+            v-else-if="r.status === 'APPROVED' && r.endDate >= today"
+            class="flex gap-2 w-full sm:w-auto"
+          >
+            <AppButton
+              variant="danger"
+              :icon="IconUndo"
+              @click="openDecision(r, 'revoke')"
+            >
               Revoke
-            </button>
+            </AppButton>
           </div>
         </div>
       </li>
     </ul>
 
-    <!-- Approve / deny -->
-    <div v-if="deciding" class="modal-overlay" @click.self="deciding = null">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-2">
-          {{ ACTION_LABELS[deciding.action] }} {{ deciding.action === 'revoke' ? 'approved time off' : 'time off' }}?
-        </h2>
-        <p class="text-gray-500 text-sm font-body mb-4">
-          {{ deciding.request.employee?.firstName }} {{ deciding.request.employee?.lastName }},
-          {{ formatRange(deciding.request) }}. They'll get an email with your decision.
-          <span v-if="deciding.action === 'approve' && deciding.request.scheduledShifts.length" class="block mt-2 text-clay">
-            Their {{ deciding.request.scheduledShifts.length }} scheduled shift{{ deciding.request.scheduledShifts.length === 1 ? '' : 's' }}
-            during this time stay on the schedule (flagged) until you change them.
-          </span>
-          <span v-if="deciding.action === 'revoke'" class="block mt-2">
-            The request becomes Denied (with your note) and comes off the schedule. Add any shifts they should now work.
-          </span>
-        </p>
-        <label class="label-sm">Note to the employee {{ deciding.action === 'revoke' ? '*' : '(optional)' }}</label>
-        <textarea v-model="deciding.note" rows="2" maxlength="500" class="input-field w-full" />
-        <div class="flex justify-end gap-3 mt-4">
-          <button class="btn-outline-sm" @click="deciding = null">
-            Cancel
-          </button>
-          <button
-            :class="[deciding.action === 'approve' ? 'btn-pine' : 'bg-red-500 hover:bg-red-600 text-white rounded-lg font-body', 'px-4 py-2 text-sm disabled:opacity-50']"
-            :disabled="saving || (deciding.action === 'revoke' && !deciding.note.trim())"
-            @click="decide"
+    <!-- Approve / deny / revoke -->
+    <AppDialog
+      v-model:open="decisionOpen"
+      :title="deciding ? `${ACTION_LABELS[deciding.action]} ${deciding.action === 'revoke' ? 'approved time off' : 'time off'}?` : ''"
+      persistent
+    >
+      <form
+        v-if="deciding"
+        id="time-off-decision"
+        class="space-y-4"
+        novalidate
+        @submit.prevent="decide"
+      >
+        <div class="space-y-2">
+          <p>
+            {{ deciding.request.employee?.firstName }} {{ deciding.request.employee?.lastName }},
+            {{ formatRange(deciding.request) }}. They'll get an email with your decision.
+          </p>
+          <p
+            v-if="deciding.action === 'approve' && deciding.request.scheduledShifts.length"
+            class="flex items-start gap-2 rounded-shape-sm bg-warning-container text-on-warning-container px-3 py-2"
           >
-            {{ saving ? 'Saving…' : ACTION_LABELS[deciding.action] }}
-          </button>
+            <IconWarning
+              class="w-5 h-5 flex-none"
+              aria-hidden="true"
+            />
+            <span>
+              Their {{ deciding.request.scheduledShifts.length }} scheduled shift{{ deciding.request.scheduledShifts.length === 1 ? '' : 's' }}
+              during this time stay on the schedule (flagged) until you change them.
+            </span>
+          </p>
+          <p v-if="deciding.action === 'revoke'">
+            The request becomes Denied (with your note) and comes off the schedule. Add any shifts they should now work.
+          </p>
         </div>
-        <p v-if="formError" class="text-red-500 text-xs mt-2">
-          {{ formError }}
-        </p>
-      </div>
-    </div>
-
-    <p v-if="notice" class="fixed bottom-5 right-5 bg-bark text-parch text-sm font-body rounded-lg px-4 py-3 shadow-lg">
-      {{ notice }}
-    </p>
+        <TextArea
+          v-model="deciding.note"
+          :label="deciding.action === 'revoke' ? 'Note to the employee' : 'Note to the employee (optional)'"
+          :required="deciding.action === 'revoke'"
+          :helper="deciding.action === 'revoke' ? 'Required: tell them why the approval is revoked' : ''"
+          :rows="2"
+          :maxlength="500"
+          auto-grow
+          data-autofocus
+        />
+        <ErrorBanner
+          v-if="formError"
+          :message="formError"
+        />
+      </form>
+      <template #actions="{ close }">
+        <AppButton
+          variant="text"
+          :disabled="saving"
+          @click="close"
+        >
+          Cancel
+        </AppButton>
+        <AppButton
+          v-if="deciding"
+          type="submit"
+          form="time-off-decision"
+          :variant="deciding.action === 'approve' ? 'filled' : 'danger'"
+          :icon="ACTION_ICONS[deciding.action]"
+          :loading="saving"
+          :disabled="deciding.action === 'revoke' && !deciding.note.trim()"
+        >
+          {{ ACTION_LABELS[deciding.action] }}
+        </AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -126,11 +234,27 @@
 import { ref, watch } from 'vue'
 import { apiFetch } from '@/lib/api'
 import { localDate, formatLocalDate } from '@/lib/timeclock'
-import { shortTime } from '@/lib/schedule'
+import { longTime } from '@/lib/schedule'
 import { positionLabel } from '@/data/employeePositions'
 import { TIME_OFF_LABELS } from '@/components/schedule/scheduleDisplay'
-import { STATUS_LABELS, STATUS_CLASSES, formatRange } from '@/components/schedule/timeOffDisplay'
+import { STATUS_LABELS, formatRange } from '@/components/schedule/timeOffDisplay'
 import { usePendingTimeOff } from '@/composables/usePendingTimeOff'
+import { useSnackbar } from '@/composables/useSnackbar'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import ChipGroup from '@/components/ui/ChipGroup.vue'
+import FilterChip from '@/components/ui/FilterChip.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import TextArea from '@/components/ui/TextArea.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import IconCheck from '~icons/material-symbols/check-rounded'
+import IconClose from '~icons/material-symbols/close-rounded'
+import IconUndo from '~icons/material-symbols/undo-rounded'
+import IconWarning from '~icons/material-symbols/warning-rounded'
+import IconCalendar from '~icons/material-symbols/calendar-month-rounded'
+import IconBeach from '~icons/material-symbols/beach-access-rounded'
 
 const TABS = [
   { value: 'PENDING',   label: 'Pending' },
@@ -141,9 +265,11 @@ const TABS = [
 ]
 
 const ACTION_LABELS = { approve: 'Approve', deny: 'Deny', revoke: 'Revoke' }
+const ACTION_ICONS  = { approve: IconCheck, deny: IconClose, revoke: IconUndo }
 const DONE_LABELS   = { approve: 'Approved', deny: 'Denied', revoke: 'Approval revoked' }
 
 const pendingTimeOff = usePendingTimeOff()
+const snackbar       = useSnackbar()
 const today          = localDate()
 
 const status       = ref('PENDING')
@@ -154,7 +280,7 @@ const error        = ref(null)
 const saving       = ref(false)
 const formError    = ref(null)
 const deciding     = ref(null)
-const notice       = ref(null)
+const decisionOpen = ref(false)
 
 async function load() {
   loading.value = true
@@ -173,20 +299,24 @@ async function load() {
 watch([status, upcomingOnly], load, { immediate: true })
 
 function openDecision(request, action) {
-  deciding.value  = { request, action, note: '' }
-  formError.value = null
+  deciding.value     = { request, action, note: '' }
+  formError.value    = null
+  decisionOpen.value = true
 }
 
 async function decide() {
+  const { request, action, note } = deciding.value
+  if (action === 'revoke' && !note.trim()) return
   saving.value    = true
   formError.value = null
   try {
-    const { request, action, note } = deciding.value
     const res = await apiFetch(`/api/admin/time-off/${request.id}`, { method: 'PUT', body: { action, note } })
-    deciding.value = null
-    showNotice(res.emailError
-      ? `Saved, but the email to the employee failed: ${res.emailError}`
-      : `${DONE_LABELS[action]}. ${request.employee?.firstName ?? 'The employee'} has been emailed.`)
+    decisionOpen.value = false
+    if (res.emailError) {
+      snackbar.show({ message: `Saved, but the email to the employee failed: ${res.emailError}`, tone: 'error', duration: 8000 })
+    } else {
+      snackbar.show(`${DONE_LABELS[action]}. ${request.employee?.firstName ?? 'The employee'} has been emailed.`)
+    }
     await Promise.all([load(), pendingTimeOff.refresh()])
   } catch (e) {
     formError.value = e.message
@@ -195,23 +325,9 @@ async function decide() {
   }
 }
 
-function showNotice(message) {
-  notice.value = message
-  setTimeout(() => { if (notice.value === message) notice.value = null }, 5000)
-}
-
 function formatTimestamp(ts) {
   return new Date(ts).toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago',
   })
 }
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.btn-pine       { @apply bg-pine text-parch rounded-lg font-body font-semibold hover:bg-pine/90 transition-colors; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

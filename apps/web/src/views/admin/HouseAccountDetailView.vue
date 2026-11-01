@@ -1,264 +1,319 @@
 <template>
-  <div class="max-w-5xl">
-    <RouterLink to="/admin/house-accounts" class="text-sm text-lake hover:text-pine font-body print:hidden">
-      ← All house accounts
-    </RouterLink>
+  <div class="max-w-5xl font-body text-on-surface">
+    <Teleport to="#admin-page-actions" defer>
+      <!-- Phones: icon only, so the page title keeps its room -->
+      <template v-if="account">
+        <AppButton variant="gold" :icon="IconSwap" class="hidden sm:inline-flex" @click="openAdjust">Adjust balance</AppButton>
+        <IconButton variant="filled" :icon="IconSwap" label="Adjust balance" class="sm:hidden" @click="openAdjust" />
+      </template>
+    </Teleport>
 
-    <div v-if="loading && !data" class="text-gray-400 text-sm mt-4">
-      Loading…
-    </div>
-    <div v-else-if="error && !data" class="text-red-500 text-sm mt-4">
-      {{ error }}
-    </div>
+    <template v-if="loading && !data">
+      <Skeleton variant="text" :lines="2" width="40%" label="Loading house account" />
+      <div class="grid gap-4 sm:grid-cols-3 mt-6">
+        <Skeleton v-for="n in 3" :key="n" variant="rect" height="104px" />
+      </div>
+      <Skeleton variant="rect" height="240px" class="mt-6" />
+    </template>
+
+    <template v-else-if="error && !data">
+      <PageHeader :level="2" title="House account" :breadcrumbs="[{ label: 'House Accounts', to: '/admin/house-accounts' }, { label: 'Not loaded' }]" />
+      <ErrorBanner :message="error" :retrying="loading" @retry="load" />
+    </template>
 
     <template v-else-if="data">
       <!-- Everything but the statement is hidden when printing one -->
       <div :class="statement ? 'print:hidden' : ''">
-        <div class="bg-white rounded-xl border border-gray-200 p-5 mt-3 mb-5 flex flex-wrap gap-x-10 gap-y-4 items-start">
-          <div class="min-w-[12rem]">
-            <div class="font-display font-bold text-bark text-xl">
-              {{ account.user?.name || account.user?.email }}
-            </div>
-            <div class="text-sm text-gray-500 font-body">
-              {{ account.user?.email }}
-            </div>
-            <span :class="['inline-block mt-2 text-xs px-2 py-0.5 rounded-full', STATUS_CLASSES[account.status]]">{{ STATUS_LABELS[account.status] }}</span>
-          </div>
-          <div>
-            <div class="stat-label">
-              Balance
-            </div>
-            <div class="font-display font-bold text-2xl tabular-nums" :class="account.balanceCents > 0 ? 'text-bark' : 'text-pine'">
-              {{ formatCents(account.balanceCents) }}
-            </div>
-            <div class="text-xs text-gray-400 font-body">
-              {{ formatCents(account.availableCents) }} available of {{ formatCents(account.creditLimitCents) }}
-            </div>
-          </div>
-          <div class="text-sm font-body space-y-1">
-            <div>
-              <span class="text-gray-400">PIN:</span>
-              <span v-if="account.pinLocked" class="text-red-500 font-semibold"> locked</span>
-              <span v-else>{{ account.hasPin ? ' set' : ' not set yet' }}</span>
-            </div>
-            <div>
-              <span class="text-gray-400">Billing:</span>
-              {{ account.autopayEnabled ? ` autopay (${cardLabel(account)})` : ' invoice (pays online or at the pro shop)' }}
-            </div>
-          </div>
-          <div class="ml-auto flex flex-wrap gap-2">
-            <button class="btn-outline-sm" @click="openEdit">
-              Edit
-            </button>
-            <button v-if="account.hasPin || account.pinLocked" class="btn-outline-sm" @click="resetPin">
-              Reset PIN
-            </button>
-            <button class="btn-outline-sm" @click="adjusting = { amount: '', kind: 'credit', reason: '', busy: false, error: null }">
-              Adjust balance
-            </button>
-          </div>
+        <PageHeader
+          :level="2"
+          :title="memberName"
+          :breadcrumbs="[{ label: 'House Accounts', to: '/admin/house-accounts' }, { label: memberName }]"
+        >
+          <template #subtitle>
+            <span class="inline-flex flex-wrap items-center gap-2">
+              <span v-if="account.user?.name" class="break-all">{{ account.user.email }}</span>
+              <StatusChip kind="houseAccount" :status="account.status" size="sm" />
+            </span>
+          </template>
+          <template #secondary>
+            <AppButton variant="outlined" :icon="IconEdit" @click="openEdit">Edit</AppButton>
+            <AppButton
+              v-if="account.hasPin || account.pinLocked"
+              variant="outlined"
+              :icon="IconLockReset"
+              :loading="resettingPin"
+              @click="resetPin"
+            >
+              {{ resettingPin ? 'Resetting…' : 'Reset PIN' }}
+            </AppButton>
+          </template>
+        </PageHeader>
+
+        <div class="grid gap-4 sm:grid-cols-3">
+          <StatCard label="Balance" :value="money(account.balanceCents)" :icon="IconWallet">
+            <p v-if="account.balanceCents > account.creditLimitCents" class="mt-1 text-body-s text-error">Over the credit limit</p>
+          </StatCard>
+          <StatCard label="Credit limit" :value="money(account.creditLimitCents)" :icon="IconCreditScore" />
+          <StatCard label="Available" :value="money(account.availableCents)" :icon="IconSavings" />
         </div>
-        <p v-if="notice" class="text-pine text-sm font-body mb-3">
-          {{ notice }}
-        </p>
-        <p v-if="error" class="text-red-500 text-sm font-body mb-3">
-          {{ error }}
-        </p>
 
-        <div class="grid lg:grid-cols-[1fr_20rem] gap-5 items-start">
-          <!-- Ledger -->
-          <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            <div class="px-5 py-3 border-b border-gray-100 font-semibold text-bark font-body text-sm">
-              Activity
-            </div>
-            <div class="overflow-x-auto">
-              <table class="w-full text-sm font-body">
-                <tbody class="divide-y divide-gray-50">
-                  <tr v-for="e in data.entries" :key="e.id">
-                    <td class="td text-gray-500 whitespace-nowrap">
-                      {{ formatWhen(e.createdAt) }}
-                    </td>
-                    <td class="td">
-                      {{ e.description }}
-                      <span class="text-xs text-gray-400"> · {{ ENTRY_TYPE_LABELS[e.type] }}</span>
-                    </td>
-                    <td class="td text-right tabular-nums" :class="e.amountCents < 0 ? 'text-pine' : 'text-bark'">
-                      {{ e.amountCents < 0 ? '−' : '' }}{{ formatCents(Math.abs(e.amountCents)) }}
-                    </td>
-                  </tr>
-                  <tr v-if="!data.entries.length">
-                    <td class="td text-gray-400 text-center py-8" colspan="3">
-                      No activity yet.
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
+        <dl class="mt-4 grid gap-x-6 gap-y-1 sm:grid-cols-[auto_1fr] text-body-m">
+          <dt class="text-on-surface-variant">PIN</dt>
+          <dd>
+            <StatusChip v-if="account.pinLocked" label="Locked" tone="error" icon="lock" size="sm" />
+            <template v-else>{{ account.hasPin ? 'Set' : 'Not set yet' }}</template>
+          </dd>
+          <dt class="text-on-surface-variant">Billing</dt>
+          <dd>{{ account.autopayEnabled ? `Autopay (${cardLabel(account)})` : 'Invoice (pays online or at the pro shop)' }}</dd>
+        </dl>
 
-          <!-- Statements -->
-          <div class="space-y-5">
-            <div class="bg-white rounded-xl border border-gray-200 p-4">
-              <div class="font-semibold text-bark font-body text-sm mb-3">
-                Statement for any dates
+        <ErrorBanner v-if="error" :message="error" class="mt-4" @dismiss="error = null" />
+
+        <!-- AppTabs renders no root element of its own (no class on it) -->
+        <div class="mt-6">
+          <AppTabs v-model="tab" :tabs="tabs" label="House account">
+            <!-- Activity -->
+            <template #activity>
+              <DataTable
+                :columns="entryColumns"
+                :rows="data.entries"
+                caption="Account activity"
+                dense
+                :manual-sort="true"
+              >
+                <template #cell-description="{ row }">
+                  <span class="font-normal">{{ row.description }}</span>
+                  <span class="block text-body-s font-normal text-on-surface-variant">{{ ENTRY_TYPE_LABELS[row.type] ?? row.type }}</span>
+                </template>
+                <template #cell-amount="{ row }">
+                  <span :class="['tabular-nums', row.amountCents < 0 ? 'text-primary' : '']">{{ money(row.amountCents) }}</span>
+                </template>
+                <template #empty>
+                  <EmptyState :icon="IconReceipt" title="No activity yet" message="Charges, payments and adjustments show here." compact />
+                </template>
+              </DataTable>
+            </template>
+
+            <!-- Statements -->
+            <template #statements>
+              <div class="grid gap-6 xl:grid-cols-[1fr_24rem] items-start">
+                <DataTable
+                  :columns="statementColumns"
+                  :rows="data.statements"
+                  caption="Monthly statements"
+                  caption-visible
+                  :row-label="s => `${statementMonth(s)} statement, ${money(s.closingCents)}`"
+                  @row-click="s => showStatement(s.periodStart, s.periodEnd, s)"
+                >
+                  <template #cell-month="{ row }">
+                    {{ statementMonth(row) }}
+                    <span v-if="statementNote(row)" class="block text-body-s font-normal text-on-surface-variant">{{ statementNote(row) }}</span>
+                  </template>
+                  <template #cell-closing="{ row }">
+                    <span class="tabular-nums">{{ money(row.closingCents) }}</span>
+                  </template>
+                  <template #cell-status="{ row }">
+                    <StatusChip kind="statement" :status="statementStatus(row)" size="sm" />
+                  </template>
+                  <template #empty>
+                    <EmptyState :icon="IconDescription" title="No statements yet" message="They go out on the 1st." compact />
+                  </template>
+                </DataTable>
+
+                <Card variant="outlined" tag="section" aria-labelledby="any-dates-title">
+                  <h3 id="any-dates-title" class="text-title-m text-on-surface mb-2">Statement for any dates</h3>
+                  <DateRangeField v-model="range" label="Dates" :presets="['thisMonth', 'lastMonth']" />
+                  <AppButton
+                    variant="tonal"
+                    block
+                    :icon="IconDescription"
+                    class="mt-3"
+                    :loading="loadingStatement === 'range'"
+                    :disabled="!range.from || !range.to || range.to < range.from"
+                    @click="showStatement(range.from, range.to, null, 'range')"
+                  >
+                    Show statement
+                  </AppButton>
+                </Card>
               </div>
-              <div class="grid grid-cols-2 gap-2">
-                <div>
-                  <label class="label-sm">From</label>
-                  <input v-model="range.from" type="date" class="input-field w-full">
-                </div>
-                <div>
-                  <label class="label-sm">To</label>
-                  <input v-model="range.to" type="date" class="input-field w-full">
-                </div>
-              </div>
-              <button class="btn-pine w-full mt-3 py-2 text-sm" :disabled="!range.from || !range.to" @click="showStatement(range.from, range.to)">
-                Show statement
-              </button>
-            </div>
-            <div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
-              <div class="px-4 py-3 border-b border-gray-100 font-semibold text-bark font-body text-sm">
-                Monthly statements
-              </div>
-              <ul class="divide-y divide-gray-50 font-body text-sm">
-                <li v-for="s in data.statements" :key="s.id" class="px-4 py-2.5 flex items-center gap-2">
-                  <button class="text-lake hover:text-pine text-left flex-1" @click="showStatement(s.periodStart, s.periodEnd, s)">
-                    {{ formatLocalDate(s.periodStart, { month: 'long', year: 'numeric' }) }}
-                  </button>
-                  <span class="tabular-nums text-gray-600">{{ formatCents(s.closingCents) }}</span>
-                  <span :class="['text-xs px-2 py-0.5 rounded-full', STATEMENT_STATUS_CLASSES[statementStatus(s)]]" :title="statementNote(s)">
-                    {{ STATEMENT_STATUS_LABELS[statementStatus(s)] }}
-                  </span>
-                </li>
-                <li v-if="!data.statements.length" class="px-4 py-4 text-gray-400 text-center">
-                  None yet (they go out on the 1st)
-                </li>
-              </ul>
-            </div>
-          </div>
+            </template>
+          </AppTabs>
         </div>
       </div>
 
       <!-- Statement view -->
-      <div v-if="statement" class="mt-6">
+      <section v-if="statement" ref="statementEl" class="mt-8 scroll-mt-20" aria-labelledby="statement-title" tabindex="-1">
         <div class="flex flex-wrap items-center gap-2 mb-3 print:hidden">
-          <span class="font-display font-bold text-bark">Statement</span>
-          <button class="btn-outline-sm ml-auto" @click="print">
-            🖨 Print
-          </button>
-          <button class="btn-outline-sm" :disabled="emailing" @click="emailStatement">
+          <h3 id="statement-title" class="flex-1 min-w-0 font-display text-headline-s text-primary">Statement</h3>
+          <AppButton variant="outlined" :icon="IconPrint" @click="print">Print</AppButton>
+          <AppButton variant="outlined" :icon="IconMail" :loading="emailing" @click="emailStatement">
             {{ emailing ? 'Sending…' : `Email to ${account.user?.email}` }}
-          </button>
-          <button class="btn-outline-sm" @click="statement = null">
-            Close
-          </button>
+          </AppButton>
+          <IconButton :icon="IconClose" label="Close statement" @click="statement = null" />
         </div>
         <StatementDocument :statement="statement" :member="account.user" />
-      </div>
+      </section>
     </template>
 
     <!-- Edit status / limit -->
-    <div v-if="editing" class="modal-overlay print:hidden">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-4">
-          Edit account
-        </h2>
-        <label class="label-sm">Credit limit ($)</label>
-        <input v-model="editing.limit" type="number" min="0" step="50" class="input-field w-full">
-        <label class="label-sm mt-3">Status</label>
-        <select v-model="editing.status" class="input-field w-full">
-          <option value="ACTIVE">
-            Active
-          </option>
-          <option value="SUSPENDED">
-            Suspended (no new charges; payments still accepted)
-          </option>
-          <option value="CLOSED">
-            Closed (balance must be $0)
-          </option>
-        </select>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="editing = null">
-            Cancel
-          </button>
-          <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="editing.busy" @click="saveEdit">
-            Save
-          </button>
-        </div>
-        <p v-if="editing.error" class="text-red-500 text-xs mt-2">
-          {{ editing.error }}
-        </p>
-      </div>
-    </div>
+    <AppDialog v-model:open="editOpen" title="Edit account" size="sm" persistent>
+      <form v-if="editing" id="edit-account-form" novalidate class="space-y-1 pt-2" @submit.prevent="saveEdit">
+        <MoneyField v-model="editing.limitCents" label="Credit limit" :min="0" data-autofocus />
+        <SelectField v-model="editing.status" label="Status" :options="EDIT_STATUS_OPTIONS" />
+        <ErrorBanner v-if="editing.error" :message="editing.error" />
+      </form>
+      <template #actions="{ close }">
+        <AppButton variant="text" :disabled="editing?.busy" @click="close">Cancel</AppButton>
+        <AppButton type="submit" form="edit-account-form" :loading="editing?.busy">{{ editing?.busy ? 'Saving…' : 'Save' }}</AppButton>
+      </template>
+    </AppDialog>
 
     <!-- Adjust -->
-    <div v-if="adjusting" class="modal-overlay print:hidden">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-1">
-          Adjust balance
-        </h2>
-        <p class="text-gray-500 text-sm font-body mb-4">
+    <AppDialog v-model:open="adjustOpen" title="Adjust balance" size="sm" persistent>
+      <template v-if="adjusting">
+        <p class="text-body-m text-on-surface-variant mb-4">
           For corrections. Payments at the pro shop are taken at the register (Account payment).
         </p>
-        <div class="flex rounded-lg border border-gray-300 overflow-hidden w-fit mb-3">
-          <button
-            v-for="k in [{ v: 'credit', l: 'Credit (lower balance)' }, { v: 'charge', l: 'Charge (raise balance)' }]"
-            :key="k.v"
-            type="button"
-            :class="['px-3 py-2 text-sm font-body', adjusting.kind === k.v ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-            @click="adjusting.kind = k.v"
-          >
-            {{ k.l }}
-          </button>
-        </div>
-        <label class="label-sm">Amount ($)</label>
-        <input v-model="adjusting.amount" type="number" min="0.01" step="0.01" class="input-field w-full">
-        <label class="label-sm mt-3">Reason *</label>
-        <input v-model="adjusting.reason" type="text" maxlength="200" class="input-field w-full" placeholder="e.g. Waived late tee time charge">
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="adjusting = null">
-            Cancel
-          </button>
-          <button class="btn-amber px-4 py-2 text-sm disabled:opacity-50" :disabled="adjusting.busy || !adjusting.amount || !adjusting.reason.trim()" @click="saveAdjustment">
-            Save
-          </button>
-        </div>
-        <p v-if="adjusting.error" class="text-red-500 text-xs mt-2">
-          {{ adjusting.error }}
-        </p>
-      </div>
-    </div>
+        <form id="adjust-form" novalidate class="space-y-3" @submit.prevent="saveAdjustment">
+          <SegmentedButton v-model="adjusting.kind" label="Kind of adjustment" :options="ADJUST_KINDS" block />
+          <div class="space-y-3">
+            <MoneyField
+              v-model="adjusting.amountCents"
+              label="Amount"
+              :min="1"
+              required
+              :helper="adjustHelper"
+              data-autofocus
+            />
+            <TextField
+              v-model="adjusting.reason"
+              label="Reason"
+              required
+              maxlength="200"
+              autocomplete="off"
+              placeholder="e.g. Waived late tee time charge"
+            />
+          </div>
+          <ErrorBanner v-if="adjusting.error" :message="adjusting.error" />
+        </form>
+      </template>
+      <template #actions="{ close }">
+        <AppButton variant="text" :disabled="adjusting?.busy" @click="close">Cancel</AppButton>
+        <AppButton
+          type="submit"
+          form="adjust-form"
+          :loading="adjusting?.busy"
+          :disabled="!adjusting?.amountCents || !adjusting?.reason.trim()"
+        >
+          {{ adjusting?.busy ? 'Saving…' : 'Save' }}
+        </AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { apiFetch } from '@/lib/api'
-import { formatCents, dollarsToCents } from '@/lib/money'
 import { localDate, formatLocalDate, COURSE_TZ } from '@/lib/timeclock'
-import {
-  STATUS_LABELS, STATUS_CLASSES, STATEMENT_STATUS_LABELS, STATEMENT_STATUS_CLASSES, ENTRY_TYPE_LABELS, cardLabel, statementStatus,
-} from '@/components/accounts/accountDisplay'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { ENTRY_TYPE_LABELS, cardLabel, statementStatus } from '@/components/accounts/accountDisplay'
 import StatementDocument from '@/components/accounts/StatementDocument.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import AppTabs from '@/components/ui/AppTabs.vue'
+import Card from '@/components/ui/Card.vue'
+import DataTable from '@/components/ui/DataTable.vue'
+import DateRangeField from '@/components/ui/DateRangeField.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import MoneyField from '@/components/ui/MoneyField.vue'
+import PageHeader from '@/components/ui/PageHeader.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import SelectField from '@/components/ui/SelectField.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import StatCard from '@/components/ui/StatCard.vue'
+import StatusChip from '@/components/ui/StatusChip.vue'
+import TextField from '@/components/ui/TextField.vue'
+import IconSwap from '~icons/material-symbols/swap-vert-rounded'
+import IconEdit from '~icons/material-symbols/edit-rounded'
+import IconLockReset from '~icons/material-symbols/lock-reset-rounded'
+import IconWallet from '~icons/material-symbols/account-balance-wallet-rounded'
+import IconCreditScore from '~icons/material-symbols/credit-score-rounded'
+import IconSavings from '~icons/material-symbols/savings-rounded'
+import IconReceipt from '~icons/material-symbols/receipt-long-rounded'
+import IconDescription from '~icons/material-symbols/description-rounded'
+import IconPrint from '~icons/material-symbols/print-rounded'
+import IconMail from '~icons/material-symbols/mail-rounded'
+import IconClose from '~icons/material-symbols/close-rounded'
 
-const route = useRoute()
-const id = route.params.id
+const EDIT_STATUS_OPTIONS = [
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'SUSPENDED', label: 'Suspended (no new charges; payments still accepted)' },
+  { value: 'CLOSED', label: 'Closed (balance must be $0)' },
+]
+const ADJUST_KINDS = [
+  { value: 'credit', label: 'Credit' },
+  { value: 'charge', label: 'Charge' },
+]
 
-const data      = ref(null)
-const loading   = ref(false)
-const error     = ref(null)
-const notice    = ref(null)
-const editing   = ref(null)
-const adjusting = ref(null)
-const statement = ref(null)
-const emailing  = ref(false)
-const today     = localDate()
-const range     = ref({ from: `${today.slice(0, 7)}-01`, to: today })
+const route    = useRoute()
+const id       = route.params.id
+const confirm  = useConfirm()
+const snackbar = useSnackbar()
 
-const account = computed(() => data.value?.account)
+const data       = ref(null)
+const loading    = ref(false)
+const error      = ref(null)
+const tab        = ref('activity')
+const editing    = ref(null)
+const editOpen   = ref(false)
+const adjusting  = ref(null)
+const adjustOpen = ref(false)
+const statement  = ref(null)
+const statementEl = ref(null)
+const loadingStatement = ref(null) // 'range' or a saved statement's id
+const emailing   = ref(false)
+const resettingPin = ref(false)
+const today      = localDate()
+const range      = ref({ from: `${today.slice(0, 7)}-01`, to: today })
 
-// Tooltip on a saved statement's status: autopay error, overdue reminder and late fee
+const account    = computed(() => data.value?.account)
+const memberName = computed(() => account.value?.user?.name || account.value?.user?.email || 'House account')
+
+const tabs = computed(() => [
+  { key: 'activity', label: 'Activity' },
+  { key: 'statements', label: 'Statements', badge: data.value?.statements.filter(s => statementStatus(s) === 'OVERDUE').length || undefined },
+])
+
+const entryColumns = [
+  { key: 'createdAt', label: 'When', format: v => formatWhen(v), class: 'whitespace-nowrap' },
+  { key: 'description', label: 'Description', primary: true },
+  { key: 'amount', label: 'Amount', align: 'right' },
+]
+const statementColumns = [
+  { key: 'month', label: 'Month', primary: true },
+  { key: 'closing', label: 'Balance', align: 'right' },
+  { key: 'status', label: 'Status' },
+]
+
+const money = (cents) => (cents === null || cents === undefined
+  ? '—'
+  : `${cents < 0 ? '−' : ''}$${(Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+
+const adjustHelper = computed(() => {
+  const a = adjusting.value
+  if (!a?.amountCents || !account.value) return a?.kind === 'credit' ? 'Lowers the balance' : 'Raises the balance'
+  const after = account.value.balanceCents + (a.kind === 'credit' ? -a.amountCents : a.amountCents)
+  return `Balance ${money(account.value.balanceCents)} → ${money(after)}`
+})
+
+const statementMonth = (s) => formatLocalDate(s.periodStart, { month: 'long', year: 'numeric' })
+
+// A saved statement's autopay error, overdue reminder and late fee
 function statementNote(s) {
   const when = (ts) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: COURSE_TZ })
   return [
@@ -280,15 +335,23 @@ async function load() {
   }
 }
 
-async function showStatement(from, to, saved = null) {
+async function showStatement(from, to, saved = null, key = saved?.id) {
   error.value = null
+  loadingStatement.value = key ?? 'range'
   try {
     const res = await apiFetch(`/api/admin/house-accounts/${id}?${new URLSearchParams({ from, to })}`)
     // A saved monthly statement keeps its own due date
     statement.value = { ...res.statement, dueDate: saved?.dueDate ?? null }
     range.value = { from, to }
+    // It renders below the tabs: bring it into view (and move focus there for keyboard and screen reader users)
+    await nextTick()
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    statementEl.value?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+    statementEl.value?.focus({ preventScroll: true })
   } catch (e) {
     error.value = e.message
+  } finally {
+    loadingStatement.value = null
   }
 }
 
@@ -298,13 +361,12 @@ function print() {
 
 async function emailStatement() {
   emailing.value = true
-  notice.value = null
   error.value  = null
   try {
     const res = await apiFetch(`/api/admin/house-accounts/${id}`, {
       method: 'POST', body: { action: 'email_statement', from: statement.value.periodStart, to: statement.value.periodEnd },
     })
-    notice.value = `Statement emailed to ${res.to}.`
+    snackbar.show(`Statement emailed to ${res.to}`)
   } catch (e) {
     error.value = e.message
   } finally {
@@ -313,18 +375,21 @@ async function emailStatement() {
 }
 
 function openEdit() {
-  editing.value = { limit: (account.value.creditLimitCents / 100).toFixed(2), status: account.value.status, busy: false, error: null }
+  editing.value = { limitCents: account.value.creditLimitCents, status: account.value.status, busy: false, error: null }
+  editOpen.value = true
 }
 
 async function saveEdit() {
   const e = editing.value
+  if (!e || e.busy) return
   e.busy = true
   e.error = null
   try {
     await apiFetch(`/api/admin/house-accounts/${id}`, {
-      method: 'PUT', body: { creditLimitCents: dollarsToCents(e.limit) ?? 0, status: e.status },
+      method: 'PUT', body: { creditLimitCents: e.limitCents ?? 0, status: e.status },
     })
-    editing.value = null
+    editOpen.value = false
+    snackbar.show('Account updated')
     await load()
   } catch (err) {
     e.error = err.message
@@ -334,27 +399,42 @@ async function saveEdit() {
 }
 
 async function resetPin() {
-  if (!confirm('Clear this member\'s PIN? They set a new one in My Account before charging again.')) return
+  const ok = await confirm({
+    title: 'Clear this PIN?',
+    message: `${memberName.value} sets a new one in My Account before charging again.`,
+    confirmLabel: 'Clear PIN',
+    destructive: true,
+  })
+  if (!ok) return
   error.value = null
+  resettingPin.value = true
   try {
     await apiFetch(`/api/admin/house-accounts/${id}`, { method: 'PUT', body: { resetPin: true } })
-    notice.value = 'PIN cleared. The member can set a new one in My Account.'
+    snackbar.show('PIN cleared. The member can set a new one in My Account.')
     await load()
   } catch (e) {
     error.value = e.message
+  } finally {
+    resettingPin.value = false
   }
+}
+
+function openAdjust() {
+  adjusting.value = { amountCents: null, kind: 'credit', reason: '', busy: false, error: null }
+  adjustOpen.value = true
 }
 
 async function saveAdjustment() {
   const a = adjusting.value
+  if (!a || a.busy || !a.amountCents || !a.reason.trim()) return
   a.busy = true
   a.error = null
   try {
-    const cents = dollarsToCents(a.amount) ?? 0
     await apiFetch(`/api/admin/house-accounts/${id}`, {
-      method: 'POST', body: { action: 'adjust', amountCents: a.kind === 'credit' ? -cents : cents, reason: a.reason },
+      method: 'POST', body: { action: 'adjust', amountCents: a.kind === 'credit' ? -a.amountCents : a.amountCents, reason: a.reason },
     })
-    adjusting.value = null
+    adjustOpen.value = false
+    snackbar.show(a.kind === 'credit' ? `Credited ${money(a.amountCents)}` : `Charged ${money(a.amountCents)}`)
     await load()
   } catch (e) {
     a.error = e.message
@@ -369,15 +449,3 @@ function formatWhen(ts) {
 
 onMounted(load)
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.stat-label     { @apply text-gray-400 text-xs font-body uppercase tracking-wider mb-1; }
-.td             { @apply px-5 py-2.5; }
-.btn-pine       { @apply bg-pine text-parch rounded-lg font-body font-semibold hover:bg-pine/90 transition-colors disabled:opacity-50; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40; }
-@media print { .modal-overlay { display: none !important; } }
-</style>
