@@ -118,11 +118,13 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { addDays, localDate } from '@/lib/timeclock'
 
 const authStore = useAuthStore()
 
-const today   = new Date().toISOString().split('T')[0]
-const twoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+// Course-local dates (toISOString() is UTC, which is already tomorrow after 7 pm Central)
+const today   = localDate()
+const twoWeeks = addDays(today, 14)
 
 const start   = ref(today)
 const end     = ref(twoWeeks)
