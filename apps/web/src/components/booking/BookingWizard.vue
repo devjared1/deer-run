@@ -1,5 +1,5 @@
 <template>
-  <div class="w-2/3 mx-auto">
+  <div class="w-full mx-auto">
     <!-- Step indicator -->
     <div class="card rounded-lg p-5 mb-3">
       <div class="flex items-center gap-2">

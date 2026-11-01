@@ -12,8 +12,8 @@
       :classes="['flex', 'items-center']"
     />
 
-    <section class="py-2">
-      <div class="max-w-3xl mx-auto px-2">
+    <section class="py-6 md:py-10">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6">
         <BookingWizard />
       </div>
     </section>
