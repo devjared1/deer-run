@@ -18,15 +18,15 @@
 </template>
 
 <script setup>
-// MD3 icon button: 48×48 touch target (40 visible on md), required aria-label. variant: standard | filled |
-// tonal | outlined. `toggle` + `selected` for on/off buttons. `tooltip` shows the label on hover.
+// MD3 icon button: 48×48 touch target, required aria-label. variant: standard | filled | tonal | outlined |
+// inherit (current text color, for dark surfaces). `toggle` + `selected` for on/off buttons. `tooltip` shows the label on hover.
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 
 const props = defineProps({
   icon:     { type: [Object, Function], required: true },
   label:    { type: String, required: true },
-  variant:  { type: String, default: 'standard', validator: v => ['standard', 'filled', 'tonal', 'outlined'].includes(v) },
+  variant:  { type: String, default: 'standard', validator: v => ['standard', 'filled', 'tonal', 'outlined', 'inherit'].includes(v) },
   size:     { type: String, default: 'md', validator: v => ['sm', 'md', 'lg'].includes(v) },
   type:     { type: String, default: 'button' },
   to:       { type: [String, Object], default: null },
@@ -46,6 +46,8 @@ const variantClass = computed(() => {
     case 'filled': return on || !props.toggle ? 'bg-primary text-on-primary' : 'bg-surface-container-highest text-primary'
     case 'tonal': return on ? 'bg-secondary-container text-on-secondary-container' : 'bg-surface-container-highest text-on-surface-variant'
     case 'outlined': return on ? 'bg-inverse-surface text-inverse-on-surface' : 'border border-outline text-on-surface-variant'
+    // Takes the surrounding text color: for dark surfaces (pine app bars, heroes)
+    case 'inherit': return 'text-current'
     default: return on ? 'text-primary' : 'text-on-surface-variant'
   }
 })

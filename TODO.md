@@ -541,28 +541,32 @@ dialogs. Receipts and slips aren't redesigned.
       replaced by the live rates. Still open: hours (footer vs Contact), member events by tier, hole names
 
 ### Phase 1: Design system foundation
-- [ ] Logo assets: ask the course for the original vector file. Meanwhile, export the emblem from
+- [x] Logo assets: ask the course for the original vector file. Meanwhile, export the emblem from
       `deerrunlogo.svg` (534 KB raster in an SVG wrapper) as optimized WebP + PNG at 1x/2x/3x (<30 KB each), plus a
       square **mark** (stag + sun, no text). Generate `favicon.svg`, `favicon.ico`, `apple-touch-icon.png`, 192/512
       manifest icons, `site.webmanifest`, `theme-color`
-- [ ] `BrandLogo.vue` (`variant="emblem|mark"`, `size`); delete `DeerLogo.vue` once unused
-- [ ] Tokens: MD3 color roles from seed pine as CSS variables mapped into `tailwind.config.js` (primary/secondary/
+      (done from the embedded raster: emblem 48–480 px tall, 2–47 KB; masters in `docs/brand`. Still to do: **ask the
+      course for the vector logo** and regenerate from it; the mark is a round crop of the emblem art)
+- [x] `BrandLogo.vue` (`variant="emblem|mark"`, `size`); delete `DeerLogo.vue` once unused
+- [x] Tokens: MD3 color roles from seed pine as CSS variables mapped into `tailwind.config.js` (primary/secondary/
       tertiary/error/success/warning, surface + surface-container levels, outline, on-* colors; brand gold/clay/lake as
       extended colors; rename `amber` → `gold`); AA-passing solid text tiers instead of alpha text
-- [ ] MD3 type scale (display/headline/title/body/label × L/M/S) as `fontSize` tokens; self-host Playfair Display + Lato
+- [x] MD3 type scale (display/headline/title/body/label × L/M/S) as `fontSize` tokens; self-host Playfair Display + Lato
       with `@fontsource` (woff2, swap, preload); drop Libre Baskerville and Lato 300
-- [ ] Shape, elevation (levels 0–5), state-layer, motion (easing/duration) tokens; global `:focus-visible` ring;
+- [x] Shape, elevation (levels 0–5), state-layer, motion (easing/duration) tokens; global `:focus-visible` ring;
       `prefers-reduced-motion` for all animations
-- [ ] Icons: `unplugin-icons` + `@iconify-json/material-symbols` (Rounded) in `vite.config.js`; size convention;
+- [x] Icons: `unplugin-icons` + `@iconify-json/material-symbols` (Rounded) in `vite.config.js`; size convention;
       custom golf-cart and bunker SVGs in the same style
-- [ ] Core components in `src/components/ui/` (brief §7): `AppButton`, `IconButton`, `AppDialog` (focus trap, Esc,
+- [x] Core components in `src/components/ui/` (brief §7): `AppButton`, `IconButton`, `AppDialog` (focus trap, Esc,
       scroll lock, aria, full-screen on phones, `persistent`), `ConfirmDialog` + `useConfirm()`, `BottomSheet`,
       `AppSnackbar` + `useSnackbar()`, `TextField`/`SelectField`/`TextArea`, `MoneyField`, `Checkbox`/`Switch`/
       `RadioGroup`, `SegmentedButton`, `ChipGroup`/`FilterChip`, `Tabs`, `Card`, `StatCard`, `StatusChip` (one status map),
       `EmptyState`, `Skeleton`, `ProgressIndicator`, `ErrorBanner` (Retry), `PageHeader`, `RowActionsMenu`, `Pagination`,
       `DataTable` (cards below md), `DateStepper`, `DateRangeField`, `NumericKeypad`, `ResultDialog`, `CustomerSearch`
-- [ ] Dev-only component gallery at `/dev/ui` showing every component in every state
-- [ ] Update `CLAUDE.md` → Design System with the tokens, components and icon conventions
+- [x] Dev-only component gallery at `/dev/ui` showing every component in every state (also in a build with
+      `VITE_UI_GALLERY=true`). Not yet reviewed in a browser: check it at 360–1920px with the keyboard before Phase 2
+      pages depend on the components
+- [x] Update `CLAUDE.md` → Design System with the tokens, components and icon conventions
 
 ### Phase 2: App shells and navigation
 - [ ] Public `AppNav`: `<header>`, skip link, logo at every size (40–48px), desktop links + Sign in/Account + gold Book
