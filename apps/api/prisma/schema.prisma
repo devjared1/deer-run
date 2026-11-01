@@ -68,6 +68,7 @@ model Booking {
   ownCart         Boolean          @default(false) // some or all of the group brought their own cart or are walking
   startHole       Int              @default(1) // 1 or 10
   roundHoles      Int              @default(18) // 9 or 18
+  cartIncluded    Boolean          @default(false) // an online booking that paid the cart fee for every player
   teedOffAt       DateTime?
   positionHole    Int?
   positionStage   HoleStage?
@@ -115,7 +116,9 @@ model CourseSettings {
   id                  String @id @default("singleton")
   publicBookingDays   Int    @default(7)
   memberBookingDays   Int    @default(14)
-  pricePerPlayerCents Int    @default(4500)
+  pricePerPlayerCents Int    @default(4500) // unused since migration 11: rates live on the products tagged with Product.rateKey
+  // Dates ("YYYY-MM-DD") that get the weekend/holiday rates besides Saturdays and Sundays
+  holidayDates        String[] @default([])
   firstTeeTime        String @default("07:30")
   lastTeeTime         String @default("17:00")
   intervalMinutes     Int    @default(10)
@@ -340,6 +343,9 @@ model Product {
   // Selling a product with membershipMonths makes the attached customer a member for that long
   membershipMonths Int?
   membershipTier   String?
+  // Greens fee / cart rate this product is (WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART; src/lib/rates.js).
+  // Online booking charges these prices too; Admin → Settings → Rates edits them.
+  rateKey          String?          @unique
   variants         ProductVariant[]
   createdAt        DateTime         @default(now())
 

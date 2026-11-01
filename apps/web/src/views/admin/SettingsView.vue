@@ -4,16 +4,59 @@
     <div v-else-if="error" class="text-red-500 text-sm">{{ error }}</div>
 
     <form v-else @submit.prevent="save" class="bg-white rounded-xl border border-gray-200 p-6 space-y-5">
-      <div>
-        <label class="label-sm">Price Per Player (cents)</label>
-        <div class="flex items-center gap-3">
-          <input type="number" v-model.number="form.pricePerPlayerCents" min="100" step="100" class="input-field w-40" />
-          <span class="text-gray-400 text-sm font-body">=  ${{ (form.pricePerPlayerCents / 100).toFixed(2) }}</span>
+      <div v-if="hasRates">
+        <h2 class="font-display font-bold text-bark text-sm mb-1">Rates</h2>
+        <p class="text-gray-500 text-xs mb-3 font-body">
+          Per player. Online booking and the register (the Greens Fees / Cart Fees products) both charge these.
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div v-for="key in RATE_KEYS" :key="key">
+            <label :for="`rate-${key}`" class="label-sm">{{ RATE_LABELS[key] }}</label>
+            <div class="flex items-center gap-1">
+              <span class="text-gray-500 text-sm font-body">$</span>
+              <input
+                :id="`rate-${key}`"
+                v-model="rateDollars[key]"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                max="1000"
+                step="0.01"
+                required
+                class="input-field w-32"
+              />
+            </div>
+          </div>
         </div>
-        <p class="text-gray-400 text-xs mt-1 font-body">Stored and charged in cents. e.g. 4500 = $45.00</p>
+
+        <div class="mt-4">
+          <label for="holiday-date" class="label-sm">Holidays (weekend rates)</label>
+          <div class="flex flex-wrap gap-2 mb-2">
+            <span
+              v-for="d in holidayDates"
+              :key="d"
+              class="inline-flex items-center gap-1 rounded-full bg-gray-100 text-bark text-xs font-body pl-3 pr-1 py-1"
+            >
+              {{ formatLocalDate(d, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }) }}
+              <button
+                type="button"
+                class="w-6 h-6 rounded-full hover:bg-gray-200"
+                :aria-label="`Remove ${d}`"
+                @click="holidayDates = holidayDates.filter(x => x !== d)"
+              >×</button>
+            </span>
+            <span v-if="!holidayDates.length" class="text-gray-500 text-xs font-body">None. Saturdays and Sundays always get weekend rates.</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="holiday-date" v-model="newHoliday" type="date" class="input-field w-44" />
+            <button type="button" class="btn-outline-pine px-3 py-1.5 text-xs" :disabled="!isValidYmd(newHoliday)" @click="addHoliday">
+              Add holiday
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
+      <div :class="['grid grid-cols-2 gap-4', hasRates ? 'border-t border-gray-100 pt-5' : '']">
         <div>
           <label class="label-sm">Public Booking Window (days)</label>
           <input type="number" v-model.number="form.publicBookingDays" min="1" max="90" class="input-field w-full" />
@@ -238,6 +281,7 @@ import { employeePositions } from '@/data/employeePositions'
 import { DEFAULT_ROUND_MINUTES, LEARN_DAYS, formatMinutes, perHoleMinutes } from '@/lib/pace'
 import { holes } from '@/data/holes'
 import { apiFetch } from '@/lib/api'
+import { DEFAULT_RATES, RATE_KEYS, RATE_LABELS } from '@/lib/rates'
 
 const positionGroups = [
   { field: 'registerPositions', label: 'Can Use the Register', help: 'Employees in these positions can ring sales.' },
@@ -251,8 +295,20 @@ const saving    = ref(false)
 const saved     = ref(false)
 const saveError = ref(null)
 
+// Rates (edited in dollars, saved in cents onto the rate products) and holiday dates: only shown (and saved) once
+// the API returns rates, i.e. the database has migration 11
+const hasRates     = ref(false)
+const rateDollars  = ref(Object.fromEntries(RATE_KEYS.map(k => [k, (DEFAULT_RATES[k] / 100).toFixed(2)])))
+const holidayDates = ref([])
+const newHoliday   = ref('')
+
+function addHoliday() {
+  if (!isValidYmd(newHoliday.value)) return
+  holidayDates.value = [...new Set([...holidayDates.value, newHoliday.value])].sort()
+  newHoliday.value = ''
+}
+
 const form = ref({
-  pricePerPlayerCents: 4500,
   publicBookingDays: 7,
   memberBookingDays: 14,
   firstTeeTime: '07:30',
@@ -320,8 +376,12 @@ async function load() {
     })
     if (!res.ok) throw new Error((await res.json()).error || res.statusText)
     const data = await res.json()
+    hasRates.value = data.rates !== undefined
+    if (hasRates.value) {
+      rateDollars.value = Object.fromEntries(RATE_KEYS.map(k => [k, ((data.rates[k] ?? DEFAULT_RATES[k]) / 100).toFixed(2)]))
+      holidayDates.value = [...(data.holidayDates ?? [])].sort()
+    }
     form.value = {
-      pricePerPlayerCents: data.pricePerPlayerCents,
       publicBookingDays:   data.publicBookingDays,
       memberBookingDays:   data.memberBookingDays,
       firstTeeTime:        data.firstTeeTime,
@@ -357,6 +417,12 @@ function settingsPayload() {
     salesTaxBps: Math.round(Number(salesTaxPercent || 0) * 100),
     ...(hasLateFee.value ? { lateFeeCents: Math.round(Number(lateFeeDollars || 0) * 100) } : {}),
     ...(hasTipping.value ? tippingPayload() : {}),
+    ...(hasRates.value
+      ? {
+          rates: Object.fromEntries(RATE_KEYS.map(k => [k, Math.round(Number(rateDollars.value[k] || 0) * 100)])),
+          holidayDates: holidayDates.value,
+        }
+      : {}),
     ...(hasCourse.value
       ? { roundMinutes: course.value.hours * 60 + course.value.minutes, coursePositions: course.value.positions }
       : {}),

@@ -77,6 +77,9 @@
             <span v-if="b.customer?.isMember" class="badge bg-lake/15 text-lake">Member</span>
             <span :class="['badge', statusBadge(b).class]">{{ statusBadge(b).label }}</span>
             <span v-if="b.checkedInAt" class="badge bg-pine text-parch">✓ Checked in {{ formatClockTime(b.checkedInAt) }}</span>
+            <span v-else-if="b.source === 'ONLINE' && b.status === 'CONFIRMED'" class="badge bg-gray-100 text-gray-700">
+              Paid online: {{ b.roundHoles }} holes, {{ b.cartIncluded ? 'cart paid' : 'walking' }}
+            </span>
             <template v-if="b.checkedInAt && b.status === 'CONFIRMED'">
               <span v-if="cartsLabel(b)" class="badge bg-gray-100 text-gray-600">🛺 {{ cartsLabel(b) }}</span>
               <span v-if="b.startHole === 10 || b.roundHoles === 9" class="badge bg-gray-100 text-gray-600">

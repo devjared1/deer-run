@@ -1,50 +1,17 @@
-export const rateCards = [
-  {
-    title: 'Weekday 18',
-    subtitle: 'Mon – Fri, before 2 PM',
-    price: 45,
-    featured: true,
-    includes: [
-      '18 holes',
-      'Gas cart included',
-      'Range balls at checkout',
-      'Beverage cart service',
-    ],
-  },
-  {
-    title: 'Weekend 18',
-    subtitle: 'Sat – Sun & Holidays',
-    price: 50,
-    featured: false,
-    includes: [
-      '18 holes',
-      'Gas cart included',
-      'Range balls at checkout',
-      'Beverage cart service',
-    ],
-  },
-  {
-    title: 'Twilight',
-    subtitle: 'After 2 PM daily',
-    price: 30,
-    featured: false,
-    includes: [
-      'Holes until dark',
-      'Gas cart included',
-      'No tee time required after 4 PM',
-      'Great value for late rounds',
-    ],
-  },
+// Greens fee and cart prices aren't here: they come from GET /api/rates (the rate products, edited in
+// Admin → Settings → Rates). See src/lib/rates.js.
+
+export const rateIncludes = [
+  'Weekday rates Monday – Friday',
+  'Weekend rates Saturday, Sunday and holidays',
+  'Cart fee per rider; walking is welcome',
+  'Range balls at checkout',
 ]
 
 export const additionalFees = [
-  { item: 'Driving Range',  price: '$5',  note: 'Bucket of balls included with 18-hole round' },
-  { item: 'Walking Rate',   price: '$30', note: 'Weekday only — cart path available' },
-  { item: '9-Hole Rate',    price: '$25', note: 'Cart included · Available after 4 PM' },
-  { item: 'Club Rentals',   price: '$20', note: 'Full set available at Pro Shop' },
+  { item: 'Driving Range',  price: '$5',  note: 'Bucket of balls' },
+  { item: 'Club Rentals',   price: '$20', note: 'Full set available at the Pro Shop' },
   { item: 'Pull Cart',      price: '$5',  note: 'Per round' },
-  { item: 'Junior Rate',    price: '$20', note: 'Under 18 · Weekday only' },
-  { item: 'Senior Rate',    price: '$40', note: 'Ages 65+ · Weekday only' },
 ]
 
 export const policies = [

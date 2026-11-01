@@ -1,8 +1,9 @@
--- POS starter catalog, for the Supabase SQL Editor (run after migrations/3_pos_catalog).
+-- POS starter catalog, for the Supabase SQL Editor (run after the migrations, including sql/11_rates).
 -- Safe to re-run: categories and the register are only added if missing, and products are only
--- added when the Product table is empty.
+-- added when there are none besides the rate products.
 --
--- Greens fees, range, rentals and membership prices come from apps/web/src/data/rates.js and
+-- The greens fee and cart rate products (Product.rateKey) are created by sql/11_rates.sql and priced in
+-- Admin → Settings → Rates. Range, rentals and membership prices come from apps/web/src/data/rates.js and
 -- membershipTiers.js. Concessions, apparel and golf supply prices are PLACEHOLDERS to review
 -- in Admin → Products before go-live. Members get $0 greens fees and range balls (unlimited
 -- rounds and free range balls are membership benefits).
@@ -63,19 +64,12 @@ $$;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM "Product") THEN
+  IF EXISTS (SELECT 1 FROM "Product" WHERE "rateKey" IS NULL) THEN
     RAISE NOTICE 'Products already exist; skipping product seed';
     RETURN;
   END IF;
 
-  -- Greens fees (rates.js)                                   price  member track sort
-  PERFORM pg_temp.seed_product('Greens Fees', 'Weekday 18 Holes', 4500, 0, false, 10, 'Mon–Fri before 2 PM. Cart included.');
-  PERFORM pg_temp.seed_product('Greens Fees', 'Weekend 18 Holes', 5000, 0, false, 20, 'Sat–Sun and holidays. Cart included.');
-  PERFORM pg_temp.seed_product('Greens Fees', 'Twilight',         3000, 0, false, 30, 'After 2 PM daily. Cart included.');
-  PERFORM pg_temp.seed_product('Greens Fees', '9 Holes',          2500, 0, false, 40, 'After 4 PM. Cart included.');
-  PERFORM pg_temp.seed_product('Greens Fees', 'Walking Rate',     3000, 0, false, 50, 'Weekday only.');
-  PERFORM pg_temp.seed_product('Greens Fees', 'Junior Rate',      2000, 0, false, 60, 'Under 18, weekday only.');
-  PERFORM pg_temp.seed_product('Greens Fees', 'Senior Rate',      4000, 0, false, 70, 'Ages 65+, weekday only.');
+  -- Greens fees and the cart fee: the rate products from sql/11_rates.sql (weekday/weekend × 9/18, cart)
 
   -- Range and rentals (rates.js)
   PERFORM pg_temp.seed_product('Driving Range', 'Range Bucket', 500, 0,    false, 10);
