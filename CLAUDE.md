@@ -442,7 +442,20 @@ signed out. Failing a guard redirects to `/login?redirect=<path>` (not signed in
 (no register access). All routes are lazy-loaded via `() => import('@/views/...')`.
 
 When adding a page to a portal, also add it to the layout's `navItems` and `titles` (`AdminLayout.vue` /
-`StaffLayout.vue`).
+`StaffLayout.vue`), and give the route a `meta.title`.
+
+Every route has `meta.title` (public ones also `meta.description`): `App.vue` sets `<title>` ("<title> · Deer Run
+Golf Course"), the description and `robots` with `@unhead/vue` (`meta.noindex` and the portals are noindex). Other
+route meta: `breadcrumbs` (admin top bar, `[{ label, to }]`), `registerMode` (`/staff/register`: full-bleed, collapsed
+rail), `bare` (no public nav/footer, e.g. `/dev/ui`). Unknown URLs go to `NotFoundView` (catch-all route, last).
+`scrollBehavior` restores the saved position on back/forward and scrolls to `#hash` targets.
+
+Shells: the public site has `AppNav` (skip link, full-screen menu drawer on phones, a sticky "Book a tee time" bar
+below md that sets `--bottom-bar-height` / `--snackbar-offset`) and `AppFooter`; course facts (address, phone, hours,
+map links, social) live in `src/data/site.js`. The admin shell is a top app bar + modal drawer (phones) / rail (md) /
+drawer (lg); pages put their primary action in the bar with `<Teleport to="#admin-page-actions" defer>`. The staff
+shell is a bottom nav bar by role (phones) / rail (md) / drawer (lg) with a clock-status chip and **Switch cashier**
+(signs out to `/login?redirect=<page>`). Both portals have gallery previews at `/dev/ui`.
 
 ---
 
