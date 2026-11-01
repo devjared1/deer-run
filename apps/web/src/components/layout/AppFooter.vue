@@ -5,7 +5,7 @@
         <!-- Brand -->
         <div class="md:col-span-2">
           <RouterLink to="/" class="flex items-center gap-3 mb-4">
-            <DeerLogo :size="36" variant="dark" />
+            <BrandLogo :size="64" alt="" />
             <div>
               <div class="logo-text" style="font-size:18px;">Deer Run Golf Course</div>
               <div class="logo-sub">Est. 1980 · Earl Stone Design</div>
@@ -55,7 +55,7 @@
 </template>
 
 <script setup>
-import DeerLogo from '@/components/ui/DeerLogo.vue'
+import BrandLogo from '@/components/ui/BrandLogo.vue'
 
 const pages = [
   { to: '/',            label: 'Home' },

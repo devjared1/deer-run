@@ -40,7 +40,7 @@
         </div>
 
         <div v-else-if="state === 'confirmed'">
-          <div class="text-5xl mb-5">⛳</div>
+          <BrandLogo :size="120" eager alt="" class="mx-auto mb-5" />
           <SectionLabel text="Booking Confirmed" dark center class="mb-5" />
           <h1 style="font-family:'Playfair Display',serif;font-size:clamp(30px,5vw,52px);font-weight:900;color:#F2EBD9;margin-bottom:14px;">
             You're on the <em>Course!</em>
@@ -96,6 +96,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute }        from 'vue-router'
 import { useBookingStore } from '@/stores/booking'
 import SectionLabel        from '@/components/ui/SectionLabel.vue'
+import BrandLogo           from '@/components/ui/BrandLogo.vue'
 
 const route        = useRoute()
 const bookingStore = useBookingStore()

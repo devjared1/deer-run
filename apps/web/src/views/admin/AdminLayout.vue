@@ -6,7 +6,7 @@
         sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0']"
     >
       <div class="h-16 flex items-center gap-3 px-5 border-b border-white/10 flex-shrink-0">
-        <DeerLogo :size="28" />
+        <BrandLogo variant="mark" :size="36" eager alt="" />
         <div>
           <div class="font-display text-sm font-bold leading-tight">Deer Run</div>
           <div class="text-parch/50 text-xs">Admin</div>
@@ -86,7 +86,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePendingTimeOff } from '@/composables/usePendingTimeOff'
-import DeerLogo from '@/components/ui/DeerLogo.vue'
+import BrandLogo from '@/components/ui/BrandLogo.vue'
 
 const route     = useRoute()
 const router    = useRouter()

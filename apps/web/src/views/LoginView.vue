@@ -3,6 +3,8 @@
     <PageHero
       label="Member Access"
       title-html="Sign <em>In</em>"
+      logo
+      :logo-size="96"
     />
 
     <section class="topo py-12">

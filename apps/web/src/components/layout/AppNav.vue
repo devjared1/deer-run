@@ -9,13 +9,7 @@
         to="/"
         class="flex items-center gap-3 cursor-pointer flex-shrink-0"
       >
-        <img
-          src="/images/deerrunlogo.svg"
-          alt="Deer Run Golf Course — home"
-          class="h-11 sm:h-12 w-auto"
-          width="69"
-          height="48"
-        >
+        <BrandLogo :size="48" eager alt="Deer Run Golf Course — home" />
       </RouterLink>
 
       <!-- Desktop nav -->
@@ -158,6 +152,7 @@
 </template>
 
 <script setup>
+import BrandLogo from '@/components/ui/BrandLogo.vue'
 import { useAuthStore } from '@/stores/auth'
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'

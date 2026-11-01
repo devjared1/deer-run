@@ -2,12 +2,15 @@
   <!-- Letter-size house account statement (screen and print) -->
   <article class="statement bg-white rounded-xl border border-gray-200 p-8 font-body text-bark print:border-0 print:rounded-none print:p-0">
     <header class="flex justify-between gap-6 border-b border-gray-200 pb-4 mb-4">
-      <div>
-        <div class="font-display font-bold text-xl">
-          Deer Run Golf Course
-        </div>
-        <div class="text-sm text-gray-500">
-          1175 County Road 100 · Moulton, AL 35650 · (256) 974-7384
+      <div class="flex items-center gap-4">
+        <BrandLogo :size="56" eager alt="" />
+        <div>
+          <div class="font-display font-bold text-xl">
+            Deer Run Golf Course
+          </div>
+          <div class="text-sm text-gray-500">
+            1175 County Road 100 · Moulton, AL 35650 · (256) 974-7384
+          </div>
         </div>
       </div>
       <div class="text-right">
@@ -104,6 +107,7 @@
 </template>
 
 <script setup>
+import BrandLogo from '@/components/ui/BrandLogo.vue'
 import { formatLocalDate, COURSE_TZ } from '@/lib/timeclock'
 
 defineProps({
