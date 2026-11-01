@@ -574,6 +574,14 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
   (not on products with a member price); manager discounts still need approval. **Tips** (setting, off by default) are
   asked for on the reader, stored on the card payment (`Payment.tipCents`) and kept out of sales and tax; POS refunds
   never return them. **Paid-ins, paid-outs and safe drops** need a manager and print a slip.
+  **Register UI**: `RegisterView` owns the sale state; its pieces are in `components/pos/register/` (products with the
+  scan field, cart, drawer/discount/custom-item dialogs, one result dialog, `useScanner.js`: a document-level scanner
+  buffer, `registerSounds.js`). The POS dialogs (`TenderModal` with `drawerOpen`/`readerOnline`/`initialMethod`,
+  `CardPaymentModal` emitting `pay-cash`, approval/refund/cash movement/account payment) use `NumericKeypad` for PINs,
+  cash and counts. **Tee Sheet** cards (`components/teesheet/`) check in with "No add-ons, done" (no sale) or
+  "Add items at the register". **On Course** uses group cards and a bottom-sheet position update
+  (`components/oncourse/`). Tee Sheet and On Course have a **High contrast** switch (`composables/useHighContrast.js`,
+  `data-contrast="high"`). Gallery previews with mocked APIs for every staff page are at `/dev/ui`.
   **On-course tracking**: check-in records cart numbers, own cart, start hole and 9/18; the starter and marshals record
   tee-offs, positions (hole + tee/fairway/green; every report kept in `PositionReport`) and finishes on `/staff/oncourse`,
   and `src/lib/pace.js` estimates where every group is and whether it's ahead of or behind its tee time, using per-hole

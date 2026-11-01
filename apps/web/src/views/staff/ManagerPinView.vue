@@ -1,97 +1,174 @@
 <template>
-  <div class="max-w-md">
-    <div v-if="loading" class="text-gray-400 text-sm">Loading…</div>
-    <div v-else-if="loadError" class="text-red-500 text-sm">{{ loadError }}</div>
+  <div class="max-w-md space-y-4">
+    <Skeleton
+      v-if="loading"
+      variant="card"
+      label="Loading"
+    />
+    <ErrorBanner
+      v-else-if="loadError"
+      :message="loadError"
+      @retry="init"
+    />
 
-    <div v-else class="bg-white rounded-xl border border-gray-200 p-6">
-      <p class="text-gray-500 text-sm font-body mb-4">
+    <Card
+      v-else
+      padding="lg"
+    >
+      <p class="text-body-m text-on-surface-variant">
         Your manager PIN approves discounts, No Sale, voids and refunds when someone else is signed in at the
         register. Keep it private. If you forget it, an admin can reset it on the Employees page.
       </p>
-      <p v-if="lockedUntil" class="text-clay text-sm font-body mb-4">
-        Your PIN is locked after too many wrong tries until {{ formatClockTime(lockedUntil) }}.
-      </p>
+      <ErrorBanner
+        v-if="lockedUntil"
+        class="mt-4"
+        tone="warning"
+        :icon="IconLock"
+        :message="`Your PIN is locked after too many wrong tries until ${formatClockTime(lockedUntil)}.`"
+      />
+      <ErrorBanner
+        v-if="error"
+        class="mt-4"
+        :message="error"
+        @dismiss="error = null"
+      />
 
-      <div class="space-y-3">
-        <div v-if="hasPin">
-          <label class="label-sm">Current PIN</label>
-          <input v-model="currentPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input-field w-full" />
-        </div>
-        <div>
-          <label class="label-sm">{{ hasPin ? 'New PIN' : 'PIN' }} (4–6 digits)</label>
-          <input v-model="newPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input-field w-full" />
-        </div>
-        <div>
-          <label class="label-sm">Confirm</label>
-          <input v-model="confirmPin" type="password" inputmode="numeric" maxlength="6" autocomplete="off" class="input-field w-full" @keyup.enter="save" />
-        </div>
+      <div class="mt-6 flex flex-col items-center">
+        <p
+          class="w-full max-w-[22rem] mb-2 text-label-l text-on-surface-variant"
+          aria-live="polite"
+        >
+          Step {{ stepIndex + 1 }} of {{ steps.length }}: {{ step.title }}
+        </p>
+        <NumericKeypad
+          :key="step.key"
+          v-model="pins[step.key]"
+          :label="step.label"
+          masked
+          autofocus
+          :max-length="6"
+          :hint="hint.text"
+          :error="hint.error"
+          :submit-label="isLast ? (hasPin ? 'Change PIN' : 'Set PIN') : 'Next'"
+          :loading="saving"
+          @submit="next"
+        />
+        <AppButton
+          v-if="stepIndex > 0"
+          variant="text"
+          :icon="IconBack"
+          class="mt-2"
+          :disabled="saving"
+          @click="back"
+        >
+          Back
+        </AppButton>
       </div>
-
-      <div class="flex items-center gap-4 mt-5">
-        <button :disabled="saving || !valid" class="btn-amber px-5 py-2 text-sm disabled:opacity-50" @click="save">
-          {{ saving ? 'Saving…' : hasPin ? 'Change PIN' : 'Set PIN' }}
-        </button>
-        <span v-if="saved" class="text-green-600 text-sm font-body">✓ Saved</span>
-      </div>
-      <p v-if="mismatch" class="text-clay text-xs mt-2 font-body">The PINs don't match.</p>
-      <p v-if="error" class="text-red-500 text-sm mt-2 font-body">{{ error }}</p>
-    </div>
+    </Card>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { apiFetch } from '@/lib/api'
 import { formatClockTime } from '@/lib/timeclock'
+import { useSnackbar } from '@/composables/useSnackbar'
+import AppButton from '@/components/ui/AppButton.vue'
+import Card from '@/components/ui/Card.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import NumericKeypad from '@/components/ui/NumericKeypad.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import IconBack from '~icons/material-symbols/arrow-back-rounded'
+import IconLock from '~icons/material-symbols/lock-rounded'
+
+const snackbar = useSnackbar()
 
 const loading     = ref(true)
 const loadError   = ref(null)
 const hasPin      = ref(false)
 const lockedUntil = ref(null)
-const currentPin  = ref('')
-const newPin      = ref('')
-const confirmPin  = ref('')
 const saving      = ref(false)
-const saved       = ref(false)
 const error       = ref(null)
+const pins        = reactive({ current: '', new: '', confirm: '' })
+const stepIndex   = ref(0)
+// A message for the step being shown (e.g. "The PINs don't match")
+const stepError   = ref('')
 
-const mismatch = computed(() => confirmPin.value.length >= 4 && newPin.value !== confirmPin.value)
-const valid = computed(() => /^\d{4,6}$/.test(newPin.value) && newPin.value === confirmPin.value &&
-  (!hasPin.value || /^\d{4,6}$/.test(currentPin.value)))
+const PIN = /^\d{4,6}$/
+
+const steps = computed(() => [
+  ...(hasPin.value ? [{ key: 'current', title: 'Current PIN', label: 'Current PIN', help: 'Enter the PIN you use now' }] : []),
+  { key: 'new', title: hasPin.value ? 'New PIN' : 'Choose a PIN', label: hasPin.value ? 'New PIN' : 'PIN', help: '4 to 6 digits' },
+  { key: 'confirm', title: 'Confirm', label: 'Enter it again', help: 'The same digits once more' },
+])
+const step   = computed(() => steps.value[stepIndex.value])
+const isLast = computed(() => stepIndex.value === steps.value.length - 1)
+const hint   = computed(() => (stepError.value ? { text: stepError.value, error: true } : { text: step.value.help, error: false }))
+
+function reset() {
+  pins.current = pins.new = pins.confirm = ''
+  stepIndex.value = 0
+  stepError.value = ''
+}
+
+function back() {
+  stepError.value = ''
+  pins[step.value.key] = ''
+  stepIndex.value = Math.max(0, stepIndex.value - 1)
+}
+
+async function next() {
+  const value = pins[step.value.key]
+  if (!PIN.test(value)) {
+    stepError.value = 'Use 4 to 6 digits'
+    return
+  }
+  stepError.value = ''
+  if (step.value.key === 'confirm' && pins.confirm !== pins.new) {
+    pins.new = pins.confirm = ''
+    stepIndex.value = steps.value.findIndex(s => s.key === 'new')
+    stepError.value = "The PINs don't match. Enter the new PIN again."
+    return
+  }
+  if (!isLast.value) {
+    stepIndex.value++
+    return
+  }
+  await save()
+}
 
 async function save() {
-  if (!valid.value) return
   saving.value = true
-  saved.value  = false
   error.value  = null
   try {
-    await apiFetch('/api/staff/pin', { method: 'PUT', body: { currentPin: currentPin.value, newPin: newPin.value } })
+    await apiFetch('/api/staff/pin', { method: 'PUT', body: { currentPin: pins.current, newPin: pins.new } })
+    const changed = hasPin.value
     hasPin.value = true
     lockedUntil.value = null
-    currentPin.value = newPin.value = confirmPin.value = ''
-    saved.value = true
-    setTimeout(() => { saved.value = false }, 3000)
+    reset()
+    snackbar.show(changed ? 'PIN changed' : 'PIN set')
   } catch (e) {
     error.value = e.message
+    reset()
   } finally {
     saving.value = false
   }
 }
 
-onMounted(async () => {
+async function init() {
+  loading.value   = true
+  loadError.value = null
   try {
     const data = await apiFetch('/api/staff/pin')
     hasPin.value = data.hasPin
     lockedUntil.value = data.lockedUntil
+    reset()
   } catch (e) {
     loadError.value = e.message
   } finally {
     loading.value = false
   }
-})
-</script>
+}
 
-<style scoped>
-.input-field { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark tracking-[0.3em] focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm    { @apply block text-xs text-gray-500 mb-1 font-body; }
-</style>
+onMounted(init)
+</script>

@@ -1,90 +1,70 @@
 <template>
-  <div class="modal-overlay" @click.self="!busy && $emit('close')">
-    <div class="modal-box max-w-md">
-      <h2 class="font-display font-bold text-bark mb-4">
-        House account payment
-      </h2>
-
+  <AppDialog :open="true" title="House account payment" size="md" persistent>
+    <div class="font-body text-on-surface space-y-4">
       <!-- Who's paying -->
-      <template v-if="!member">
-        <label class="label-sm">Member</label>
-        <input v-model="search" type="text" class="input-field w-full" placeholder="Search name or email" @input="find">
-        <ul v-if="results.length" class="border border-gray-200 rounded-lg mt-1 divide-y divide-gray-100 max-h-56 overflow-y-auto">
-          <li v-for="u in results" :key="u.id">
-            <button
-              class="w-full text-left px-3 py-2 text-sm font-body hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-transparent"
-              :disabled="!u.houseAccount || u.houseAccount.status === 'CLOSED'"
-              @click="choose(u)"
-            >
-              {{ u.name || u.email }}
-              <span class="text-xs text-gray-400">
-                {{ u.houseAccount ? `owes ${formatCents(u.houseAccount.balanceCents)}` : 'no house account' }}
-              </span>
-            </button>
-          </li>
-        </ul>
-      </template>
+      <!-- inline: the results list sits in the dialog body rather than floating, so the dialog's scroll can't clip it -->
+      <div v-if="!member">
+        <p class="text-body-m text-on-surface-variant mb-3">Find the member paying toward their house account.</p>
+        <CustomerSearch label="Member" placeholder="Search name or email" inline autofocus @select="choose" />
+        <ErrorBanner v-if="error" :message="error" class="mt-3" />
+      </div>
 
       <template v-else>
-        <div class="flex items-start justify-between gap-3 bg-gray-50 rounded-lg px-4 py-3 mb-4 font-body">
-          <div>
-            <div class="font-semibold text-bark">
-              {{ member.name || member.email }}
-            </div>
-            <div class="text-sm text-gray-500">
-              Balance {{ formatCents(member.houseAccount.balanceCents) }}
-            </div>
+        <div class="flex items-center justify-between gap-3 rounded-shape-md bg-surface-container-highest pl-4 pr-1 py-2">
+          <div class="min-w-0">
+            <div class="text-title-m truncate">{{ member.name || member.email }}</div>
+            <div class="text-body-m text-on-surface-variant">Balance {{ formatCents(member.houseAccount.balanceCents) }}</div>
           </div>
-          <button class="text-xs text-lake hover:text-pine" :disabled="busy" @click="member = null">
-            Change
-          </button>
+          <AppButton variant="text" :disabled="busy" @click="member = null">Change</AppButton>
         </div>
 
-        <label class="label-sm">Payment ($)</label>
-        <input v-model="amount" type="number" min="0.01" step="0.01" class="input-field w-full text-lg tabular-nums">
+        <MoneyField v-model="amountCents" label="Payment" :min="1" required />
 
-        <div class="grid grid-cols-2 gap-2 mt-4">
-          <button :class="['method-btn', method === 'CASH' ? 'border-pine bg-pine text-parch' : 'border-gray-300 text-bark hover:bg-gray-50']" @click="method = 'CASH'">
-            Cash
-          </button>
-          <button
-            :class="['method-btn', method === 'CARD' ? 'border-pine bg-pine text-parch' : cardBlocked ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-gray-300 text-bark hover:bg-gray-50']"
-            :disabled="!!cardBlocked"
-            :title="cardBlocked || ''"
-            @click="method = 'CARD'"
-          >
-            Card
-          </button>
+        <div>
+          <SegmentedButton v-model="method" :options="methodOptions" label="Paid with" size="lg" block />
+          <p v-if="cardBlocked" class="mt-1 text-body-s text-on-surface-variant">Card: {{ cardBlocked }}</p>
         </div>
 
         <template v-if="method === 'CASH'">
-          <label class="label-sm mt-3">Cash received ($)</label>
-          <input v-model="tendered" type="number" min="0" step="0.01" class="input-field w-full tabular-nums" :placeholder="amount">
-          <p v-if="changeCents > 0" class="text-pine text-sm font-body mt-1">
-            Change: <strong>{{ formatCents(changeCents) }}</strong>
+          <MoneyField v-model="tenderedInput" label="Cash received" helper="Leave empty for the exact amount" :min="0" />
+          <p v-if="changeCents > 0" class="text-headline-s text-primary text-center" aria-live="polite">
+            Change <strong class="tabular-nums">{{ formatCents(changeCents) }}</strong>
           </p>
+          <p v-else-if="shortCents > 0" class="text-title-m text-error text-center">{{ formatCents(shortCents) }} short</p>
         </template>
       </template>
 
-      <p v-if="error" class="text-red-500 text-sm font-body mt-3">
-        {{ error }}
-      </p>
-      <div class="flex justify-end gap-3 mt-5">
-        <button class="btn-outline-sm" :disabled="busy" @click="$emit('close')">
-          Cancel
-        </button>
-        <button class="btn-amber px-5 py-2 text-sm disabled:opacity-50" :disabled="!canSubmit || busy" @click="submit">
-          {{ busy ? 'Working…' : method === 'CARD' ? 'Charge Card' : 'Take Payment' }}
-        </button>
-      </div>
+      <ErrorBanner v-if="error && member" :message="error" />
     </div>
-  </div>
+
+    <template #actions>
+      <AppButton variant="outlined" size="xl" :disabled="busy" @click="$emit('close')">Cancel</AppButton>
+      <AppButton size="xl" :disabled="!canSubmit" :loading="busy" @click="submit">
+        {{ busy ? 'Working…' : method === 'CARD' ? 'Charge card' : 'Take payment' }}
+      </AppButton>
+    </template>
+  </AppDialog>
 </template>
 
 <script setup>
+// A member pays toward their house account at the register: pick the member (CustomerSearch over
+// /api/staff/register/customers), the amount (defaults to the balance) and Cash / Card.
+// POST /api/staff/account-payments → cash: done; card: the parent shows CardPaymentModal.
+//   <AccountPaymentModal :register-id="id" :customer="customer" :card-blocked="reason" @done="…" @card="…" @close="…" />
+// Props: registerId, customer (the sale's customer, if they have an account), cardBlocked (why cards aren't available).
+// Emits done({ accountPayment, changeCents, member }), card({ cardCheckout, member, amountCents }),
+// close() / close({ drawerClosed: true }) when cash was refused because the drawer is closed.
 import { ref, computed } from 'vue'
 import { apiFetch } from '@/lib/api'
-import { formatCents, dollarsToCents } from '@/lib/money'
+import { formatCents } from '@/lib/money'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import CustomerSearch from '@/components/ui/CustomerSearch.vue'
+import MoneyField from '@/components/ui/MoneyField.vue'
+import SegmentedButton from '@/components/ui/SegmentedButton.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import IconCash from '~icons/material-symbols/payments-rounded'
+import IconCard from '~icons/material-symbols/credit-card-rounded'
 
 const props = defineProps({
   registerId:  { type: String, required: true },
@@ -94,41 +74,37 @@ const props = defineProps({
 // done: { accountPayment, changeCents, member } (cash) · card: { cardCheckout, member, amountCents } (card on the reader)
 const emit = defineEmits(['done', 'card', 'close'])
 
-const member   = ref(props.customer?.houseAccount ? props.customer : null)
-const search   = ref('')
-const results  = ref([])
-const amount   = ref(member.value ? (Math.max(0, member.value.houseAccount.balanceCents) / 100).toFixed(2) : '')
-const method   = ref('CASH')
-const tendered = ref('')
-const busy     = ref(false)
-const error    = ref(null)
-let timer = null
+const balanceOf = m => Math.max(0, m.houseAccount.balanceCents)
 
-const amountCents   = computed(() => dollarsToCents(amount.value) || 0)
-const tenderedCents = computed(() => (tendered.value === '' ? amountCents.value : dollarsToCents(tendered.value) || 0))
-const changeCents   = computed(() => Math.max(0, tenderedCents.value - amountCents.value))
-const canSubmit = computed(() => member.value && amountCents.value > 0 &&
-  (method.value === 'CARD' ? amountCents.value >= 50 : tenderedCents.value >= amountCents.value))
+const member        = ref(props.customer?.houseAccount ? props.customer : null)
+const amountCents   = ref(member.value ? balanceOf(member.value) : null)
+const method        = ref('CASH')
+const tenderedInput = ref(null) // null = exact
+const busy          = ref(false)
+const error         = ref(null)
 
-function find() {
-  clearTimeout(timer)
-  const term = search.value.trim()
-  if (term.length < 2) { results.value = []; return }
-  timer = setTimeout(async () => {
-    try {
-      results.value = await apiFetch(`/api/staff/register/customers?${new URLSearchParams({ search: term })}`)
-    } catch (e) {
-      error.value = e.message
-    }
-  }, 250)
-}
+const methodOptions = computed(() => [
+  { value: 'CASH', label: 'Cash', icon: IconCash },
+  { value: 'CARD', label: 'Card', icon: IconCard, disabled: !!props.cardBlocked },
+])
+
+const amount        = computed(() => amountCents.value || 0)
+const tenderedCents = computed(() => (tenderedInput.value === null ? amount.value : tenderedInput.value))
+const changeCents   = computed(() => Math.max(0, tenderedCents.value - amount.value))
+const shortCents    = computed(() => Math.max(0, amount.value - tenderedCents.value))
+const canSubmit = computed(() => !busy.value && member.value && amount.value > 0 &&
+  (method.value === 'CARD' ? amount.value >= 50 && !props.cardBlocked : tenderedCents.value >= amount.value))
 
 function choose(u) {
+  error.value = null
+  if (!u.houseAccount) { error.value = `${u.name || u.email} has no house account.`; return }
+  if (u.houseAccount.status === 'CLOSED') { error.value = `${u.name || u.email}'s house account is closed.`; return }
   member.value = u
-  amount.value = (Math.max(0, u.houseAccount.balanceCents) / 100).toFixed(2)
+  amountCents.value = balanceOf(u)
 }
 
 async function submit() {
+  if (!canSubmit.value) return
   busy.value  = true
   error.value = null
   try {
@@ -137,12 +113,12 @@ async function submit() {
       body: {
         registerId: props.registerId,
         accountId: member.value.houseAccount.id,
-        amountCents: amountCents.value,
+        amountCents: amount.value,
         method: method.value,
         tenderedCents: method.value === 'CASH' ? tenderedCents.value : undefined,
       },
     })
-    if (res.cardCheckout) emit('card', { cardCheckout: res.cardCheckout, member: member.value, amountCents: amountCents.value })
+    if (res.cardCheckout) emit('card', { cardCheckout: res.cardCheckout, member: member.value, amountCents: amount.value })
     else emit('done', { accountPayment: res.accountPayment, changeCents: res.changeCents, member: member.value })
   } catch (e) {
     error.value = e.message
@@ -152,13 +128,3 @@ async function submit() {
   }
 }
 </script>
-
-<style scoped>
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full; }
-.input-field    { @apply border border-gray-300 rounded-lg px-3 py-2 text-sm font-body text-bark focus:outline-none focus:ring-2 focus:ring-pine/40; }
-.label-sm       { @apply block text-xs text-gray-500 mb-1 font-body; }
-.method-btn     { @apply border rounded-lg py-2 text-sm font-body font-semibold; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40; }
-@media print { .modal-overlay { display: none !important; } }
-</style>

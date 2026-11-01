@@ -1,131 +1,217 @@
 <template>
-  <div class="max-w-2xl">
-    <div v-if="loading && !state" class="text-gray-400 text-sm">Loading…</div>
-    <div v-else-if="loadError" class="text-red-500 text-sm">{{ loadError }}</div>
+  <div class="max-w-2xl space-y-4">
+    <Skeleton
+      v-if="loading && !state"
+      variant="card"
+      label="Loading the time clock"
+    />
+    <ErrorBanner
+      v-else-if="loadError && !state"
+      :message="loadError"
+      :retrying="loading"
+      @retry="load"
+    />
 
     <template v-else-if="state">
-      <!-- Status card -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6 md:p-8 text-center">
-        <div class="text-gray-400 text-xs font-body uppercase tracking-wider">{{ todayLabel }}</div>
-        <div class="font-display font-bold text-bark text-5xl mt-1 tabular-nums">{{ clockNow }}</div>
-
-        <div class="mt-5 inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-body" :class="statusStyle.badge">
-          <span class="w-2 h-2 rounded-full" :class="statusStyle.dot" />
-          {{ statusStyle.label }}
+      <!-- Status and the action first -->
+      <Card padding="lg">
+        <div class="flex items-center gap-4">
+          <div :class="['flex-none flex items-center justify-center w-14 h-14 rounded-full', statusStyle.badge]">
+            <component
+              :is="statusStyle.icon"
+              class="w-8 h-8"
+              aria-hidden="true"
+            />
+          </div>
+          <div class="min-w-0">
+            <h2
+              class="font-display text-headline-m text-on-surface"
+              aria-live="polite"
+            >
+              {{ statusStyle.label }}
+            </h2>
+            <p class="text-body-m text-on-surface-variant">
+              <template v-if="state.openEntry">
+                Since {{ formatClockTime(state.openEntry.clockIn) }}
+                <template v-if="currentBreak">
+                  · break since {{ formatClockTime(currentBreak.startedAt) }}
+                </template>
+              </template>
+              <template v-else>
+                Worked today: {{ formatMinutes(todayMinutes) }}
+              </template>
+            </p>
+          </div>
         </div>
 
-        <div v-if="state.openEntry" class="mt-3 text-gray-500 text-sm font-body">
-          Clocked in at {{ formatClockTime(state.openEntry.clockIn) }}
-          <template v-if="currentBreak"> · on break since {{ formatClockTime(currentBreak.startedAt) }}</template>
-        </div>
+        <ErrorBanner
+          v-if="actionError"
+          class="mt-4"
+          :message="actionError"
+          @dismiss="actionError = null"
+        />
 
-        <!-- Actions -->
-        <div class="mt-6 flex flex-col sm:flex-row justify-center gap-3">
-          <button
+        <div class="mt-6 flex flex-col sm:flex-row gap-3">
+          <AppButton
             v-if="state.status === 'off'"
-            :disabled="busy"
-            class="action-btn bg-pine text-parch hover:bg-pine/90"
+            size="xl"
+            :icon="IconLogin"
+            :loading="busy === 'clock_in'"
+            :disabled="!!busy"
+            class="w-full sm:w-auto sm:min-w-[14rem]"
             @click="act('clock_in')"
           >
-            Clock In
-          </button>
-          <button
+            Clock in
+          </AppButton>
+          <AppButton
             v-if="state.status === 'on'"
-            :disabled="busy"
-            class="action-btn bg-gold text-bark hover:bg-gold/90"
+            size="xl"
+            variant="tonal"
+            :icon="IconCoffee"
+            :loading="busy === 'break_start'"
+            :disabled="!!busy"
+            class="w-full sm:w-auto sm:min-w-[12rem]"
             @click="act('break_start')"
           >
-            Start Break
-          </button>
-          <button
+            Start break
+          </AppButton>
+          <AppButton
             v-if="state.status === 'break'"
-            :disabled="busy"
-            class="action-btn bg-gold text-bark hover:bg-gold/90"
+            size="xl"
+            :icon="IconPlay"
+            :loading="busy === 'break_end'"
+            :disabled="!!busy"
+            class="w-full sm:w-auto sm:min-w-[12rem]"
             @click="act('break_end')"
           >
-            End Break
-          </button>
-          <button
+            End break
+          </AppButton>
+          <AppButton
             v-if="state.status !== 'off'"
-            :disabled="busy"
-            class="action-btn bg-clay text-parch hover:bg-clay/90"
-            @click="confirmingClockOut = true"
+            size="xl"
+            :variant="state.status === 'on' ? 'filled' : 'outlined'"
+            :icon="IconLogout"
+            :loading="busy === 'clock_out'"
+            :disabled="!!busy"
+            class="w-full sm:w-auto sm:min-w-[12rem]"
+            @click="clockOut"
           >
-            Clock Out
-          </button>
+            Clock out
+          </AppButton>
         </div>
-        <p v-if="actionError" class="text-red-500 text-sm mt-3 font-body">{{ actionError }}</p>
-      </div>
 
-      <!-- Today -->
-      <div class="bg-white rounded-xl border border-gray-200 mt-6">
-        <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 class="font-display font-bold text-bark text-sm">Today</h2>
-          <div class="font-body text-sm text-bark">
-            <span class="text-gray-400 text-xs mr-1">Worked</span>
-            <span class="font-semibold tabular-nums">{{ formatMinutes(todayMinutes) }}</span>
+        <!-- The live clock (server time), below the action -->
+        <div class="mt-6 pt-4 border-t border-outline-variant flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <div class="text-body-m text-on-surface-variant">
+            {{ todayLabel }}
+          </div>
+          <div
+            class="font-display text-headline-s text-on-surface tabular-nums"
+            aria-hidden="true"
+          >
+            {{ clockNow }}
           </div>
         </div>
-        <div class="divide-y divide-gray-50">
-          <div v-for="entry in state.today.entries" :key="entry.id" class="px-5 py-3 font-body text-sm">
+      </Card>
+
+      <!-- Today's punches -->
+      <Card padding="none">
+        <div class="px-4 py-3 flex items-center justify-between gap-3 border-b border-outline-variant">
+          <h2 class="text-title-m text-on-surface">
+            Today
+          </h2>
+          <div class="text-body-m text-on-surface-variant">
+            Worked <span class="text-title-s text-on-surface tabular-nums">{{ formatMinutes(todayMinutes) }}</span>
+          </div>
+        </div>
+        <ul
+          v-if="state.today.entries.length"
+          class="divide-y divide-outline-variant"
+        >
+          <li
+            v-for="entry in state.today.entries"
+            :key="entry.id"
+            class="px-4 py-3"
+          >
             <div class="flex items-center justify-between gap-3">
-              <div class="text-bark">
-                {{ formatClockTime(entry.clockIn) }} – {{ entry.clockOut ? formatClockTime(entry.clockOut) : 'now' }}
+              <div class="flex items-center gap-3 text-body-l text-on-surface">
+                <IconSchedule
+                  class="w-5 h-5 flex-none text-on-surface-variant"
+                  aria-hidden="true"
+                />
+                <span>
+                  {{ formatClockTime(entry.clockIn) }} – {{ entry.clockOut ? formatClockTime(entry.clockOut) : 'now' }}
+                </span>
               </div>
-              <div class="text-gray-600 tabular-nums">{{ formatMinutes(liveMinutes(entry)) }}</div>
+              <div class="text-body-l text-on-surface tabular-nums">
+                {{ formatMinutes(liveMinutes(entry)) }}
+              </div>
             </div>
-            <div v-for="b in entry.breaks" :key="b.id" class="text-gray-400 text-xs mt-0.5">
+            <div
+              v-for="b in entry.breaks"
+              :key="b.id"
+              class="flex items-center gap-3 mt-1 pl-8 text-body-m text-on-surface-variant"
+            >
+              <IconCoffee
+                class="w-4 h-4 flex-none"
+                aria-hidden="true"
+              />
               Break {{ formatClockTime(b.startedAt) }} – {{ b.endedAt ? formatClockTime(b.endedAt) : 'now' }}
             </div>
-          </div>
-          <div v-if="!state.today.entries.length" class="px-5 py-6 text-gray-400 text-sm text-center">
-            No time recorded today.
-          </div>
-        </div>
-      </div>
+          </li>
+        </ul>
+        <EmptyState
+          v-else
+          compact
+          :icon="IconTimerOff"
+          title="No time recorded today"
+        />
+      </Card>
     </template>
-
-    <!-- Clock out confirm -->
-    <div v-if="confirmingClockOut" class="modal-overlay" @click.self="confirmingClockOut = false">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-2">Clock out now?</h2>
-        <p class="text-gray-500 text-sm font-body mb-5">
-          You've worked {{ formatMinutes(todayMinutes) }} today.
-          <template v-if="currentBreak">Your break will end when you clock out.</template>
-        </p>
-        <div class="flex justify-end gap-3">
-          <button class="btn-outline-sm" @click="confirmingClockOut = false">Cancel</button>
-          <button
-            :disabled="busy"
-            class="bg-clay hover:bg-clay/90 text-parch text-sm px-4 py-2 rounded-lg font-body font-semibold transition-colors disabled:opacity-50"
-            @click="act('clock_out')"
-          >
-            {{ busy ? 'Clocking out…' : 'Clock Out' }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { useAuthStore } from '@/stores/auth'
+import { apiFetch } from '@/lib/api'
 import {
   COURSE_TZ, workedMinutes, formatMinutes, formatClockTime, formatLocalDate,
 } from '@/lib/timeclock'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import AppButton from '@/components/ui/AppButton.vue'
+import Card from '@/components/ui/Card.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import IconLogin from '~icons/material-symbols/login-rounded'
+import IconLogout from '~icons/material-symbols/logout-rounded'
+import IconCoffee from '~icons/material-symbols/coffee-rounded'
+import IconPlay from '~icons/material-symbols/timer-play-rounded'
+import IconTimer from '~icons/material-symbols/timer-rounded'
+import IconTimerOff from '~icons/material-symbols/timer-off-rounded'
+import IconSchedule from '~icons/material-symbols/schedule-rounded'
 
-const authStore = useAuthStore()
+const confirm  = useConfirm()
+const snackbar = useSnackbar()
+
 const state       = ref(null)
 const loading     = ref(false)
 const loadError   = ref(null)
-const busy        = ref(false)
+const busy        = ref(null)     // the action being sent
 const actionError = ref(null)
-const confirmingClockOut = ref(false)
 
-// Ticks every second to drive the clock and running totals
+// Ticks every second to drive the clock and running totals, on the server's clock (serverTime − client time)
+const skew = ref(0)
 const now = ref(new Date())
 let ticker = null
+const tick = () => { now.value = new Date(Date.now() + skew.value) }
+
+function setState(data) {
+  state.value = data
+  if (data?.serverTime) skew.value = Date.parse(data.serverTime) - Date.now()
+  tick()
+}
 
 const clockNow = computed(() =>
   now.value.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: COURSE_TZ }),
@@ -136,11 +222,12 @@ const todayLabel = computed(() =>
 
 const currentBreak = computed(() => state.value?.openEntry?.breaks.find(b => !b.endedAt) ?? null)
 
-const statusStyle = computed(() => ({
-  off:   { label: 'Off the clock', badge: 'bg-gray-100 text-gray-600',   dot: 'bg-gray-400' },
-  on:    { label: 'On the clock',  badge: 'bg-pine/15 text-pine',        dot: 'bg-pine animate-pulse' },
-  break: { label: 'On break',      badge: 'bg-gold/20 text-bark',       dot: 'bg-gold animate-pulse' },
-}[state.value?.status ?? 'off']))
+const STATUS = {
+  off:   { label: 'Off the clock', badge: 'bg-surface-container-highest text-on-surface-variant', icon: IconTimerOff },
+  on:    { label: 'On the clock',  badge: 'bg-success-container text-on-success-container', icon: IconTimer },
+  break: { label: 'On break',      badge: 'bg-warning-container text-on-warning-container', icon: IconCoffee },
+}
+const statusStyle = computed(() => STATUS[state.value?.status ?? 'off'])
 
 function liveMinutes(entry) {
   return entry.clockOut ? entry.workedMinutes : workedMinutes(entry, now.value)
@@ -150,20 +237,11 @@ const todayMinutes = computed(() =>
   (state.value?.today.entries ?? []).reduce((sum, e) => sum + liveMinutes(e), 0),
 )
 
-async function api(options = {}) {
-  const res = await fetch('/api/staff/clock', {
-    ...options,
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${authStore.getToken()}` },
-  })
-  if (!res.ok) throw new Error((await res.json()).error || res.statusText)
-  return res.json()
-}
-
 async function load() {
   loading.value   = true
   loadError.value = null
   try {
-    state.value = await api()
+    setState(await apiFetch('/api/staff/clock'))
   } catch (e) {
     loadError.value = e.message
   } finally {
@@ -171,32 +249,42 @@ async function load() {
   }
 }
 
+const DONE = {
+  clock_in:    s => `Clocked in at ${formatClockTime(s.openEntry?.clockIn)}`,
+  break_start: () => 'Break started',
+  break_end:   () => 'Break ended',
+  clock_out:   s => `Clocked out · ${formatMinutes(s.today.workedMinutes)} today`,
+}
+
 async function act(action) {
-  busy.value        = true
+  busy.value        = action
   actionError.value = null
   try {
-    state.value = await api({ method: 'POST', body: JSON.stringify({ action }) })
-    confirmingClockOut.value = false
+    const data = await apiFetch('/api/staff/clock', { method: 'POST', body: { action } })
+    setState(data)
+    snackbar.show(DONE[action](data))
   } catch (e) {
     actionError.value = e.message
-    confirmingClockOut.value = false
     // The state may have changed elsewhere (another device); refresh it
     await load()
   } finally {
-    busy.value = false
+    busy.value = null
   }
+}
+
+async function clockOut() {
+  const ok = await confirm({
+    title: 'Clock out now?',
+    message: `You've worked ${formatMinutes(todayMinutes.value)} today.${currentBreak.value ? ' Your break will end when you clock out.' : ''}`,
+    confirmLabel: 'Clock out',
+    icon: IconLogout,
+  })
+  if (ok) await act('clock_out')
 }
 
 onMounted(() => {
   load()
-  ticker = setInterval(() => { now.value = new Date() }, 1000)
+  ticker = setInterval(tick, 1000)
 })
 onBeforeUnmount(() => clearInterval(ticker))
 </script>
-
-<style scoped>
-.action-btn     { @apply px-8 py-4 rounded-xl font-body font-semibold text-lg transition-colors disabled:opacity-50 min-w-[10rem]; }
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors; }
-</style>

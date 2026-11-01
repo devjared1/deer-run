@@ -1,5 +1,9 @@
 // The round setup form (RoundSetupFields.vue) ↔ the API's { cartNumbers, ownCart, startHole, roundHoles }.
 
+// SegmentedButton options for the two toggles
+export const START_HOLE_OPTIONS = [{ value: 1, label: 'Hole 1' }, { value: 10, label: 'Hole 10' }]
+export const ROUND_HOLE_OPTIONS = [{ value: 18, label: '18 holes' }, { value: 9, label: '9 holes' }]
+
 export function setupForm(booking = {}) {
   return {
     cartText: (booking.cartNumbers || []).join(', '),

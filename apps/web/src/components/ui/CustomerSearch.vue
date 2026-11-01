@@ -29,7 +29,7 @@
 
     <div
       v-show="showPopup"
-      class="absolute inset-x-0 top-14 z-10 mt-1 max-h-80 overflow-y-auto rounded-shape-xs bg-surface-container shadow-elevation-2 py-2"
+      :class="['mt-1 max-h-80 overflow-y-auto rounded-shape-xs bg-surface-container py-2', inline ? 'border border-outline-variant' : 'absolute inset-x-0 top-14 z-10 shadow-elevation-2']"
       @mousedown.prevent
     >
       <ul v-if="results.length" :id="listId" role="listbox" :aria-label="label">
@@ -110,6 +110,8 @@ const props = defineProps({
   autofocus:     { type: Boolean, default: false },
   // When the endpoint wraps the list in an object (e.g. /api/admin/users → { users }), the key holding the array
   resultsKey:    { type: String, default: '' },
+  // Results in the page flow instead of a floating popup (inside dialogs, whose scrolling body would clip it)
+  inline:        { type: Boolean, default: false },
 })
 const emit = defineEmits(['select'])
 

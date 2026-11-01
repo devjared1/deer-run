@@ -1,396 +1,385 @@
 <template>
-  <div class="max-w-6xl space-y-4 font-body">
-    <div v-if="loading && !sheet" class="text-gray-400 text-sm">
-      Loading…
-    </div>
-    <div v-else-if="error" class="text-red-500 text-sm">
-      {{ error }}
-    </div>
+  <div
+    class="font-body"
+    :data-contrast="highContrast ? 'high' : undefined"
+  >
+    <CoursePaceBar
+      :delta-minutes="pace.deltaMinutes"
+      :groups-out="onCourse.length"
+      :golfers-out="golfersOut"
+      :carts-out="cartsOut.size"
+      :first-tee-late="pace.firstTeeLateMinutes"
+    />
 
-    <template v-else-if="sheet">
-      <!-- Summary -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="card">
-          <div class="card-label">
-            Course pace
-          </div>
-          <div :class="['card-value', paceText(pace.pace)]">
-            {{ pace.deltaMinutes == null ? 'No recent reports' : paceLabel(pace.deltaMinutes) }}
-          </div>
-          <div class="card-note">
-            {{ pace.deltaMinutes == null
-              ? 'Update a group\'s position to see how the course is running'
-              : `From ${pace.reportedGroups} group${pace.reportedGroups === 1 ? '' : 's'} reported in the last hour` }}
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-label">
-            First tee
-          </div>
-          <div :class="['card-value', pace.firstTeeLateMinutes > PACE_TOLERANCE_MINUTES ? 'text-clay' : 'text-bark']">
-            {{ firstTeeText }}
-          </div>
-          <div class="card-note">
-            Tee-offs the starter recorded in the last 90 minutes
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-label">
-            On the course
-          </div>
-          <div class="card-value text-bark">
-            {{ onCourse.length }} group{{ onCourse.length === 1 ? '' : 's' }} · {{ golfersOut }} golfers
-          </div>
-          <div class="card-note">
-            {{ cartsOut.size }} cart{{ cartsOut.size === 1 ? '' : 's' }} out<span v-if="lastFinish"> · last group in around {{ clock(lastFinish) }}</span>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-label">
-            Next open tee time
-          </div>
-          <template v-if="nextOpen">
-            <div class="card-value text-bark">
-              {{ teeTime(nextOpen.slot.startTime) }} · {{ nextOpen.slot.available }} open
-            </div>
-            <div class="card-note">
-              <template v-if="nextOpen.lateBy > 0">
-                Likely goes off around {{ clock(nextOpen.goesOff) }};
-              </template>
-              done around {{ clock(nextOpen.finishes) }} (18 holes)
-            </div>
+    <div class="max-w-6xl pt-3 space-y-6">
+      <!-- Toolbar -->
+      <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <p
+          class="text-body-m text-on-surface-variant"
+          aria-live="polite"
+        >
+          <template v-if="refreshedAt">
+            Updated {{ refreshedAt }}<span class="hidden sm:inline"> · refreshes every 30 s</span>
           </template>
-          <div v-else class="card-value text-gray-400">
-            None left today
-          </div>
-        </div>
-      </div>
-
-      <p v-if="actionError" class="text-red-500 text-sm">
-        {{ actionError }}
-      </p>
-
-      <!-- Course map -->
-      <div class="bg-white rounded-xl border border-gray-200 p-4">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="font-display font-bold text-bark">
-            Where groups are
-          </h2>
-          <div class="text-xs text-gray-400">
-            Solid: reported in the last {{ FRESH_MINUTES }} min · dashed: estimated
-            <span v-if="refreshedAt"> · updated {{ refreshedAt }}</span>
-          </div>
-        </div>
-        <div v-for="nine in NINES" :key="nine.label" class="mb-2 last:mb-0">
-          <div class="text-xs text-gray-400 mb-1">
-            {{ nine.label }}
-          </div>
-          <div class="grid grid-cols-3 sm:grid-cols-9 gap-1.5">
-            <div
-              v-for="h in nine.holes"
-              :key="h.hole"
-              :class="['rounded-lg border p-1.5 min-h-[4.5rem]', groupsOnHole(h.hole).length ? 'border-pine/30 bg-pine/5' : 'border-gray-100 bg-gray-50']"
-            >
-              <div class="flex items-baseline justify-between text-xs">
-                <span class="font-bold text-bark">{{ h.hole }}</span>
-                <span class="text-gray-400">Par {{ h.par }}</span>
-              </div>
-              <div class="flex flex-wrap gap-1 mt-1">
-                <button
-                  v-for="g in groupsOnHole(h.hole)"
-                  :key="g.booking.id"
-                  type="button"
-                  :title="`${g.booking.name} · ${stageLabel(g.track.stage)} · ${paceLabel(g.track.deltaMinutes)}`"
-                  :class="['chip', chipClass(g), isFresh(g.track) ? '' : 'border-dashed']"
-                  @click="openPosition(g)"
-                >
-                  {{ chipLabel(g.booking) }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Starter: checked in, not off yet -->
-      <div class="bg-white rounded-xl border border-gray-200">
-        <h2 class="font-display font-bold text-bark px-4 pt-4 pb-2">
-          Up next on the tee
-        </h2>
-        <div v-if="!starter.length" class="px-4 pb-4 text-sm text-gray-400">
-          No checked-in groups are waiting. Groups show here once they check in on the tee sheet.
-        </div>
-        <div v-for="g in starter" :key="g.booking.id" class="row">
-          <div class="w-20 flex-shrink-0 font-display font-bold text-bark">
-            {{ teeTime(g.slot.startTime) }}
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="font-semibold text-bark text-sm">
-              {{ g.booking.name }} <span class="font-normal text-gray-500">· {{ playersText(g.booking) }}</span>
-            </div>
-            <div class="text-xs text-gray-500">
-              {{ roundText(g.booking) }}
-            </div>
-          </div>
-          <div :class="['text-sm w-36', dueClass(g)]">
-            {{ dueText(g) }}
-          </div>
-          <div class="flex gap-2">
-            <button class="btn-pine-sm" :disabled="busy === g.booking.id" @click="act(g, 'tee_off')">
-              Teed off
-            </button>
-            <button class="btn-outline-xs" @click="openSetup(g)">
-              Carts
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- On the course -->
-      <div class="bg-white rounded-xl border border-gray-200">
-        <h2 class="font-display font-bold text-bark px-4 pt-4 pb-2">
-          On the course
-        </h2>
-        <div v-if="!onCourse.length" class="px-4 pb-4 text-sm text-gray-400">
-          Nobody's out on the course right now.
-        </div>
-        <div v-for="g in onCourse" :key="g.booking.id" class="row">
-          <div class="w-20 flex-shrink-0">
-            <div class="font-display font-bold text-bark">
-              {{ teeTime(g.slot.startTime) }}
-            </div>
-            <div v-if="g.track.teedOffAt" class="text-xs text-gray-400">
-              off {{ clock(g.track.teedOffAt) }}
-            </div>
-          </div>
-          <div class="flex-1 min-w-0">
-            <div class="font-semibold text-bark text-sm">
-              {{ g.booking.name }} <span class="font-normal text-gray-500">· {{ playersText(g.booking) }}</span>
-            </div>
-            <div class="text-xs text-gray-500">
-              {{ roundText(g.booking) }}
-            </div>
-          </div>
-          <div class="w-52 text-sm">
-            <div class="text-bark">
-              Hole {{ g.track.hole }} · {{ stageLabel(g.track.stage) }}
-            </div>
-            <div class="text-xs text-gray-400">
-              {{ basisText(g.track) }}
-            </div>
-          </div>
-          <div class="w-40 text-sm">
-            <span :class="['badge', badgeClass(g.track.pace)]">{{ paceLabel(g.track.deltaMinutes) }}</span>
-            <div v-if="g.track.expectedHole && g.track.expectedHole !== g.track.hole" class="text-xs text-gray-400 mt-0.5">
-              Should be on {{ g.track.expectedHole }}
-            </div>
-            <div v-if="g.gap" :class="['text-xs mt-0.5', g.track.pace === 'BEHIND' ? 'text-clay font-semibold' : 'text-gray-400']">
-              {{ g.gap }} open hole{{ g.gap === 1 ? '' : 's' }} ahead
-            </div>
-          </div>
-          <div class="w-24 text-xs text-gray-500">
-            Done ~{{ clock(g.track.estimatedFinish) }}
-          </div>
-          <div class="flex flex-wrap gap-2 justify-end">
-            <button class="btn-pine-sm" @click="openPosition(g)">
-              Update
-            </button>
-            <button
-              v-if="!g.track.teedOffAt"
-              class="btn-outline-xs"
-              :disabled="busy === g.booking.id"
-              title="Record that the group just teed off"
-              @click="act(g, 'tee_off')"
-            >
-              Teed off
-            </button>
-            <button class="btn-outline-xs" :disabled="busy === g.booking.id" @click="act(g, 'finish')">
-              Finished
-            </button>
-            <button class="btn-outline-xs" @click="openSetup(g)">
-              Carts
-            </button>
-            <button
-              v-if="g.track.teedOffAt"
-              class="btn-outline-xs text-gray-400"
-              :disabled="busy === g.booking.id"
-              title="Clear the tee-off time and reported position"
-              @click="act(g, 'undo_tee_off')"
-            >
-              Undo tee-off
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Finished (or probably finished) -->
-      <div v-if="finished.length" class="bg-white rounded-xl border border-gray-200">
-        <button class="w-full flex items-center justify-between px-4 py-3" @click="showFinished = !showFinished">
-          <h2 class="font-display font-bold text-bark">
-            Finished today ({{ finished.length }})
-          </h2>
-          <span class="text-gray-400 text-sm">{{ showFinished ? 'Hide' : 'Show' }}</span>
-        </button>
-        <template v-if="showFinished">
-          <div v-for="g in finished" :key="g.booking.id" class="row">
-            <div class="w-20 flex-shrink-0 font-display font-bold text-gray-400">
-              {{ teeTime(g.slot.startTime) }}
-            </div>
-            <div class="flex-1 min-w-0 text-sm">
-              <span class="font-semibold text-bark">{{ g.booking.name }}</span>
-              <span class="text-gray-500"> · {{ roundText(g.booking) }}</span>
-            </div>
-            <div class="text-sm text-gray-500 w-64">
-              <template v-if="g.track.state === 'FINISHED'">
-                In at {{ clock(g.track.finishedAt) }} · {{ formatMinutes(g.track.playedMinutes) }}
-                <span :class="['badge ml-1', badgeClass(g.track.pace)]">{{ paceLabel(g.track.deltaMinutes) }}</span>
-              </template>
-              <template v-else>
-                Probably finished (est. {{ clock(g.track.estimatedFinish) }})
-              </template>
-            </div>
-            <div class="flex gap-2">
-              <button
-                v-if="g.track.state === 'FINISHED'"
-                class="btn-outline-xs text-gray-400"
-                :disabled="busy === g.booking.id"
-                @click="act(g, 'undo_finish')"
-              >
-                Undo
-              </button>
-              <template v-else>
-                <button class="btn-outline-xs" :disabled="busy === g.booking.id" @click="act(g, 'finish')">
-                  Finished
-                </button>
-                <button class="btn-outline-xs" @click="openPosition(g)">
-                  Still out
-                </button>
-              </template>
-            </div>
-          </div>
-        </template>
-      </div>
-
-      <p class="text-gray-400 text-xs">
-        Refreshes every 30 seconds.
-        <template v-if="learned">
-          Each hole's time is learned from the last {{ LEARN_DAYS }} days of reports (an 18-hole round currently takes
-          about {{ formatMinutes(roundLength) }}), so every update you make sharpens the estimates.
-        </template>
-        <template v-else>
-          Until there are enough reports to learn each hole's time, the expected {{ formatMinutes(roundLength) }} round
-          (Admin → Settings) is split across the holes by par.
-        </template>
-        Positions are estimated from the latest reported position, or the tee-off, or the tee time if neither was recorded. Ahead and behind are measured against each group's tee time, within
-        {{ PACE_TOLERANCE_MINUTES }} minutes counts as on pace.
-      </p>
-    </template>
-
-    <!-- Update position -->
-    <div v-if="positioning" class="modal-overlay" @click.self="positioning = null">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-1">
-          Where is {{ positioning.group.booking.name }}?
-        </h2>
-        <p class="text-gray-500 text-sm mb-4">
-          {{ roundText(positioning.group.booking) }} · tee time {{ teeTime(positioning.group.slot.startTime) }}
         </p>
-        <div class="grid grid-cols-9 gap-1 mb-4">
-          <button
-            v-for="h in positioning.holes"
-            :key="h"
-            type="button"
-            :class="['h-10 rounded-lg border text-sm',
-                     positioning.hole === h ? 'bg-pine text-parch border-pine' : 'border-gray-300 text-bark hover:bg-gray-50']"
-            @click="pickHole(h)"
+        <div class="flex items-center gap-2 ml-auto">
+          <IconButton
+            :icon="IconRefresh"
+            label="Refresh now"
+            :disabled="loading"
+            @click="load({ quiet: !!sheet })"
+          />
+          <Switch
+            v-model="highContrast"
+            label="High contrast"
+          />
+        </div>
+      </div>
+
+      <div
+        v-if="loading && !sheet"
+        class="grid gap-3 sm:grid-cols-2"
+      >
+        <Skeleton
+          variant="card"
+          label="Loading the course"
+        />
+        <Skeleton variant="card" />
+        <Skeleton
+          variant="card"
+          class="hidden sm:block"
+        />
+      </div>
+      <ErrorBanner
+        v-else-if="error && !sheet"
+        :message="error"
+        :retrying="loading"
+        @retry="load()"
+      />
+
+      <div
+        v-else-if="sheet"
+        class="flex flex-col gap-8"
+      >
+        <!-- Starter: checked in, not off yet -->
+        <section
+          v-if="starter.length"
+          class="order-1 lg:order-3 space-y-3"
+          aria-labelledby="up-next-title"
+        >
+          <h2
+            id="up-next-title"
+            class="font-display text-headline-s text-on-surface"
           >
-            {{ h }}
-          </button>
-        </div>
-        <div class="flex rounded-lg border border-gray-300 overflow-hidden w-fit">
-          <button
-            v-for="s in stagesFor(positioning.hole)"
-            :key="s.value"
-            type="button"
-            :class="['px-4 py-2 text-sm', positioning.stage === s.value ? 'bg-pine text-parch' : 'text-gray-600 hover:bg-gray-50']"
-            @click="positioning.stage = s.value"
+            Up next on the tee <span class="text-on-surface-variant text-title-l font-body">({{ starter.length }})</span>
+          </h2>
+          <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <GroupCard
+              v-for="g in starter"
+              :key="g.booking.id"
+              :group="g"
+              kind="upnext"
+              :now="now"
+              :busy="busy === g.booking.id"
+              @tee-off="teeOff(g)"
+              @setup="openSetup(g)"
+            />
+          </div>
+        </section>
+
+        <!-- On the course -->
+        <section
+          class="order-2 lg:order-4 space-y-3"
+          aria-labelledby="on-course-title"
+        >
+          <h2
+            id="on-course-title"
+            class="font-display text-headline-s text-on-surface"
           >
-            {{ s.label }}
+            On the course <span class="text-on-surface-variant text-title-l font-body">({{ onCourse.length }})</span>
+          </h2>
+          <EmptyState
+            v-if="!onCourse.length"
+            compact
+            :icon="IconGolf"
+            title="Nobody's out on the course"
+            :message="starter.length ? 'Record a tee-off above when a group goes off the first tee.' : 'Groups show here once they check in on the tee sheet and tee off.'"
+          />
+          <div
+            v-else
+            class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+          >
+            <GroupCard
+              v-for="g in onCourse"
+              :key="g.booking.id"
+              :group="g"
+              kind="oncourse"
+              :now="now"
+              :busy="busy === g.booking.id"
+              @update="openPosition(g)"
+              @finish="finish(g)"
+              @tee-off="teeOff(g)"
+              @undo-tee-off="undoTeeOff(g)"
+              @setup="openSetup(g)"
+            />
+          </div>
+        </section>
+
+        <!-- Course map -->
+        <Card
+          variant="outlined"
+          class="order-3 lg:order-2"
+        >
+          <CourseMap
+            :groups="onCourse"
+            @select-hole="openHole"
+          />
+        </Card>
+
+        <!-- At a glance -->
+        <section
+          class="order-4 lg:order-1 grid gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3"
+          aria-label="At a glance"
+        >
+          <Card
+            variant="filled"
+            padding="sm"
+          >
+            <h3 class="text-label-l text-on-surface-variant">
+              First tee
+            </h3>
+            <p :class="['text-title-l mt-1', pace.firstTeeLateMinutes > PACE_TOLERANCE_MINUTES ? 'text-on-warning-container' : 'text-on-surface']">
+              {{ firstTeeText }}
+            </p>
+            <p class="text-body-m text-on-surface-variant mt-1">
+              Tee-offs recorded in the last 90 minutes
+            </p>
+          </Card>
+          <Card
+            variant="filled"
+            padding="sm"
+          >
+            <h3 class="text-label-l text-on-surface-variant">
+              Next open tee time
+            </h3>
+            <template v-if="nextOpen">
+              <p class="text-title-l text-on-surface mt-1">
+                {{ teeTime(nextOpen.slot.startTime) }} · {{ nextOpen.slot.available }} open
+              </p>
+              <p class="text-body-m text-on-surface-variant mt-1">
+                <template v-if="nextOpen.lateBy > 0">
+                  Likely goes off around {{ clock(nextOpen.goesOff) }};
+                </template>
+                done around {{ clock(nextOpen.finishes) }} (18 holes)
+              </p>
+            </template>
+            <p
+              v-else
+              class="text-title-l text-on-surface-variant mt-1"
+            >
+              None left today
+            </p>
+          </Card>
+          <Card
+            variant="filled"
+            padding="sm"
+          >
+            <h3 class="text-label-l text-on-surface-variant">
+              On the course
+            </h3>
+            <p class="text-title-l text-on-surface mt-1">
+              {{ golfersOut }} golfer{{ golfersOut === 1 ? '' : 's' }} · {{ cartsOut.size }} cart{{ cartsOut.size === 1 ? '' : 's' }}
+            </p>
+            <p class="text-body-m text-on-surface-variant mt-1">
+              {{ lastFinish ? `Last group in around ${clock(lastFinish)}` : 'Nobody out right now' }}
+            </p>
+          </Card>
+        </section>
+
+        <!-- Finished (or probably finished) -->
+        <section
+          v-if="finished.length"
+          class="order-5 space-y-3"
+          aria-labelledby="finished-title"
+        >
+          <button
+            type="button"
+            class="state-layer w-full flex items-center justify-between min-h-12 -mx-2 px-2 rounded-shape-sm cursor-pointer"
+            :aria-expanded="String(showFinished)"
+            aria-controls="finished-list"
+            @click="showFinished = !showFinished"
+          >
+            <h2
+              id="finished-title"
+              class="font-display text-headline-s text-on-surface"
+            >
+              Finished today <span class="text-on-surface-variant text-title-l font-body">({{ finished.length }})</span>
+            </h2>
+            <span class="flex items-center gap-1 text-label-l text-primary">
+              {{ showFinished ? 'Hide' : 'Show' }}
+              <IconExpand
+                :class="['w-6 h-6 transition-transform duration-short-4', showFinished ? 'rotate-180' : '']"
+                aria-hidden="true"
+              />
+            </span>
           </button>
-        </div>
-        <p class="text-xs text-gray-400 mt-2">
-          Hole {{ positioning.hole }}: par {{ holeInfo(positioning.hole)?.par }}, {{ holeInfo(positioning.hole)?.name }}
-        </p>
-        <p v-if="positioning.error" class="text-red-500 text-sm mt-3">
-          {{ positioning.error }}
-        </p>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="positioning = null">
-            Back
-          </button>
-          <button class="btn-amber px-4 py-2 text-sm" :disabled="busy === positioning.group.booking.id" @click="savePosition">
-            {{ busy === positioning.group.booking.id ? 'Saving…' : 'Save position' }}
-          </button>
-        </div>
+          <div
+            v-if="showFinished"
+            id="finished-list"
+            class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+          >
+            <GroupCard
+              v-for="g in finished"
+              :key="g.booking.id"
+              :group="g"
+              kind="finished"
+              :now="now"
+              :busy="busy === g.booking.id"
+              @finish="finish(g)"
+              @update="openPosition(g)"
+              @undo-finish="undoFinish(g)"
+              @setup="openSetup(g)"
+            />
+          </div>
+        </section>
+
+        <details class="order-6 group text-body-m text-on-surface-variant">
+          <summary class="state-layer flex items-center gap-2 min-h-12 -mx-2 px-2 rounded-shape-sm cursor-pointer text-label-l text-primary list-none">
+            <IconInfo
+              class="w-5 h-5"
+              aria-hidden="true"
+            />
+            How the estimates work
+          </summary>
+          <p class="mt-2 max-w-prose">
+            <template v-if="learned">
+              Each hole's time is learned from the last {{ LEARN_DAYS }} days of reports (an 18-hole round currently takes
+              about {{ formatMinutes(roundLength) }}), so every update you make sharpens the estimates.
+            </template>
+            <template v-else>
+              Until there are enough reports to learn each hole's time, the expected {{ formatMinutes(roundLength) }} round
+              (Admin → Settings) is split across the holes by par.
+            </template>
+            Positions are estimated from the latest reported position, or the tee-off, or the tee time if neither was
+            recorded. Ahead and behind are measured against each group's tee time; within {{ PACE_TOLERANCE_MINUTES }}
+            minutes counts as on pace.
+          </p>
+        </details>
       </div>
     </div>
+
+    <!-- Map tile → the groups on that hole -->
+    <HoleGroupsSheet
+      v-model:open="holeSheet.open"
+      :hole="holeSheet.hole"
+      :groups="holeSheet.hole ? groupsOnHole(holeSheet.hole) : []"
+      :high-contrast="highContrast"
+      @update="updateFromHole"
+      @after-leave="afterHoleSheet"
+    />
+
+    <!-- Update position: group → hole → stage → Save -->
+    <UpdatePositionSheet
+      v-model:open="positioning.open"
+      :groups="positionGroups"
+      :group-id="positioning.groupId"
+      :busy="!!positioning.groupId && busy === positioning.groupId"
+      :error="positioning.error"
+      :high-contrast="highContrast"
+      @group-change="id => { positioning.groupId = id; positioning.error = '' }"
+      @save="savePosition"
+    />
 
     <!-- Carts and round -->
-    <div v-if="setup" class="modal-overlay" @click.self="setup = null">
-      <div class="modal-box">
-        <h2 class="font-display font-bold text-bark mb-4">
-          Carts and round — {{ setup.group.booking.name }}
-        </h2>
-        <RoundSetupFields v-model="setup.form" :carts-out="cartsInUse(groups, setup.group.booking.id)" />
-        <p v-if="setup.error" class="text-red-500 text-sm mt-3">
-          {{ setup.error }}
-        </p>
-        <div class="flex justify-end gap-3 mt-5">
-          <button class="btn-outline-sm" @click="setup = null">
-            Back
-          </button>
-          <button class="btn-amber px-4 py-2 text-sm" :disabled="busy === setup.group.booking.id" @click="saveSetup">
-            {{ busy === setup.group.booking.id ? 'Saving…' : 'Save' }}
-          </button>
-        </div>
+    <BottomSheet
+      v-model:open="setup.open"
+      :title="setup.group ? `Carts and round: ${setup.group.booking.name}` : 'Carts and round'"
+    >
+      <div
+        v-if="setup.group"
+        :data-contrast="highContrast ? 'high' : undefined"
+        class="space-y-3 pb-1"
+      >
+        <RoundSetupFields
+          v-model="setup.form"
+          :carts-out="cartsInUse(groups, setup.group.booking.id)"
+        />
+        <ErrorBanner
+          v-if="setup.error"
+          :message="setup.error"
+        />
       </div>
-    </div>
+      <template #actions="{ close }">
+        <AppButton
+          variant="text"
+          size="lg"
+          @click="close"
+        >
+          Cancel
+        </AppButton>
+        <AppButton
+          size="lg"
+          class="flex-1"
+          :loading="!!setup.group && busy === setup.group.booking.id"
+          @click="saveSetup"
+        >
+          Save
+        </AppButton>
+      </template>
+    </BottomSheet>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { apiFetch } from '@/lib/api'
 import { COURSE_TZ, localDateTimeToUtc } from '@/lib/timeclock'
 import { teeTime } from '@/lib/teesheet'
 import {
-  LEARN_DAYS, PACE_TOLERANCE_MINUTES, cartsInUse, coursePace, expectedRoundMinutes, formatMinutes, holeInfo, holeOrder,
-  openHolesAhead, paceLabel, paceProfile, stageLabel, stagesFor, trackedGroups,
+  LEARN_DAYS, PACE_TOLERANCE_MINUTES, STAGES, cartsInUse, coursePace, expectedRoundMinutes, formatMinutes,
+  openHolesAhead, paceProfile, trackedGroups,
 } from '@/lib/pace'
-import { holes } from '@/data/holes'
+import { useHighContrast } from '@/composables/useHighContrast'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import Card from '@/components/ui/Card.vue'
+import AppButton from '@/components/ui/AppButton.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import Switch from '@/components/ui/Switch.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
+import BottomSheet from '@/components/ui/BottomSheet.vue'
 import RoundSetupFields from '@/components/oncourse/RoundSetupFields.vue'
-import { cartsLabel, setupForm, setupPayload } from '@/components/oncourse/roundSetup'
+import { setupForm, setupPayload } from '@/components/oncourse/roundSetup'
+import GroupCard from '@/components/oncourse/GroupCard.vue'
+import CourseMap from '@/components/oncourse/CourseMap.vue'
+import CoursePaceBar from '@/components/oncourse/CoursePaceBar.vue'
+import HoleGroupsSheet from '@/components/oncourse/HoleGroupsSheet.vue'
+import UpdatePositionSheet from '@/components/oncourse/UpdatePositionSheet.vue'
+import IconRefresh from '~icons/material-symbols/refresh-rounded'
+import IconGolf from '~icons/material-symbols/golf-course-rounded'
+import IconExpand from '~icons/material-symbols/expand-more-rounded'
+import IconInfo from '~icons/material-symbols/info-rounded'
 
 const REFRESH_MS = 30_000
-// A report this recent shows solid on the map
-const FRESH_MINUTES = 30
 // Groups still show under "Up next" this long after their tee time if the starter hasn't recorded a tee-off
 const STARTER_GRACE_MINUTES = 20
-const NINES = [
-  { label: 'Front nine', holes: holes.slice(0, 9) },
-  { label: 'Back nine', holes: holes.slice(9) },
-]
+
+const { highContrast } = useHighContrast()
+const confirm = useConfirm()
+const snackbar = useSnackbar()
 
 const sheet        = ref(null)
 const loading      = ref(false)
 const error        = ref(null)
-const actionError  = ref(null)
 const busy         = ref(null)
 const refreshedAt  = ref(null)
 const now          = ref(new Date())
 const showFinished = ref(false)
-const positioning  = ref(null) // { group, holes, hole, stage, error }
-const setup        = ref(null) // { group, form, error }
+const positioning  = reactive({ open: false, groupId: null, extraId: null, error: '' })
+const holeSheet    = reactive({ open: false, hole: null, pending: null })
+const setup        = reactive({ open: false, group: null, form: null, error: '' })
 let timer = null
 
 const profile = computed(() => paceProfile(sheet.value))
@@ -441,61 +430,16 @@ const nextOpen = computed(() => {
   return { slot, lateBy, goesOff, finishes }
 })
 
+// The update sheet offers the groups on the course, plus the group it was opened for (e.g. "Still out")
+const positionGroups = computed(() => {
+  const extra = positioning.extraId && !onCourse.value.some(g => g.booking.id === positioning.extraId)
+    ? groups.value.filter(g => g.booking.id === positioning.extraId)
+    : []
+  return [...onCourse.value, ...extra]
+})
+
 function groupsOnHole(hole) {
   return onCourse.value.filter(g => g.track.hole === hole)
-}
-
-function isFresh(track) {
-  return track.basis === 'REPORTED' && track.reportedMinutesAgo <= FRESH_MINUTES
-}
-
-function chipLabel(b) {
-  if (b.cartNumbers?.length) return b.cartNumbers.join('·')
-  return b.name.split(' ')[0]
-}
-
-function chipClass(g) {
-  if (g.track.pace === 'BEHIND') return 'bg-clay/15 text-clay border-clay/50'
-  if (g.track.pace === 'AHEAD') return 'bg-lake/15 text-lake border-lake/50'
-  return 'bg-pine/15 text-pine border-pine/50'
-}
-
-function badgeClass(p) {
-  if (p === 'BEHIND') return 'bg-clay/15 text-clay'
-  if (p === 'AHEAD') return 'bg-lake/15 text-lake'
-  return 'bg-pine/15 text-pine'
-}
-
-function paceText(p) {
-  if (p === 'BEHIND') return 'text-clay'
-  if (p === 'AHEAD') return 'text-lake'
-  return 'text-bark'
-}
-
-function playersText(b) {
-  return `${b.players} player${b.players === 1 ? '' : 's'}`
-}
-
-function roundText(b) {
-  const holesText = `${b.roundHoles} holes${b.startHole === 10 ? ' from 10' : ''}`
-  return [cartsLabel(b) || 'No cart recorded', holesText].join(' · ')
-}
-
-function basisText(track) {
-  if (track.basis === 'REPORTED') return `Reported ${track.reportedMinutesAgo ? `${formatMinutes(track.reportedMinutesAgo)} ago` : 'just now'}`
-  if (track.basis === 'TEED_OFF') return 'Estimated from the tee-off'
-  return 'Estimated from the tee time'
-}
-
-function dueText({ track }) {
-  if (track.state === 'WAITING' && track.startsInMinutes > 0) return `Due in ${formatMinutes(track.startsInMinutes)}`
-  const late = Math.round((now.value - track.teeTime) / 60_000)
-  return late <= 0 ? 'Due now' : `${formatMinutes(late)} past tee time`
-}
-
-function dueClass({ track }) {
-  const late = (now.value - track.teeTime) / 60_000
-  return late > PACE_TOLERANCE_MINUTES ? 'text-clay font-semibold' : 'text-gray-500'
 }
 
 function clock(d) {
@@ -524,60 +468,105 @@ async function post(g, body) {
   now.value = new Date()
 }
 
+// One action from a card; true when it saved. On failure: an error snackbar and a quiet reload.
 async function act(g, action) {
   busy.value = g.booking.id
-  actionError.value = null
   try {
     await post(g, { action })
+    return true
   } catch (e) {
-    actionError.value = e.message
+    snackbar.show({ message: e.message, tone: 'error' })
     load({ quiet: true })
+    return false
   } finally {
     busy.value = null
   }
+}
+
+async function teeOff(g) {
+  if (await act(g, 'tee_off')) {
+    snackbar.show({ message: `${g.booking.name} teed off`, actionLabel: 'Undo', onAction: () => act(g, 'undo_tee_off') })
+  }
+}
+
+async function finish(g) {
+  if (await act(g, 'finish')) {
+    snackbar.show({ message: `${g.booking.name} finished`, actionLabel: 'Undo', onAction: () => act(g, 'undo_finish') })
+  }
+}
+
+async function undoTeeOff(g) {
+  const ok = await confirm({
+    title: 'Undo tee-off?',
+    message: `Clears ${g.booking.name}'s tee-off time and reported position, and deletes their position reports.`,
+    confirmLabel: 'Undo tee-off',
+    destructive: true,
+  })
+  if (ok && await act(g, 'undo_tee_off')) snackbar.show('Tee-off cleared')
+}
+
+async function undoFinish(g) {
+  const ok = await confirm({
+    title: 'Undo finish?',
+    message: `Puts ${g.booking.name} back on the course.`,
+    confirmLabel: 'Undo finish',
+  })
+  if (ok && await act(g, 'undo_finish')) snackbar.show(`${g.booking.name} is back on the course`)
 }
 
 function openPosition(g) {
-  const order = holeOrder(g.booking.startHole, g.booking.roundHoles)
-  // Start from the estimate (or the first hole); a finished-by-estimate group starts on its last hole
-  const hole = g.track.hole ?? (g.track.state === 'DONE' ? order[order.length - 1] : order[0])
-  const stage = g.track.hole ? g.track.stage : 'TEE'
-  positioning.value = { group: g, holes: order, hole, stage, error: null }
+  positioning.groupId = g.booking.id
+  positioning.extraId = g.booking.id
+  positioning.error = ''
+  positioning.open = true
 }
 
-function pickHole(h) {
-  const p = positioning.value
-  p.hole = h
-  if (!stagesFor(h).some(s => s.value === p.stage)) p.stage = 'TEE'
-}
-
-async function savePosition() {
-  const p = positioning.value
-  busy.value = p.group.booking.id
-  p.error = null
+async function savePosition({ group, hole, stage }) {
+  busy.value = group.booking.id
+  positioning.error = ''
   try {
-    await post(p.group, { action: 'position', hole: p.hole, stage: p.stage })
-    positioning.value = null
+    await post(group, { action: 'position', hole, stage })
+    positioning.open = false
+    const where = STAGES.find(s => s.value === stage)?.short.toLowerCase() ?? stage
+    snackbar.show(`${group.booking.name}: hole ${hole}, ${where}`)
   } catch (e) {
-    p.error = e.message
+    positioning.error = e.message
   } finally {
     busy.value = null
   }
 }
 
+function openHole(hole) {
+  holeSheet.hole = hole
+  holeSheet.pending = null
+  holeSheet.open = true
+}
+
+// Hole sheet → update sheet: open the second once the first has slid away
+function updateFromHole(g) {
+  holeSheet.pending = g
+  holeSheet.open = false
+}
+function afterHoleSheet() {
+  const g = holeSheet.pending
+  holeSheet.pending = null
+  if (g) openPosition(g)
+}
+
 function openSetup(g) {
-  setup.value = { group: g, form: setupForm(g.booking), error: null }
+  Object.assign(setup, { open: true, group: g, form: setupForm(g.booking), error: '' })
 }
 
 async function saveSetup() {
-  const s = setup.value
-  busy.value = s.group.booking.id
-  s.error = null
+  const g = setup.group
+  busy.value = g.booking.id
+  setup.error = ''
   try {
-    await post(s.group, { action: 'setup', ...setupPayload(s.form) })
-    setup.value = null
+    await post(g, { action: 'setup', ...setupPayload(setup.form) })
+    setup.open = false
+    snackbar.show('Carts and round saved')
   } catch (e) {
-    s.error = e.message
+    setup.error = e.message
   } finally {
     busy.value = null
   }
@@ -589,18 +578,3 @@ onMounted(() => {
 })
 onUnmounted(() => clearInterval(timer))
 </script>
-
-<style scoped>
-.card       { @apply bg-white rounded-xl border border-gray-200 p-4; }
-.card-label { @apply text-xs text-gray-400 uppercase tracking-wide; }
-.card-value { @apply font-display font-bold text-lg mt-1; }
-.card-note  { @apply text-xs text-gray-400 mt-1; }
-.row        { @apply flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3 border-t border-gray-100; }
-.chip       { @apply text-xs px-1.5 py-0.5 rounded border font-semibold; }
-.badge      { @apply text-xs px-2 py-0.5 rounded-full whitespace-nowrap; }
-.modal-overlay  { @apply fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4; }
-.modal-box      { @apply bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md; }
-.btn-pine-sm    { @apply bg-pine text-parch text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-pine/90 transition-colors disabled:opacity-50; }
-.btn-outline-xs { @apply border border-gray-300 text-gray-600 text-xs px-2.5 py-1.5 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-40; }
-.btn-outline-sm { @apply border border-gray-300 text-gray-600 text-sm px-4 py-2 rounded-lg font-body hover:bg-gray-50 transition-colors disabled:opacity-40; }
-</style>

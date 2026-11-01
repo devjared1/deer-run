@@ -106,6 +106,13 @@
   --z-snackbar: 60;
 }
 
+/* Outdoor pages (On Course, Tee Sheet): 16px minimum text and heavier secondary text (useHighContrast) */
+[data-contrast="high"] :is(.text-body-s, .text-body-m, .text-label-s, .text-label-m, .text-label-l, .text-title-s, .text-xs, .text-sm) {
+  font-size: 1rem;
+  line-height: 1.5rem;
+}
+[data-contrast="high"] :is(.text-on-surface-variant, .text-body-s, .text-body-m) { font-weight: 700; }
+
 /* Outdoor pages (On Course, Tee Sheet): darker secondary text and outlines, heavier text */
 [data-contrast="high"] {
   --md-sys-color-on-surface: 0 0 0;
