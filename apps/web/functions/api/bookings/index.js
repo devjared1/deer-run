@@ -18,6 +18,9 @@ async function getOptionalUser(request, supabase) {
   return dbUser
 }
 
+// POST /api/bookings  { teeTimeSlotId, players (1–4), roundHoles? (9|18, default 18), cart? (bool), guestName?, guestEmail? }
+//   (guest fields required when not signed in) → PENDING booking + PaymentIntent
+//   → { bookingId, clientSecret, totalCents, players, roundHoles, cart }
 export async function onRequestPost(context) {
   const { request, env } = context
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -106,5 +109,6 @@ export async function onRequestPost(context) {
     return json({ error: bookingError.message }, 500)
   }
 
-  return json({ bookingId, clientSecret: paymentIntent.client_secret })
+  // totalCents (what the PaymentIntent charges) and the round are echoed so the payment step shows the server's amount
+  return json({ bookingId, clientSecret: paymentIntent.client_secret, totalCents, players, roundHoles, cart })
 }

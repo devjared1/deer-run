@@ -1,146 +1,188 @@
 <template>
-  <div class="card rounded-lg p-6">
-    <div class="flex items-center gap-3 mb-1">
-      <button @click="$emit('back')" :disabled="processing" style="color:rgba(61,43,26,.4);font-size:20px;cursor:pointer;background:none;border:none;">←</button>
-      <h2 style="font-family:'Playfair Display',serif;font-size:24px;font-weight:700;color:#1E3D2F;">Payment</h2>
+  <section class="rounded-shape-md bg-surface-container-low shadow-elevation-1 px-4 sm:px-6 pt-3 sm:pt-4 pb-6" aria-labelledby="step-payment-title">
+    <div class="flex items-center gap-1 -ml-3">
+      <IconButton :icon="IconArrowBack" label="Back to your details" :disabled="processing" @click="emit('back')" />
+      <h2
+        id="step-payment-title"
+        data-step-heading
+        tabindex="-1"
+        class="font-display text-headline-s text-on-surface scroll-mt-24 focus:outline-none focus-visible:outline-none"
+      >
+        Payment
+      </h2>
     </div>
-    <p style="font-family:'Lato',sans-serif;font-size:13px;color:rgba(61,43,26,.5);margin-bottom:24px;">
-      Review your booking and pay securely.
-    </p>
+    <p class="text-body-m text-on-surface-variant mt-1 mb-5">Review your booking and pay securely.</p>
 
-    <!-- Final summary -->
-    <div class="p-5 rounded mb-6" style="background:rgba(30,61,47,.06);border:1px solid rgba(30,61,47,.1);">
-      <div style="font-family:'Lato',sans-serif;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(61,43,26,.5);margin-bottom:12px;">Booking Summary</div>
-      <div class="space-y-2" style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(61,43,26,.7);">
-        <div class="flex justify-between"><span>Date</span><strong>{{ formattedDate }}</strong></div>
-        <div class="flex justify-between"><span>Tee Time</span><strong>{{ formattedTime }}</strong></div>
-        <div class="flex justify-between"><span>Players</span><strong>{{ store.players }}</strong></div>
-        <div class="flex justify-between"><span>Round</span><strong>{{ store.roundHoles }} holes · {{ store.cart ? 'riding' : 'walking' }}</strong></div>
-        <div class="flex justify-between"><span>Name</span><strong>{{ playerName }}</strong></div>
+    <!-- Summary -->
+    <dl class="rounded-shape-md bg-surface-container-lowest border border-outline-variant p-4 space-y-2 text-body-m mb-6">
+      <div v-for="row in summaryRows" :key="row.label" class="flex justify-between gap-4">
+        <dt class="text-on-surface-variant">{{ row.label }}</dt>
+        <dd class="text-on-surface text-right break-words min-w-0">{{ row.value }}</dd>
       </div>
-      <div class="divider my-3"></div>
-      <div class="flex justify-between">
-        <span style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(61,43,26,.6);">Total</span>
-        <span style="font-family:'Playfair Display',serif;font-size:24px;font-weight:900;color:#1E3D2F;">${{ store.totalPrice.toFixed(2) }}</span>
+      <div class="flex justify-between items-baseline gap-4 pt-3 mt-1 border-t border-outline-variant">
+        <dt class="text-title-m text-on-surface">Total</dt>
+        <dd class="font-display text-headline-s text-on-surface tabular-nums">{{ formatCents(totalCents) }}</dd>
       </div>
-    </div>
+      <p v-if="priceChanged" class="flex items-start gap-2 text-body-s text-on-surface-variant pt-1">
+        <IconInfo class="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+        The total was updated to {{ formatCents(serverTotal) }} when your booking was placed (shown earlier as
+        {{ formatCents(store.price.totalCents) }}). This is the amount charged.
+      </p>
+    </dl>
 
-    <!-- Loading payment form -->
-    <div v-if="loadingForm" class="flex items-center justify-center py-8 gap-3" style="font-family:'Lato',sans-serif;font-size:14px;color:rgba(61,43,26,.5);">
-      <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+    <!-- Preparing the payment form -->
+    <div v-if="loadingForm && !initError" role="status" class="flex items-center justify-center gap-3 py-8 text-body-m text-on-surface-variant">
+      <ProgressIndicator :size="24" label="Preparing the payment form" />
       Preparing secure payment form…
     </div>
 
-    <!-- Stripe Payment Element mount point -->
+    <ErrorBanner v-if="initError" :message="initError" />
+
+    <!-- Stripe Payment Element -->
     <div v-show="!loadingForm && !initError">
-      <div ref="paymentElementRef" id="payment-element" class="mb-5" style="min-height:48px;"></div>
+      <div id="payment-element" ref="paymentElementRef" class="mb-5 min-h-12" />
 
-      <div v-if="error" class="mb-4 p-3 rounded text-sm" style="background:rgba(140,74,47,.1);color:#6B3820;font-family:'Lato',sans-serif;">
-        {{ error }}
-      </div>
+      <ErrorBanner v-if="error" class="mb-4" :message="error" />
 
-      <button
-        @click="pay"
-        :disabled="processing"
-        class="btn-amber w-full justify-center"
-        :style="processing ? 'opacity:.6;cursor:not-allowed;' : ''"
-      >
-        <svg v-if="processing" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
-        {{ processing ? 'Processing payment…' : `Pay $${store.totalPrice.toFixed(2)} Securely` }}
-      </button>
+      <AppButton variant="gold" size="lg" block :loading="processing" :icon="IconLock" @click="pay">
+        {{ processing ? 'Processing payment…' : `Pay ${formatCents(totalCents)}` }}
+      </AppButton>
     </div>
 
-    <!-- Init error -->
-    <div v-if="initError" class="p-3 rounded text-sm" style="background:rgba(140,74,47,.1);color:#6B3820;font-family:'Lato',sans-serif;">
-      {{ initError }}
+    <div class="mt-5 space-y-2 text-body-s text-on-surface-variant">
+      <p class="flex items-start gap-2">
+        <IconLock class="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+        Payments are processed securely by Stripe; the course never sees your card number.
+      </p>
+      <p class="flex items-start gap-2">
+        <IconEventBusy class="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden="true" />
+        <span>{{ CANCEL_POLICY }} By paying you agree to the course's <RouterLink to="/rates" class="text-primary underline">policies</RouterLink>.</span>
+      </p>
     </div>
-
-    <p class="text-center mt-4 text-xs" style="font-family:'Lato',sans-serif;color:rgba(61,43,26,.35);">
-      Secured by Stripe · Cancellations accepted 24 hours before tee time
-    </p>
-  </div>
+  </section>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { loadStripe } from '@stripe/stripe-js'
-import { useBookingStore } from '@/stores/booking'
+// Booking step 4: creates (or reuses) the PENDING booking + PaymentIntent, shows the server's total, mounts the
+// Stripe Payment Element (styled from the design tokens) and confirms the payment on the page.
+import AppButton from '@/components/ui/AppButton.vue'
+import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import IconButton from '@/components/ui/IconButton.vue'
+import ProgressIndicator from '@/components/ui/ProgressIndicator.vue'
+import { phone } from '@/data/site'
+import { formatCents } from '@/lib/money'
+import { teeTime } from '@/lib/teesheet'
+import { formatLocalDate } from '@/lib/timeclock'
 import { useAuthStore } from '@/stores/auth'
+import { useBookingStore } from '@/stores/booking'
+import { loadStripe } from '@stripe/stripe-js'
+import { computed, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
+import IconArrowBack from '~icons/material-symbols/arrow-back-rounded'
+import IconEventBusy from '~icons/material-symbols/event-busy-rounded'
+import IconInfo from '~icons/material-symbols/info-rounded'
+import IconLock from '~icons/material-symbols/lock-rounded'
+import { CANCEL_POLICY, plural } from './bookingFlow'
 
 const emit = defineEmits(['back'])
-const store     = useBookingStore()
-const authStore = useAuthStore()
-const router    = useRouter()
+const store = useBookingStore()
+const auth = useAuthStore()
+const router = useRouter()
 
 const paymentElementRef = ref(null)
 const loadingForm = ref(true)
-const processing  = ref(false)
-const error       = ref('')
-const initError   = ref('')
+const processing = ref(false)
+const error = ref('')
+const initError = ref('')
+const serverTotal = ref(null) // the PaymentIntent's amount, from POST /api/bookings
 
-let stripe   = null
+let stripe = null
 let elements = null
 let bookingId = null
 
-const formattedDate = computed(() => {
-  if (!store.selectedDate) return ''
-  return new Date(store.selectedDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-})
+// The server's amount once it's known; the same calculation in the browser until then
+const totalCents = computed(() => serverTotal.value ?? store.price.totalCents)
+const priceChanged = computed(() => serverTotal.value !== null && serverTotal.value !== store.price.totalCents)
 
-const formattedTime = computed(() => {
-  if (!store.selectedSlot) return ''
-  const [h, m] = store.selectedSlot.startTime.split(':').map(Number)
-  return `${h % 12 || 12}:${String(m).padStart(2,'0')} ${h >= 12 ? 'PM' : 'AM'}`
-})
+const summaryRows = computed(() => [
+  { label: 'Date', value: store.selectedDate ? formatLocalDate(store.selectedDate, { weekday: 'long', month: 'long', day: 'numeric' }) : '' },
+  { label: 'Tee time', value: store.selectedSlot ? teeTime(store.selectedSlot.startTime) : '' },
+  { label: 'Players', value: plural(store.players, 'player') },
+  { label: 'Round', value: `${store.roundHoles} holes, ${store.cart ? 'riding' : 'walking'}` },
+  { label: 'Name', value: auth.isLoggedIn ? auth.profile?.name || auth.profile?.email || 'Your account' : store.guestName },
+])
 
-const playerName = computed(() =>
-  authStore.isLoggedIn ? authStore.profile?.name || 'Member' : store.guestName
-)
+// Stripe appearance from the design tokens (RGB-channel CSS variables, read at runtime)
+function token(name) {
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(`--md-sys-color-${name}`).trim()
+  const ch = raw.split(/[\s,]+/).map(Number)
+  return ch.length === 3 && ch.every(Number.isFinite) ? `rgb(${ch.join(', ')})` : undefined
+}
+function appearance() {
+  const outline = token('outline')
+  const primary = token('primary')
+  return {
+    theme: 'stripe',
+    variables: {
+      colorPrimary: primary,
+      colorBackground: token('surface-container-lowest'),
+      colorText: token('on-surface'),
+      colorTextSecondary: token('on-surface-variant'),
+      colorDanger: token('error'),
+      fontFamily: 'Lato, system-ui, sans-serif',
+      fontSizeBase: '16px',
+      borderRadius: '4px',
+      spacingUnit: '4px',
+    },
+    rules: {
+      '.Input': { border: `1px solid ${outline}`, boxShadow: 'none', padding: '14px 16px' },
+      '.Input:focus': { border: `2px solid ${primary}`, boxShadow: 'none' },
+      '.Label': { fontWeight: '700' },
+      '.Tab--selected': { borderColor: primary },
+    },
+  }
+}
+// Lato for the Stripe iframe: the self-hosted file the page preloads (Stripe falls back to system-ui if it can't load it)
+function stripeFonts() {
+  if (window.location.protocol !== 'https:') return [] // Stripe only loads fonts over https
+  const link = document.querySelector('link[rel="preload"][as="font"][href*="lato" i]')
+  return link ? [{ family: 'Lato', src: `url(${new URL(link.getAttribute('href'), window.location.href).href})`, weight: '400' }] : []
+}
 
 onMounted(async () => {
   try {
-    // Create booking + get PaymentIntent client secret
+    // Create (or reuse) the booking + PaymentIntent
     const result = await store.createBooking()
     bookingId = result.bookingId
+    if (Number.isInteger(result.totalCents)) serverTotal.value = result.totalCents
 
-    // Load Stripe and mount the Payment Element
     stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
-    elements = stripe.elements({
-      clientSecret: result.clientSecret,
-      appearance: {
-        theme: 'stripe',
-        variables: {
-          colorPrimary: '#1E3D2F',
-          colorBackground: '#ffffff',
-          colorText: '#3D2B1A',
-          colorDanger: '#6B3820',
-          fontFamily: 'Lato, sans-serif',
-          borderRadius: '6px',
-        },
-      },
-    })
+    if (!stripe) throw new Error('Stripe did not load')
+    elements = stripe.elements({ clientSecret: result.clientSecret, appearance: appearance(), fonts: stripeFonts() })
 
-    const paymentElement = elements.create('payment')
+    const paymentElement = elements.create('payment', { layout: 'tabs' })
     paymentElement.mount(paymentElementRef.value)
     paymentElement.on('ready', () => { loadingForm.value = false })
+    paymentElement.on('loaderror', (e) => {
+      console.error('Stripe Payment Element failed to load:', e?.error?.message)
+      loadingForm.value = false
+      initError.value = `The payment form couldn't load. Refresh the page to try again, or call ${phone.display}.`
+    })
   } catch (e) {
     loadingForm.value = false
     // API refusals (slot just filled, members only…) carry a message worth showing; anything else is generic
     initError.value = e.status && e.status < 500
-      ? `${e.message}. Go back to choose another time, or call (256) 974-7384.`
-      : 'Unable to load payment form. Please call (256) 974-7384.'
+      ? `${e.message}. Go back to choose another time, or call ${phone.display}.`
+      : `Unable to load the payment form. Please call ${phone.display}.`
   }
 })
 
 async function pay() {
-  if (!stripe || !elements) return
+  if (!stripe || !elements || processing.value) return
   processing.value = true
   error.value = ''
 
-  const origin = window.location.origin
-  const returnUrl = `${origin}/confirmation?booking_id=${bookingId}`
-
+  const returnUrl = `${window.location.origin}/confirmation?booking_id=${bookingId}`
   const { error: stripeError } = await stripe.confirmPayment({
     elements,
     confirmParams: { return_url: returnUrl },
@@ -151,7 +193,7 @@ async function pay() {
     error.value = stripeError.message || 'Payment failed. Please try again.'
     processing.value = false
   } else {
-    // Payment succeeded without redirect (standard card)
+    // Paid without a redirect (a standard card)
     router.push(`/confirmation?booking_id=${bookingId}`)
   }
 }
