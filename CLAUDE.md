@@ -31,7 +31,7 @@ deer-run/
 │   │   ├── public/_redirects  # SPA fallback: /* → /index.html 200
 │   │   ├── scripts/dev-pages.mjs  # `npm run dev:pages` (wrangler + vite together)
 │   │   ├── src/
-│   │   │   ├── assets/        # Global CSS (main.css)
+│   │   │   ├── assets/        # tokens.css (MD3 tokens), main.css, icons/ (custom SVG icons)
 │   │   │   ├── components/
 │   │   │   │   ├── admin/products/  # Product form, category manager, stock dialog
 │   │   │   │   ├── booking/   # BookingWizard + 4 step components
@@ -42,8 +42,8 @@ deer-run/
 │   │   │   │   ├── schedule/  # ScheduleGrid, ScheduleMonth, schedule/time off display helpers
 │   │   │   │   ├── scorecard/ # CourseStatBar, ScorecardTable, TeeSetSelector
 │   │   │   │   ├── tournament/# EventCard, EventFilterBar
-│   │   │   │   └── ui/        # CourseDiagram, DeerLogo, SectionLabel, TreelineDivider
-│   │   │   ├── composables/   # usePendingTimeOff (admin sidebar badge)
+│   │   │   │   └── ui/        # MD3 component set (see Design System) + SectionLabel, CourseDiagram, TreelineDivider
+│   │   │   ├── composables/   # usePendingTimeOff (admin sidebar badge), useConfirm, useSnackbar
 │   │   │   ├── data/          # Static JS data (holes, rates, membershipTiers, teeSets, employeePositions)
 │   │   │   ├── lib/           # supabase.js, api.js, and shared logic (see "Shared libraries")
 │   │   │   ├── router/        # Vue Router (index.js)
@@ -562,27 +562,63 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
 
 ---
 
-## Design System (Tailwind)
+## Design System (Material Design 3 on Tailwind)
 
-Custom palette in `tailwind.config.js`:
+The UI/UX overhaul (`docs/ui-ux-review.md`, `TODO.md` → Feature 4) moves every page onto MD3 tokens and the
+components in `src/components/ui/`. New code uses them; older pages are migrated phase by phase. See every component
+in every state at **`/dev/ui`** (dev server, or a build with `VITE_UI_GALLERY=true`).
 
-| Token   | Default hex | Usage                              |
-|---------|-------------|-------------------------------------|
-| `pine`  | `#1E3D2F`   | Primary dark green (header, CTAs)   |
-| `clay`  | `#8C4A2F`   | Accent rust/brown                   |
-| `lake`  | `#4A6670`   | Secondary blue-grey                 |
-| `bark`  | `#3D2B1A`   | Dark brown text                     |
-| `parch` | `#F2EBD9`   | Warm off-white background           |
-| `amber` | `#C4873A`   | Gold accent, active states          |
+### Tokens (`src/assets/tokens.css` → `tailwind.config.js`)
+- **Color roles** as RGB-channel CSS variables (`--md-sys-color-*`), so opacity modifiers work (`bg-primary/10`):
+  `primary` (pine `#1E3D2F`), `secondary` (lake), `tertiary` (clay), `error`, `success`, `warning`, each with
+  `on-*`, `*-container` and `on-*-container`; `surface` + `surface-container-lowest/low/(default)/high/highest`
+  (warm parchment), `on-surface`, `on-surface-variant`, `outline`, `outline-variant`, `inverse-*`, `scrim`.
+  Text: `text-on-surface` (primary) and `text-on-surface-variant` (secondary) pass AA on every surface; never alpha
+  text. Palettes come from `scripts/gen-theme.mjs` (Material color utilities).
+- **Gold** (`gold`, `on-gold`, `gold-container`, `gold-text`) is the brand accent: fills and the primary call to
+  action. Use `text-gold-text` for gold text on light surfaces; `text-gold` fails AA. (The old `amber` token was
+  renamed `gold`.) Legacy brand hexes `pine`, `clay`, `lake`, `bark`, `parch` stay until pages are migrated.
+- **Type scale**: `text-display-l/m/s`, `text-headline-l/m/s` (with `font-display`, Playfair Display),
+  `text-title-l/m/s`, `text-body-l/m/s`, `text-label-l/m/s` (Lato, the default `font-body`). Fonts are self-hosted
+  with `@fontsource` (imported in `main.js`; Playfair 700 and Lato 400 preloaded by a plugin in `vite.config.js`).
+- **Shape** `rounded-shape-xs` (4, text fields) / `-sm` (8, chips, menus) / `-md` (12, cards) / `-lg` (16) /
+  `-xl` (28, dialogs, sheets) / `rounded-full` (buttons). **Elevation** `shadow-elevation-1…5`. **Motion**
+  `ease-emphasized`, `ease-standard` (+ `-decelerate`/`-accelerate`), `duration-short-2/short-4/medium-2/medium-4/long-2`.
+  **z-index** `z-app-bar` < `z-drawer` < `z-dialog` < `z-snackbar`.
+- **States**: `.state-layer` (hover 8%, focus 10%, pressed 10%, dragged 16%) on interactive elements; `.touch-target`
+  gives a smaller control a 48px hit area; one global `:focus-visible` ring (`--focus-ring`, light gold on `.on-dark`,
+  `bg-primary`, `bg-pine`, `.hero-bg`); every animation is off under `prefers-reduced-motion`.
+- **High contrast**: `data-contrast="high"` on a container darkens text and outlines (On Course, Tee Sheet outdoors).
+- Light theme only. Tailwind class names must be literal strings (no `` `text-${x}` ``), or they aren't generated.
 
-Shared classes in `src/assets/main.css` (`.btn-*`, `.card*`, `.field`, `.price-*`, `.event-*`) are in
-`@layer components`, so Tailwind utilities on the same element (`px-4 py-2 text-sm`) override them. The UI/UX overhaul
-(`docs/ui-ux-review.md`, `TODO.md` → Feature 4) replaces them with MD3 tokens and `src/components/ui/` in Phase 1.
+### Icons
+Material Symbols Rounded via `unplugin-icons` (inline SVG components, tree-shaken, offline):
+`import IconGolf from '~icons/material-symbols/golf-course-rounded'`. Custom icons in the same style live in
+`src/assets/icons` (`~icons/deer/golf-cart`, `~icons/deer/bunker`). Icons are 1em by default; size with `w-5 h-5`
+(20) or `w-6 h-6` (24). Decorative icons get `aria-hidden="true"`; icon-only buttons use `IconButton` (required
+`label`). No emoji as icons.
 
-Custom font families (Google Fonts):
-- `font-display` → Playfair Display (headings)
-- `font-serif` → Libre Baskerville (body serif)
-- `font-body` → Lato (UI sans-serif)
+### Logo
+`BrandLogo` (`variant="emblem"` full logo, or `"mark"` round stag-and-sun badge; `size` = height in px; `eager` above
+the fold). Optimized WebP/PNG files are in `public/images/logo`; masters and the original SVG in `docs/brand`.
+Favicons, `apple-touch-icon.png`, `icon-192/512.png` and `site.webmanifest` are in `public/`.
+
+### Components (`src/components/ui/`, each file starts with a usage comment)
+| Area | Components |
+|------|------------|
+| Actions | `AppButton` (filled / gold / tonal / outlined / text / danger; md 40, lg 48, xl 64; `loading`, `icon`, `to`), `IconButton` (48dp, `label`, standard / filled / tonal / outlined / inherit), `RowActionsMenu` (`more_vert` menu) |
+| Dialogs | `AppDialog` (`v-model:open`, `persistent`, `fullscreenOnMobile`), `BottomSheet`, `ResultDialog` (POS results), `ConfirmDialog` + `useConfirm()` (`await confirm({ title, message, destructive })`) |
+| Feedback | `AppSnackbar` + `useSnackbar()` (`snackbar.show({ message, actionLabel: 'Undo', onAction })`), `ErrorBanner` (`@retry`), `EmptyState`, `Skeleton`, `ProgressIndicator` |
+| Fields | `TextField`, `SelectField`, `TextArea`, `MoneyField` (v-model in cents), `Checkbox`, `Switch`, `RadioGroup`, `SegmentedButton`, `ChipGroup` / `FilterChip`, `NumericKeypad`, `DateStepper`, `DateRangeField`, `CustomerSearch` |
+| Data | `Card`, `StatCard`, `StatusChip` + `statusChips.js` (`statusInfo(kind, status)`: the one status → label/tone/icon map), `DataTable` (cards below md, sort, keyboard row click, `actions` slot), `AppPagination`, `AppTabs`, `PageHeader` |
+| Navigation | `TopAppBar`, `NavDrawer` (modal / standard / responsive), `NavRail`, `BottomNavBar`, `navItems.js` helpers |
+
+`App.vue` mounts the single `ConfirmDialog` and `AppSnackbar` hosts. Dialogs that hold typed input are `persistent`
+(no backdrop close). Use `useConfirm()` instead of `window.confirm()` and the snackbar for save feedback.
+
+Legacy classes in `src/assets/main.css` (`.btn-*`, `.card*`, `.field`, `.price-*`, `.event-*`) are in
+`@layer components` so utilities override them; they go away as pages migrate. Receipts, slips, the statement and
+the Z report are print documents and keep their own styles.
 
 ---
 

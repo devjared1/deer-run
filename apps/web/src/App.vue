@@ -5,12 +5,17 @@
       <RouterView />
     </main>
     <AppFooter v-if="!isPortal" class="print:hidden" />
+    <!-- One host each for useConfirm() and useSnackbar(), shared by every layout -->
+    <ConfirmDialog />
+    <AppSnackbar />
   </div>
 </template>
 
 <script setup>
 import AppFooter from '@/components/layout/AppFooter.vue'
 import AppNav from '@/components/layout/AppNav.vue'
+import AppSnackbar from '@/components/ui/AppSnackbar.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
