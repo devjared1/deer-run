@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="!busy && $emit('close')">
+  <div class="modal-overlay">
     <div class="modal-box max-w-md">
       <div class="text-center mb-5">
         <div class="text-gray-400 text-xs font-body uppercase tracking-wider">Total Due</div>

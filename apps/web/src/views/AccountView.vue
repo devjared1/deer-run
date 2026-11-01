@@ -60,13 +60,16 @@
               </div>
               <button
                 v-if="canCancel(b)"
-                @click="cancelBooking(b.id)"
+                @click="cancelBooking(b)"
                 :disabled="cancelling === b.id"
                 class="btn-outline-pine"
                 style="padding:8px 16px;font-size:12px;border-color:rgba(140,74,47,.3);color:#8C4A2F;"
               >
                 {{ cancelling === b.id ? 'Cancelling…' : 'Cancel' }}
               </button>
+              <p v-if="cancelError?.id === b.id" class="w-full text-right" role="alert" style="font-family:'Lato',sans-serif;font-size:13px;color:#8C4A2F;">
+                {{ cancelError.message }}
+              </p>
             </div>
           </div>
         </div>
@@ -114,6 +117,7 @@ const authStore = useAuthStore()
 const bookings   = ref([])
 const loading    = ref(true)
 const cancelling = ref(null)
+const cancelError = ref(null) // { id, message } when a cancel fails
 
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -152,17 +156,26 @@ function formatTime(t) {
   return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
 }
 
-async function cancelBooking(id) {
+async function cancelBooking(b) {
+  const when = `${formatLocalDate(b.teeTimeSlot.date.slice(0, 10), { weekday: 'short', month: 'short', day: 'numeric' })} at ${formatTime(b.teeTimeSlot.startTime)}`
+  if (!window.confirm(`Cancel your tee time on ${when}? This can't be undone.`)) return
+  const id = b.id
   cancelling.value = id
+  cancelError.value = null
   try {
     const res = await fetch(`/api/bookings/${id}`, {
       method:  'DELETE',
       headers: { Authorization: `Bearer ${authStore.getToken()}` },
     })
     if (res.ok) {
-      const idx = bookings.value.findIndex((b) => b.id === id)
+      const idx = bookings.value.findIndex((x) => x.id === id)
       if (idx !== -1) bookings.value[idx].status = 'CANCELLED'
+    } else {
+      const data = await res.json().catch(() => ({}))
+      cancelError.value = { id, message: data.error || 'Could not cancel this tee time. Please try again or call the pro shop.' }
     }
+  } catch {
+    cancelError.value = { id, message: 'Could not reach the server. Check your connection and try again.' }
   } finally {
     cancelling.value = null
   }

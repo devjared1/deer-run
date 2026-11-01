@@ -1,5 +1,5 @@
 <template>
-  <div class="modal-overlay" @click.self="!busy && $emit('cancel')">
+  <div class="modal-overlay">
     <div class="modal-box max-w-sm">
       <h2 class="font-display font-bold text-bark mb-1">{{ copy.title }}</h2>
       <p class="text-gray-500 text-sm font-body mb-4">{{ copy.help }}</p>
