@@ -569,20 +569,23 @@ dialogs. Receipts and slips aren't redesigned.
 - [x] Update `CLAUDE.md` → Design System with the tokens, components and icon conventions
 
 ### Phase 2: App shells and navigation
-- [ ] Public `AppNav`: `<header>`, skip link, logo at every size (40–48px), desktop links + Sign in/Account + gold Book
+- [x] Public `AppNav`: `<header>`, skip link, logo at every size (40–48px), desktop links + Sign in/Account + gold Book
       CTA, mobile full-screen navigation drawer (48dp items, Esc, closes on route change, scroll lock,
       `aria-expanded`), **sticky bottom "Book a tee time" bar** on mobile
-- [ ] Public `AppFooter`: new logo, contact with icons, hours, directions link, social links, newsletter signup, real
-      legal links
-- [ ] Router: 404 page, per-route `meta.title`/`description` (`@unhead/vue`), `scrollBehavior` honoring
+- [x] Public `AppFooter`: new logo, contact with icons, hours, directions link, social links, newsletter signup, real
+      legal links (social links are empty in `src/data/site.js` until the course confirms its pages; the newsletter
+      form saves a contact message, there's no mailing list yet; Privacy/Accessibility links come with Phase 3)
+- [x] Router: 404 page, per-route `meta.title`/`description` (`@unhead/vue`), `scrollBehavior` honoring
       `savedPosition` and `#hash`
-- [ ] Admin shell: top app bar (title, breadcrumbs from route meta, page actions, account menu, sign out),
+- [x] Admin shell: top app bar (title, breadcrumbs from route meta, page actions, account menu, sign out),
       **navigation rail at md**, drawer at lg, nav grouped (Overview / Golf / Staff / Pro Shop / Admin) with Material
       Symbols, 56dp items with MD3 active indicator, time-off badge kept, `document.title`
-- [ ] Staff shell: **bottom navigation bar on phones** (role-based 3–5 destinations + More), rail on tablets, drawer
+- [x] Staff shell: **bottom navigation bar on phones** (role-based 3–5 destinations + More), rail on tablets, drawer
       on desktop; clock-status chip in the top bar; sign out; **Lock / switch cashier** on the register PC
-- [ ] Register mode: full-bleed route meta (no sidebar/padding, rail collapsed) for `/staff/register`
-- [ ] All nav emoji replaced (brief §8)
+      (Switch cashier signs out to the same page; a PIN lock screen isn't built. RegisterView's cart still assumes
+      the old header offsets: fix in Phase 6)
+- [x] Register mode: full-bleed route meta (no sidebar/padding, rail collapsed) for `/staff/register`
+- [x] All nav emoji replaced (brief §8)
 
 ### Phase 3: Public site redesign (benchmark level)
 - [ ] Image pipeline: `vite-imagetools` (AVIF/WebP at 640/1280/1920, `srcset`/`sizes`), width/height on every image,
