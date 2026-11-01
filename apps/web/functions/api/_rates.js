@@ -2,7 +2,7 @@ import { withDefaultRates } from '../../src/lib/rates.js'
 
 /**
  * The current greens fee and cart rates: { rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART } (cents),
- * holidayDates: ['YYYY-MM-DD'], fromProducts: { key: productId } }.
+ * holidayDates: ['YYYY-MM-DD'], payAtCourseFeeCents (0 = off, and before migration 12), fromProducts: { key: productId } }.
  * Prices come from the active POS products tagged with Product.rateKey (what the register charges, including a
  * variant price override); a missing one falls back to DEFAULT_RATES. Before migration 11 (no rateKey column)
  * everything is the default.
@@ -26,5 +26,10 @@ export async function loadRates(supabase) {
       fromProducts[p.rateKey] = p.id
     }
   }
-  return { rates: withDefaultRates(found), holidayDates: settings?.holidayDates ?? [], fromProducts }
+  return {
+    rates: withDefaultRates(found),
+    holidayDates: settings?.holidayDates ?? [],
+    payAtCourseFeeCents: settings?.payAtCourseFeeCents ?? 0,
+    fromProducts,
+  }
 }

@@ -95,13 +95,31 @@
                   :options="INTERVALS.map(m => ({ value: m, label: `${m} minutes` }))"
                 />
               </div>
+
+              <template v-if="hasPayAtCourse">
+                <h3 class="mt-6 text-title-m text-on-surface">Pay at course</h3>
+                <p class="mt-1 text-body-m text-on-surface-variant">
+                  Online golfers can pay just this fee to hold the tee time and the rest at the pro shop when they check in.
+                  The fee isn't refunded if the booking is cancelled or missed. It's offered only when it's less than the
+                  booking's total.
+                </p>
+                <MoneyField
+                  v-model="form.payAtCourseFeeCents"
+                  label="Hold fee per booking"
+                  :min="0"
+                  :max="MAX_PAY_AT_COURSE_FEE_CENTS"
+                  :helper="`$0.00 = off (online bookings pay in full). Otherwise at least ${formatCents(MIN_PAY_AT_COURSE_FEE_CENTS)}.`"
+                  :error="holdFeeError"
+                  class="mt-4 w-full sm:max-w-sm"
+                />
+              </template>
             </Card>
           </div>
         </template>
 
         <!-- Payroll -->
         <template #payroll>
-          <div data-tab="payroll">
+          <div data-tab="payroll" class="space-y-6">
             <Card variant="outlined" padding="lg" tag="section" aria-labelledby="payroll-heading">
               <h2 id="payroll-heading" class="font-display text-headline-s text-on-surface">Payroll</h2>
               <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -118,6 +136,7 @@
                 Overtime is calculated per workweek.
               </p>
             </Card>
+            <TimeClockDevices />
           </div>
         </template>
 
@@ -310,7 +329,10 @@ import {
 import { DEFAULT_ROUND_MINUTES, LEARN_DAYS, formatMinutes, perHoleMinutes } from '@/lib/pace'
 import { holes } from '@/data/holes'
 import { apiFetch } from '@/lib/api'
-import { DEFAULT_RATES, RATE_KEYS, RATE_LABELS } from '@/lib/rates'
+import {
+  DEFAULT_PAY_AT_COURSE_FEE_CENTS, DEFAULT_RATES, MAX_PAY_AT_COURSE_FEE_CENTS, MIN_PAY_AT_COURSE_FEE_CENTS, RATE_KEYS, RATE_LABELS,
+} from '@/lib/rates'
+import { formatCents } from '@/lib/money'
 import { useConfirm } from '@/composables/useConfirm'
 import { useSnackbar } from '@/composables/useSnackbar'
 import AppTabs from '@/components/ui/AppTabs.vue'
@@ -324,6 +346,7 @@ import Switch from '@/components/ui/Switch.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'
 import PositionChecklist from '@/components/admin/settings/PositionChecklist.vue'
+import TimeClockDevices from '@/components/admin/settings/TimeClockDevices.vue'
 import IconAdd from '~icons/material-symbols/add-rounded'
 import IconClose from '~icons/material-symbols/close-rounded'
 import IconRefresh from '~icons/material-symbols/refresh-rounded'
@@ -379,9 +402,17 @@ const form = ref({
   registerPositions: [],
   managerPositions: [],
   lateFeeCents: 0,
+  payAtCourseFeeCents: DEFAULT_PAY_AT_COURSE_FEE_CENTS,
 })
 // Only shown (and saved) once the database has CourseSettings.lateFeeCents
 const hasLateFee = ref(false)
+// Pay at course hold fee: only shown (and saved) once the database has CourseSettings.payAtCourseFeeCents
+const hasPayAtCourse = ref(false)
+// Stripe can't charge less than $0.50
+const holdFeeError = computed(() => {
+  const fee = form.value.payAtCourseFeeCents
+  return fee > 0 && fee < MIN_PAY_AT_COURSE_FEE_CENTS ? `At least ${formatCents(MIN_PAY_AT_COURSE_FEE_CENTS)}, or $0.00 for off` : ''
+})
 // On-reader tipping: only shown (and saved) once the database has CourseSettings.tippingEnabled
 const hasTipping  = ref(false)
 const tipping     = ref({ enabled: false, percentages: [15, 18, 20], preTax: true })
@@ -505,8 +536,10 @@ async function load() {
       registerPositions:   data.registerPositions ?? [],
       managerPositions:    data.managerPositions ?? [],
       lateFeeCents:        data.lateFeeCents ?? 0,
+      payAtCourseFeeCents: data.payAtCourseFeeCents ?? DEFAULT_PAY_AT_COURSE_FEE_CENTS,
     }
     hasLateFee.value = data.lateFeeCents !== undefined
+    hasPayAtCourse.value = data.payAtCourseFeeCents !== undefined
     hasTipping.value = data.tippingEnabled !== undefined
     const percentages = [...(data.tipPercentages?.length ? data.tipPercentages : [15, 18, 20])]
     tipping.value = { enabled: !!data.tippingEnabled, percentages, preTax: data.tipPreTax !== false }
@@ -525,11 +558,12 @@ async function load() {
 
 // The form edits tax as a percentage; the API stores basis points (9.25% = 925). Money is edited in cents already.
 function settingsPayload() {
-  const { salesTaxPercent, lateFeeCents, ...rest } = form.value
+  const { salesTaxPercent, lateFeeCents, payAtCourseFeeCents, ...rest } = form.value
   return {
     ...rest,
     salesTaxBps: Math.round(Number(salesTaxPercent || 0) * 100),
     ...(hasLateFee.value ? { lateFeeCents: lateFeeCents ?? 0 } : {}),
+    ...(hasPayAtCourse.value ? { payAtCourseFeeCents: payAtCourseFeeCents ?? 0 } : {}),
     ...(hasTipping.value ? tippingPayload() : {}),
     ...(hasRates.value
       ? {
@@ -569,6 +603,11 @@ async function firstInvalidField() {
 
 async function save() {
   if (await firstInvalidField()) return
+  if (holdFeeError.value) {
+    tab.value = 'booking'
+    saveError.value = `Hold fee: ${holdFeeError.value}`
+    return
+  }
   saving.value      = true
   saveError.value   = null
   saveWarning.value = null

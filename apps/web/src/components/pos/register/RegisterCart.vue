@@ -56,7 +56,8 @@
             <div class="min-w-0 flex-1">
               <div class="text-body-l text-on-surface">{{ line.description }}</div>
               <div class="text-body-s text-on-surface-variant">
-                <template v-if="line.booking">Prepaid tee time</template>
+                <template v-if="line.booking && line.balanceCents">Pay at course: balance due · no tax</template>
+                <template v-else-if="line.booking">Prepaid tee time</template>
                 <template v-else-if="line.newBooking">Booked when the sale completes</template>
                 <template v-else>
                   {{ line.quantity }} @ {{ formatCents(line.unitPriceCents) }}<template v-if="line.taxRateBps === 0"> · no tax</template>

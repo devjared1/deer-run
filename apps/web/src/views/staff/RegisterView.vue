@@ -303,7 +303,8 @@ const productsRef      = ref(null)
 const highlightLineKey = ref(null) // the cart line just added to, briefly highlighted
 
 // { key, variantId, custom: { description, priceCents }, quantity, discountCents }
-// Tee time lines ($0, quantity 1): { key, booking: { bookingId }, label } or { key, newBooking: {...}, label }
+// Tee time lines (quantity 1): { key, booking: { bookingId }, label, balanceCents? } or { key, newBooking: {...}, label };
+// $0 except a pay-at-course booking's balance
 const cart     = ref([])
 const customer = ref(null)
 
@@ -414,7 +415,8 @@ function isOutOfStock(p) {
 const pricedLines = computed(() => cart.value.map(line => {
   let unit, taxRateBps, description, bps = 0
   if (line.booking || line.newBooking) {
-    unit = 0
+    // A pay-at-course booking's balance (untaxed, like the online price); otherwise $0
+    unit = line.balanceCents ?? 0
     taxRateBps = 0
     description = line.label
   } else if (line.custom) {
@@ -812,7 +814,10 @@ function applyHandoff() {
     (handoff.kind === 'newBooking' && l.newBooking))
   if (!exists) {
     cart.value.push(handoff.kind === 'booking'
-      ? { key: keySeq++, booking: { bookingId: handoff.bookingId }, label: handoff.label, quantity: 1, discountCents: 0 }
+      ? {
+          key: keySeq++, booking: { bookingId: handoff.bookingId }, label: handoff.label, quantity: 1, discountCents: 0,
+          ...(handoff.balanceCents > 0 ? { balanceCents: handoff.balanceCents } : {}),
+        }
       : { key: keySeq++, newBooking: handoff.newBooking, label: handoff.label, quantity: 1, discountCents: 0 })
   }
   if (handoff.customer && !customer.value) customer.value = handoff.customer

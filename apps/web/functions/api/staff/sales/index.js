@@ -104,7 +104,8 @@ export async function onRequestPost({ request, env }) {
         .in('id', variantIds)
       : Promise.resolve({ data: [] }),
     bookingIds.length
-      ? supabase.from('Booking').select('id, status, source, players, slot:TeeTimeSlot(date, startTime)').in('id', bookingIds)
+      // (*): includes balanceDueCents (pay at course) once that column exists
+      ? supabase.from('Booking').select('*, slot:TeeTimeSlot(date, startTime)').in('id', bookingIds)
       : Promise.resolve({ data: [] }),
     slotIds.length ? loadSlots(supabase, slotIds) : Promise.resolve({ data: [] }),
   ])

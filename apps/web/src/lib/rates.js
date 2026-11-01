@@ -61,3 +61,19 @@ export function bookingPrice({ rates, holidayDates = [], ymd, holes = 18, player
   const perPlayerCents = greensCents + cartCents
   return { greensKey, greensCents, cartCents, perPlayerCents, totalCents: perPlayerCents * Number(players) }
 }
+
+// Pay at course: the online booking pays only a flat hold fee per booking (CourseSettings.payAtCourseFeeCents) and the
+// rest at the pro shop. The fee isn't refunded if the booking is cancelled or missed.
+export const DEFAULT_PAY_AT_COURSE_FEE_CENTS = 1000
+export const MIN_PAY_AT_COURSE_FEE_CENTS = 50 // Stripe's smallest card charge
+export const MAX_PAY_AT_COURSE_FEE_CENTS = 10000
+
+/**
+ * The pay-at-course split of a booking's total: { available, holdFeeCents, balanceCents }. Not available when the fee
+ * is off (0) or not less than the total (then the golfer just pays in full).
+ */
+export function payAtCourseSplit(totalCents, feeCents) {
+  const fee = Number.isInteger(feeCents) ? feeCents : 0
+  if (fee <= 0 || fee >= totalCents) return { available: false, holdFeeCents: 0, balanceCents: totalCents }
+  return { available: true, holdFeeCents: fee, balanceCents: totalCents - fee }
+}

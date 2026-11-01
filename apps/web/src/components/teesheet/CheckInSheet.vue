@@ -11,7 +11,12 @@
         {{ teeTimeLabel(teeSlot.date, teeSlot.startTime) }} · {{ playersText(booking.players) }}
       </p>
       <RoundSetupFields v-model="form" :carts-out="cartsOut" />
-      <p v-if="!checkedIn" class="mt-4 text-body-m text-on-surface-variant">
+      <p v-if="!checkedIn && due" class="mt-4 text-body-m text-on-surface-variant">
+        This group chose to pay at the course: the {{ formatCents(booking.holdFeeCents) }} hold fee was paid online.
+        <strong class="text-on-surface">Check in and collect {{ formatCents(due) }}</strong> checks them in and opens a
+        sale with the balance, so carts, range balls and drinks can go on the same ticket.
+      </p>
+      <p v-else-if="!checkedIn" class="mt-4 text-body-m text-on-surface-variant">
         <strong class="text-on-surface">No add-ons, done</strong> checks the group in and stays here.
         <strong class="text-on-surface">Add items at the register</strong> checks them in and opens a sale with the
         prepaid greens fee at $0 for carts, range balls and drinks.
@@ -28,6 +33,15 @@
           Save
         </AppButton>
       </template>
+      <AppButton
+        v-else-if="due"
+        :icon="IconRegister"
+        :loading="busy === 'register'"
+        data-autofocus
+        @click="emit('submit', 'register')"
+      >
+        Check in and collect {{ formatCents(due) }}
+      </AppButton>
       <template v-else>
         <AppButton
           variant="outlined"
@@ -54,7 +68,8 @@
 
 <script setup>
 // Check-in (or "Carts and round" for a group already checked in) on the Tee Sheet: the round setup form plus
-// the two ways to finish a check-in. A bottom sheet on phones, a dialog from md up.
+// the two ways to finish a check-in (one, to the register, when a pay-at-course balance is due). A bottom sheet on
+// phones, a dialog from md up.
 // v-model:form is a setupForm() object (oncourse/roundSetup.js). busy: null | 'done' | 'register' | 'save'.
 // Emits submit('done' | 'register' | 'save'); the page does the API calls.
 import { computed } from 'vue'
@@ -62,7 +77,8 @@ import BottomSheet from '@/components/ui/BottomSheet.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'
 import RoundSetupFields from '@/components/oncourse/RoundSetupFields.vue'
-import { teeTimeLabel } from '@/lib/teesheet'
+import { balanceDue, teeTimeLabel } from '@/lib/teesheet'
+import { formatCents } from '@/lib/money'
 import { playersText } from './teeSheetDisplay'
 import IconRegister from '~icons/material-symbols/point-of-sale-rounded'
 import IconDone from '~icons/material-symbols/done-all-rounded'
@@ -79,6 +95,8 @@ const props = defineProps({
 const emit = defineEmits(['update:open', 'submit', 'after-leave'])
 
 const checkedIn = computed(() => !!props.booking?.checkedInAt)
+// Pay at course: the balance still owed (then the check-in always goes to the register)
+const due = computed(() => balanceDue(props.booking))
 const title = computed(() => {
   if (!props.booking) return ''
   return `${checkedIn.value ? 'Carts and round' : 'Check in'}: ${props.booking.name}`

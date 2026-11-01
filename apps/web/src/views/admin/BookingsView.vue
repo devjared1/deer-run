@@ -41,7 +41,12 @@
         <template #cell-tee="{ row }">
           <span class="whitespace-nowrap">{{ teeLabel(row) }}</span>
         </template>
-        <template #cell-total="{ row }"><span class="tabular-nums">{{ money(row.totalCents) }}</span></template>
+        <template #cell-total="{ row }">
+          <span class="block tabular-nums">{{ money(row.totalCents) }}</span>
+          <span v-if="row.holdFeeCents != null" class="block text-body-s font-normal text-on-surface-variant">
+            {{ money(row.holdFeeCents) }} hold fee online{{ row.balanceDueCents > 0 ? ` · ${money(row.balanceDueCents)} due` : ' · balance paid' }}
+          </span>
+        </template>
         <template #cell-status="{ row }">
           <StatusChip kind="booking" :status="bookingStatus(row)" size="sm" />
         </template>

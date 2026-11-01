@@ -194,7 +194,17 @@ export async function prerender({ dist = join(root, 'dist'), views } = {}) {
     await writeFile(file, renderPage(template, page, views, assets))
   }
   await writeFile(join(dist, 'sitemap.xml'), sitemap(pages))
+  await writeFile(join(dist, 'timeclock.html'), timeclockPage(template))
   return { pages: pages.length, urls: pages.filter(p => p.meta.sitemap !== false).length }
+}
+
+// The time clock kiosk (/timeclock, not indexed) gets its own HTML only so its web app manifest is there from the
+// start: "Add to Home Screen" on the iPad then opens the time clock, not the home page. Body as usual (the SPA).
+function timeclockPage(template) {
+  return template
+    .replace(/href="\/site\.webmanifest"/, 'href="/timeclock.webmanifest"')
+    .replace(/\n?[ \t]*<meta\s+name="(description|robots)"[^>]*>/gi, '')
+    .replace(/<title>[\s\S]*?<\/title>/i, '<title>Time Clock · Deer Run Golf Course</title>\n    <meta name="robots" content="noindex, nofollow" />')
 }
 
 // node scripts/prerender.mjs

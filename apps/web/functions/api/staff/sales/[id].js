@@ -1,7 +1,7 @@
 import { json } from '../../admin/_auth.js'
 import { requireRegister } from '../_auth.js'
 import { loadSale, emailReceipt } from './_sale.js'
-import { refundMembership } from './_save.js'
+import { refundBalances, refundMembership } from './_save.js'
 import { consumeApproval } from '../_approvals.js'
 import { localDate } from '../../../../src/lib/timeclock.js'
 import { openSession } from '../_drawer.js'
@@ -231,9 +231,14 @@ async function refund({ supabase, dbUser, employee }, env, saleId, body) {
   const membership = await refundMembership(supabase, sale, items, localDate())
   if (membership?.error) warnings.push(`The membership wasn't shortened: ${membership.error}. Update the customer in Admin → Users.`)
 
+  const fresh = await loadSale(supabase, sale.id)
+  // A refunded pay-at-course balance is owed again (collected at the register if the group still plays)
+  const balanceError = await refundBalances(supabase, fresh, fresh.refunds.find(r => r.id === refunded.id))
+  if (balanceError) warnings.push(`The tee time balance wasn't put back on the booking: ${balanceError}.`)
+
   return json({
     refund: refunded,
-    sale: await loadSale(supabase, sale.id),
+    sale: fresh,
     warnings,
     ...(membership?.memberUntil ? { memberUntil: membership.memberUntil } : {}),
   })

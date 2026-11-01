@@ -72,7 +72,7 @@ function booking(over) {
   return {
     id: `b${n}`, players: 4, status: 'CONFIRMED', source: 'ONLINE', guestName: null, guestEmail: null,
     checkedInAt: null, createdAt: isoAgo(3000 - n), totalCents: 18000, cartNumbers: [], ownCart: false, startHole: 1,
-    roundHoles: 18, cartIncluded: true, teedOffAt: null, positionHole: null, positionStage: null, positionAt: null,
+    roundHoles: 18, cartIncluded: true, holdFeeCents: null, balanceDueCents: 0, teedOffAt: null, positionHole: null, positionStage: null, positionAt: null,
     finishedAt: null, holdsSpot: true, holdExpired: false, name: 'Guest', email: null, customer: null, receipts: [],
     ...over,
   }
@@ -93,6 +93,8 @@ const PLAN = {
     booking({ name: 'Wes Calloway', players: 4, customer: member('u3', 'Wes Calloway') }),
   ],
   160: [booking({ name: 'Morgan & Riley Fox', players: 2, roundHoles: 9, cartIncluded: false, totalCents: 6000 })],
+  // Pay at course: $10 hold fee paid online, the rest due at the register
+  170: [booking({ name: 'Tom Albers', players: 2, totalCents: 10400, holdFeeCents: 1000, balanceDueCents: 9400 })],
   180: [booking({ name: 'Jenna Park', players: 3, status: 'PENDING', totalCents: 13500 })],
   200: [booking({ name: 'Phone: Carter group', players: 4, source: 'PHONE', totalCents: 18000, receipts: [{ id: 's4', number: 1052 }] })],
 }

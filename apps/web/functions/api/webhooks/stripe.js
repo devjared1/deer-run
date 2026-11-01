@@ -4,6 +4,7 @@ import { Resend } from 'resend'
 import { completeCardCheckout } from '../staff/_cardCheckout.js'
 import { recordPayment } from '../admin/_houseAccounts.js'
 import { settlePaidBooking } from '../bookings/_holds.js'
+import { formatCents } from '../../../src/lib/money.js'
 
 function json(data, status = 200) {
   return Response.json(data, { status })
@@ -97,7 +98,13 @@ export async function onRequestPost({ request, env }) {
           })
           const [h, m] = booking.teeTimeSlot.startTime.split(':').map(Number)
           const slotTime = `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
-          const total = `$${(booking.totalCents / 100).toFixed(0)}`
+          // Pay at course: only the hold fee was charged; the rest is paid at the pro shop
+          const payment = booking.holdFeeCents != null
+            ? [
+                `Hold Fee Paid: ${formatCents(booking.holdFeeCents)} (non-refundable if the booking is cancelled or missed)`,
+                `Due at the Course: ${formatCents(booking.balanceDueCents)}, at the pro shop when you check in`,
+              ]
+            : [`Total Paid: ${formatCents(booking.totalCents)}`]
 
           const resend = new Resend(env.RESEND_API_KEY)
           await resend.emails.send({
@@ -110,7 +117,7 @@ export async function onRequestPost({ request, env }) {
               `Date: ${slotDate}`,
               `Tee Time: ${slotTime}`,
               `Players: ${booking.players}`,
-              `Total Paid: ${total}`,
+              ...payment,
               '',
               'We look forward to seeing you on the course.',
               'Pro Shop: (256) 974-7384',

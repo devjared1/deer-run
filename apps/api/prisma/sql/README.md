@@ -13,6 +13,8 @@ wrapped in a transaction and says how to record it with `prisma migrate resolve`
 | `9_guest_default_discounts_tips_drawers.sql` | `User.role` defaults to GUEST; `ProductCategory.memberDiscount`, `SaleItem.memberDiscountCents`; card tips (`CourseSettings.tipping*`, `Payment.tipCents`); late fees (`CourseSettings.lateFeeCents`, `Statement.reminderSentAt/lateFeeAt`); `CashDrawerMovement` + approval actions; `save_time_entry()` |
 | `11_rates.sql` | Greens fee / cart rates as tagged products (`Product.rateKey`), `CourseSettings.holidayDates`, `Booking.cartIncluded`; creates or links the rate products at the starting rates and deactivates the old Twilight / 9 Holes products |
 | `10_on_course_tracking.sql` | On-course tracking: `Booking` cart numbers, start hole, 9/18 holes, tee-off, last position (`HoleStage`) and finish; `PositionReport` (every report); `CourseSettings.roundMinutes`, `coursePositions`, learned `holeSeconds` |
+| `12_pay_at_course.sql` | Pay at course: `CourseSettings.payAtCourseFeeCents` (hold fee per online booking, default $10), `Booking.holdFeeCents` and `balanceDueCents` |
+| `13_timeclock_kiosk.sql` | Time clock kiosk: `Employee.clockPinHash` / `clockPinFailedAttempts` / `clockPinLockedUntil`, `ClockKiosk` (device tokens, hashed) |
 
 When changing `create_sale()` or `refund_sale()`, start from the latest copy in this folder (currently `8_…`) and
 `CREATE OR REPLACE` the whole function.

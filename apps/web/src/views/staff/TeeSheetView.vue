@@ -84,6 +84,10 @@
           Where checked-in groups are is estimated from their tee time until the starter or a marshal updates them on
           the On Course page.
         </li>
+        <li>
+          <strong>Pay at course</strong> bookings paid a non-refundable hold fee online. Checking one in opens the register
+          with the balance due; the fee is kept if the booking is cancelled or the group doesn't show.
+        </li>
         <li>Walk-ins and phone bookings are paid at the register; the booking is saved when the sale completes.</li>
         <li>Unfinished online payments hold their spots for {{ UNPAID_HOLD_MINUTES }} minutes.</li>
         <li>Cancelling or moving a booking never moves money.</li>
@@ -129,7 +133,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
 import { localDate, formatClockTime, isValidYmd, localDateTimeToUtc } from '@/lib/timeclock'
-import { teeTimeLabel, UNPAID_HOLD_MINUTES } from '@/lib/teesheet'
+import { balanceDue, bookingLineDescription, teeTimeLabel, UNPAID_HOLD_MINUTES } from '@/lib/teesheet'
 import { setRegisterHandoff } from '@/lib/registerHandoff'
 import { cartsInUse, coursePace, paceLabel, paceOf, paceProfile, trackedGroups } from '@/lib/pace'
 import { useAuthStore } from '@/stores/auth'
@@ -267,7 +271,7 @@ function openCheckIn(b, slot) {
 }
 
 // mode 'save': a checked-in group's carts / round. 'done': check in and stay here. 'register': check in and open
-// the register with the prepaid greens fee at $0 for add-ons.
+// the register with the prepaid greens fee at $0 for add-ons (or the pay-at-course balance).
 async function confirmCheckIn(mode) {
   const { booking: b, slot } = checkingIn.value
   busy.value = b.id
@@ -369,7 +373,9 @@ function openOnRegister(b, slot) {
   setRegisterHandoff({
     kind: 'booking',
     bookingId: b.id,
-    label: `Greens fee ${b.source === 'ONLINE' ? 'paid online' : 'paid'} — ${teeTimeLabel(slot.date, slot.startTime)}, ${playersText(b.players)}`,
+    label: bookingLineDescription(b, slot),
+    // Pay at course: the register charges the balance on the booking line (the server checks it's still owed)
+    balanceCents: balanceDue(b),
     customer: b.customer ? { ...b.customer } : null,
   })
   router.push('/staff/register')

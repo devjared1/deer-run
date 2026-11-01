@@ -2,9 +2,11 @@ import { requireAdmin, json } from '../_auth.js'
 import {
   parseEmployee, findUserIdByEmail, constraintMessage, serializeEmployee, EMPLOYEE_COLUMNS, RESET_MANAGER_PIN,
 } from './_validate.js'
+import { PIN_PATTERN, newPinFields, resetPinFields } from '../../staff/_pin.js'
 
 // PUT /api/admin/employees/:id — update fields (including active = false to deactivate).
 // { resetManagerPin: true } clears the employee's register manager PIN and any lockout.
+// { clockPin: '1234' } sets their time clock (kiosk) PIN, 4–6 digits; { clockPin: null } clears it. Either clears a lockout.
 export async function onRequestPut({ request, env, params }) {
   const result = await requireAdmin(request, env)
   if (result instanceof Response) return result
@@ -20,6 +22,11 @@ export async function onRequestPut({ request, env, params }) {
   const { data: update, error: validationError } = parseEmployee(body, { partial: true })
   if (validationError) return json({ error: validationError }, 400)
   if (body.resetManagerPin) Object.assign(update, RESET_MANAGER_PIN)
+  if (body.clockPin !== undefined) {
+    if (body.clockPin === null) Object.assign(update, resetPinFields('clock'))
+    else if (!PIN_PATTERN.test(String(body.clockPin))) return json({ error: 'The time clock PIN must be 4 to 6 digits' }, 400)
+    else Object.assign(update, await newPinFields('clock', String(body.clockPin)))
+  }
   if (!Object.keys(update).length) return json({ error: 'No fields to update' }, 400)
 
   // Re-link the login account when the email changes

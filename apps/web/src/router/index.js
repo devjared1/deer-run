@@ -134,6 +134,12 @@ const routes = [
       { path: 'pin',       component: () => import('@/views/staff/ManagerPinView.vue'), meta: { requiresRegisterManager: true, title: 'Manager PIN' } },
     ],
   },
+  // Standalone time clock for a shared iPad: no one signed in, the device has a kiosk token (set up by an admin here)
+  {
+    path: '/timeclock',
+    component: () => import('@/views/kiosk/TimeClockKioskView.vue'),
+    meta: { bare: true, title: 'Time Clock', noindex: true, sitemap: false },
+  },
   // Component gallery for design review: every src/components/ui component in every state. Dev server only,
   // or a build with VITE_UI_GALLERY=true (e.g. a staging preview).
   ...(import.meta.env.DEV || import.meta.env.VITE_UI_GALLERY === 'true'

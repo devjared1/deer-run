@@ -67,6 +67,45 @@ async function linkBookings(supabase, sale, lines) {
   return null
 }
 
+// Pay at course: a line that collected a booking's balance (`balanceCents`, from buildSale) marks it paid. Only if
+// the balance is still what was rung up, so two sales can't both clear it. Returns an error message, or null.
+async function settleBalances(supabase, lines) {
+  for (const line of lines) {
+    if (!line.bookingId || !(line.balanceCents > 0)) continue
+    const { data, error } = await supabase.from('Booking').update({ balanceDueCents: 0 })
+      .eq('id', line.bookingId).eq('balanceDueCents', line.balanceCents)
+      .select('id')
+    if (error) return error.message
+    if (!data?.length) return 'its balance had already been paid or changed. Check the booking and refund this line if it was paid twice'
+  }
+  return null
+}
+
+/**
+ * Pay at course: refunding a tee time balance line (a booking line with a price; prepaid greens fee lines are $0) puts
+ * the refunded amount back on the booking's balance, so it's collected again if the group still plays. After
+ * refund_sale; `refunded` is the SaleRefund it returned, with items { saleItemId, amountCents }.
+ * Returns an error message, or null.
+ */
+export async function refundBalances(supabase, sale, refunded) {
+  const lines = Object.fromEntries(sale.items.map(i => [i.id, i]))
+  const back = {}
+  for (const r of refunded?.items ?? []) {
+    const line = lines[r.saleItemId]
+    if (!line?.bookingId || !(line.unitPriceCents > 0)) continue
+    back[line.bookingId] = (back[line.bookingId] ?? 0) + (r.amountCents - (r.taxCents ?? 0))
+  }
+  for (const [bookingId, cents] of Object.entries(back)) {
+    const { data: booking, error } = await supabase.from('Booking').select('id, balanceDueCents').eq('id', bookingId).maybeSingle()
+    if (error) return error.message
+    if (!booking || booking.balanceDueCents === undefined) continue
+    const { error: updateError } = await supabase.from('Booking')
+      .update({ balanceDueCents: booking.balanceDueCents + cents }).eq('id', bookingId)
+    if (updateError) return updateError.message
+  }
+  return null
+}
+
 // A tip added on the card reader (card sales only) goes on the card Payment row next to the sale's share,
 // so it never counts as sales revenue or tax. Runs right after create_sale (which doesn't know about tips).
 // Returns an error message, or null.
@@ -188,6 +227,10 @@ export async function saveSale(supabase, env, prepared) {
     const linkError = await linkBookings(supabase, sale, prepared.items)
     if (linkError) warnings.push(`The tee time wasn't linked to this receipt: ${linkError}`)
     else sale = await loadSale(supabase, created.id)
+  }
+  if (prepared.items.some(l => l.balanceCents > 0)) {
+    const balanceError = await settleBalances(supabase, prepared.items)
+    if (balanceError) warnings.push(`The tee time balance wasn't marked paid: ${balanceError}.`)
   }
   if (prepared.items.some(l => l.memberDiscountCents)) {
     const discountError = await recordMemberDiscounts(supabase, sale, prepared.items)

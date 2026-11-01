@@ -103,6 +103,14 @@
         </div>
       </dl>
 
+      <!-- Pay now, or hold the time with the fee and pay the rest at the course -->
+      <RadioGroup
+        v-if="store.payAtCourseOption.available"
+        v-model="store.payAtCourse"
+        label="Payment"
+        :options="paymentOptions"
+      />
+
       <AppButton
         type="submit"
         variant="gold"
@@ -118,10 +126,11 @@
 </template>
 
 <script setup>
-// Booking step 3: who's booking (guest, or sign in and come back to this step), the round (9/18, riding/walking)
-// and the price. No phone field: Booking has no phone column and POST /api/bookings doesn't take one.
+// Booking step 3: who's booking (guest, or sign in and come back to this step), the round (9/18, riding/walking),
+// the price, and pay now or at the course (when the course has a hold fee less than the total). No phone field: Booking has no phone column and POST /api/bookings doesn't take one.
 import AppButton from '@/components/ui/AppButton.vue'
 import IconButton from '@/components/ui/IconButton.vue'
+import RadioGroup from '@/components/ui/RadioGroup.vue'
 import SegmentedButton from '@/components/ui/SegmentedButton.vue'
 import TextField from '@/components/ui/TextField.vue'
 import { formatCents } from '@/lib/money'
@@ -157,6 +166,18 @@ const emailField = ref(null)
 const dateLabel = computed(() => (store.selectedDate ? formatLocalDate(store.selectedDate, { weekday: 'long', month: 'long', day: 'numeric' }) : ''))
 const timeLabel = computed(() => (store.selectedSlot ? teeTime(store.selectedSlot.startTime) : ''))
 const weekend = computed(() => !!store.selectedDate && isWeekendRate(store.selectedDate, store.holidayDates))
+
+const paymentOptions = computed(() => {
+  const { holdFeeCents, balanceCents } = store.payAtCourseOption
+  return [
+    { value: false, label: `Pay ${formatCents(store.price.totalCents)} now`, description: 'Paid in full; just check in when you arrive.' },
+    {
+      value: true,
+      label: `Pay at the course (${formatCents(holdFeeCents)} now)`,
+      description: `A ${formatCents(holdFeeCents)} hold fee now and ${formatCents(balanceCents)} at the pro shop. The hold fee isn't refunded if you cancel or miss the tee time.`,
+    },
+  ]
+})
 
 // Errors show once a field was left, or after Continue
 const showError = key => ((touched[key] || submitted.value) ? store.guestErrors[key] : '')

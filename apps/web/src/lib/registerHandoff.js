@@ -1,6 +1,7 @@
 // Hands a tee time from the Tee Sheet page to the register (same browser tab), so the register opens
 // with the booking line (and customer) already on the sale.
-//   { kind: 'booking', bookingId, label, customer? }           checked-in, already-paid booking
+//   { kind: 'booking', bookingId, label, balanceCents?, customer? }   checked-in booking: paid, or a pay-at-course
+//                                                                    balance (balanceCents) to collect
 //   { kind: 'newBooking', newBooking: { teeTimeSlotId, players, name, source }, label, customer? }
 
 const KEY = 'deerrun.registerHandoff'

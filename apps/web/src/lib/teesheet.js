@@ -43,3 +43,20 @@ export function teeTime(hhmm) {
 export function teeTimeLabel(date, startTime) {
   return `${formatLocalDate(date, { weekday: 'short', month: 'numeric', day: 'numeric' }).replace(',', '')} ${teeTime(startTime)}`
 }
+
+/** Pay at course: what's still owed at the register (0 once paid, or for bookings paid in full). */
+export function balanceDue(b) {
+  return b?.status === 'CONFIRMED' && b.balanceDueCents > 0 ? b.balanceDueCents : 0
+}
+
+/**
+ * The register line for an existing booking (checked in from the tee sheet): the prepaid greens fee at $0, or the
+ * pay-at-course balance. The register shows it and the server writes it on the receipt, so both use this.
+ *   booking: { source, players, balanceDueCents?, status }, slot: { date, startTime }
+ */
+export function bookingLineDescription(booking, slot) {
+  const players = `${booking.players} player${booking.players === 1 ? '' : 's'}`
+  const when = teeTimeLabel(slot.date, slot.startTime)
+  if (balanceDue(booking)) return `Tee time balance (hold fee paid online) — ${when}, ${players}`
+  return `Greens fee ${booking.source === 'ONLINE' ? 'paid online' : 'paid'} — ${when}, ${players}`
+}

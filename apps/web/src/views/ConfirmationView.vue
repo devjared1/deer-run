@@ -86,6 +86,7 @@
             <dd class="text-on-surface text-right sm:text-left break-words min-w-0">{{ row.value }}</dd>
           </div>
         </dl>
+        <p v-if="payAtCourse" class="mt-4 text-body-s text-on-surface-variant">{{ HOLD_FEE_POLICY }}</p>
 
         <div class="flex flex-wrap gap-2 mt-6">
           <AppButton variant="tonal" :icon="IconCalendarAdd" @click="downloadIcs">Add to calendar</AppButton>
@@ -150,7 +151,7 @@
           <IconTips class="w-6 h-6 text-primary" aria-hidden="true" /> Before you arrive
         </h2>
         <ul class="space-y-2 text-body-m text-on-surface">
-          <li v-for="tip in ARRIVAL_TIPS" :key="tip" class="flex items-start gap-2">
+          <li v-for="tip in tips" :key="tip" class="flex items-start gap-2">
             <IconCheckCircle class="w-5 h-5 mt-0.5 text-primary flex-shrink-0" aria-hidden="true" />
             {{ tip }}
           </li>
@@ -170,7 +171,7 @@
 // catches up; polls), failed (Stripe redirect_status=failed), cancelled, missing, and confirmed with the reference,
 // calendar (.ics + Google), directions, weather, managing the booking and arrival tips.
 import {
-  ARRIVAL_TIPS, ROUND_MINUTES, WEATHER_URL, bookingReference, plural,
+  ARRIVAL_TIPS, HOLD_FEE_POLICY, ROUND_MINUTES, WEATHER_URL, arrivalTips, bookingReference, plural,
 } from '@/components/booking/bookingFlow'
 import AppButton from '@/components/ui/AppButton.vue'
 import BrandLogo from '@/components/ui/BrandLogo.vue'
@@ -248,9 +249,18 @@ const detailRows = computed(() => {
     { label: 'Players', value: plural(b.players, 'player') },
     { label: 'Round', value: `${holes.value} holes, ${riding.value ? 'riding (cart included)' : 'walking'}` },
     ...(b.guestName ? [{ label: 'Name', value: b.guestName }] : auth.profile?.name && b.userId ? [{ label: 'Name', value: auth.profile.name }] : []),
-    { label: 'Total paid', value: formatCents(b.totalCents) },
+    ...(payAtCourse.value
+      ? [
+          { label: 'Hold fee paid (non-refundable)', value: formatCents(b.holdFeeCents) },
+          { label: 'Due at the course', value: b.balanceDueCents > 0 ? formatCents(b.balanceDueCents) : 'Paid' },
+        ]
+      : [{ label: 'Total paid', value: formatCents(b.totalCents) }]),
   ]
 })
+
+// Pay at course: only the hold fee was paid online
+const payAtCourse = computed(() => booking.value?.holdFeeCents != null)
+const tips = computed(() => arrivalTips(booking.value?.balanceDueCents, formatCents))
 
 // ── Calendar ──
 const start = computed(() => (ymd.value && startTime.value ? localDateTimeToUtc(ymd.value, startTime.value) : null))
@@ -260,6 +270,7 @@ const eventTitle = 'Tee time at Deer Run Golf Course'
 const eventDetails = computed(() => [
   `${plural(booking.value?.players ?? 1, 'player')}, ${holes.value} holes, ${riding.value ? 'riding' : 'walking'}.`,
   `Reference ${reference.value}.`,
+  ...(booking.value?.balanceDueCents > 0 ? [`${formatCents(booking.value.balanceDueCents)} due at the pro shop.`] : []),
   ARRIVAL_TIPS[0],
   `Questions: ${phone.display}.`,
 ].join('\n'))

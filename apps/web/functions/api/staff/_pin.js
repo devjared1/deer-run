@@ -37,39 +37,76 @@ export async function verifyPinHash(pin, stored) {
 }
 
 export const MANAGER_PIN_COLUMNS = 'id, firstName, lastName, position, active, managerPinHash, managerPinFailedAttempts, managerPinLockedUntil'
+export const CLOCK_PIN_COLUMNS = 'id, firstName, lastName, position, active, clockPinHash, clockPinFailedAttempts, clockPinLockedUntil'
+
+// The two kinds of employee PIN: the register manager PIN (approvals) and the time clock PIN (the kiosk). Each has
+// its own hash and lockout columns.
+const PIN_KINDS = {
+  manager: {
+    hash: 'managerPinHash', attempts: 'managerPinFailedAttempts', lockedUntil: 'managerPinLockedUntil',
+    missing: e => `${e.firstName} hasn't set a manager PIN yet (Staff → Manager PIN)`,
+  },
+  clock: {
+    hash: 'clockPinHash', attempts: 'clockPinFailedAttempts', lockedUntil: 'clockPinLockedUntil',
+    missing: e => `${e.firstName} doesn't have a time clock PIN yet. Set one in the staff portal (Time Clock), or ask a manager.`,
+  },
+}
+
+/** Clears a PIN and its lockout: { managerPinHash: null, … } for kind 'manager' or 'clock'. */
+export function resetPinFields(kind) {
+  const k = PIN_KINDS[kind]
+  return { [k.hash]: null, [k.attempts]: 0, [k.lockedUntil]: null }
+}
+
+/** Sets a new PIN (and clears any lockout). */
+export async function newPinFields(kind, pin) {
+  return { ...resetPinFields(kind), [PIN_KINDS[kind].hash]: await hashPin(pin) }
+}
+
+/** The lockout end (ISO) if the PIN is locked right now, else null. */
+export function pinLockedUntil(employee, kind) {
+  const raw = employee[PIN_KINDS[kind].lockedUntil]
+  const until = raw ? toUtcIso(raw) : null
+  return until && new Date(until) > new Date() ? until : null
+}
 
 /**
- * Checks a manager's PIN, counting wrong tries and locking the PIN for 15 minutes after 5.
- * `manager` must include MANAGER_PIN_COLUMNS. Returns { ok: true } or { error, status }.
+ * Checks an employee's PIN, counting wrong tries and locking the PIN for 15 minutes after 5.
+ * `employee` must include MANAGER_PIN_COLUMNS / CLOCK_PIN_COLUMNS for the kind. Returns { ok: true } or
+ * { error, status, code } (code: PIN_NOT_SET, PIN_LOCKED or PIN_WRONG).
  */
-export async function checkManagerPin(supabase, manager, pin) {
+export async function checkEmployeePin(supabase, employee, pin, kind) {
+  const k = PIN_KINDS[kind]
   const now = new Date()
-  const lockedUntil = manager.managerPinLockedUntil ? new Date(toUtcIso(manager.managerPinLockedUntil)) : null
+  const lockedUntil = employee[k.lockedUntil] ? new Date(toUtcIso(employee[k.lockedUntil])) : null
   if (lockedUntil && lockedUntil > now) {
     const until = lockedUntil.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: COURSE_TZ })
-    return { error: `${manager.firstName}'s PIN is locked after too many wrong tries. Try again after ${until}.`, status: 423 }
+    return { error: `${employee.firstName}'s PIN is locked after too many wrong tries. Try again after ${until}.`, status: 423, code: 'PIN_LOCKED' }
   }
-  if (!manager.managerPinHash) {
-    return { error: `${manager.firstName} hasn't set a manager PIN yet (Staff → Manager PIN)`, status: 400 }
-  }
+  if (!employee[k.hash]) return { error: k.missing(employee), status: 400, code: 'PIN_NOT_SET' }
 
-  const ok = PIN_PATTERN.test(String(pin ?? '')) && await verifyPinHash(String(pin), manager.managerPinHash)
+  const ok = PIN_PATTERN.test(String(pin ?? '')) && await verifyPinHash(String(pin), employee[k.hash])
   if (ok) {
-    if (manager.managerPinFailedAttempts || manager.managerPinLockedUntil) {
-      await supabase.from('Employee').update({ managerPinFailedAttempts: 0, managerPinLockedUntil: null }).eq('id', manager.id)
+    if (employee[k.attempts] || employee[k.lockedUntil]) {
+      await supabase.from('Employee').update({ [k.attempts]: 0, [k.lockedUntil]: null }).eq('id', employee.id)
     }
     return { ok: true }
   }
 
-  const attempts = manager.managerPinFailedAttempts + 1
+  const attempts = (employee[k.attempts] ?? 0) + 1
   if (attempts >= MAX_ATTEMPTS) {
     await supabase
       .from('Employee')
-      .update({ managerPinFailedAttempts: 0, managerPinLockedUntil: new Date(now.getTime() + LOCK_MINUTES * 60000).toISOString() })
-      .eq('id', manager.id)
-    return { error: `Wrong PIN. ${manager.firstName}'s PIN is now locked for ${LOCK_MINUTES} minutes.`, status: 403 }
+      .update({ [k.attempts]: 0, [k.lockedUntil]: new Date(now.getTime() + LOCK_MINUTES * 60000).toISOString() })
+      .eq('id', employee.id)
+    return { error: `Wrong PIN. ${employee.firstName}'s PIN is now locked for ${LOCK_MINUTES} minutes.`, status: 403, code: 'PIN_LOCKED' }
   }
-  await supabase.from('Employee').update({ managerPinFailedAttempts: attempts }).eq('id', manager.id)
+  await supabase.from('Employee').update({ [k.attempts]: attempts }).eq('id', employee.id)
   const left = MAX_ATTEMPTS - attempts
-  return { error: `Wrong PIN (${left} ${left === 1 ? 'try' : 'tries'} left)`, status: 403 }
+  return { error: `Wrong PIN (${left} ${left === 1 ? 'try' : 'tries'} left)`, status: 403, code: 'PIN_WRONG' }
+}
+
+/** checkEmployeePin for the register manager PIN. `manager` must include MANAGER_PIN_COLUMNS. */
+export function checkManagerPin(supabase, manager, pin) {
+  return checkEmployeePin(supabase, manager, pin, 'manager')
 }

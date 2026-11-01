@@ -167,7 +167,40 @@
           title="No time recorded today"
         />
       </Card>
+
+      <!-- PIN for the shared time clock (/timeclock on the iPad); hidden before migration 13 -->
+      <Card v-if="state.hasClockPin !== undefined" padding="lg" tag="section" aria-labelledby="clock-pin-title">
+        <div class="flex items-start gap-4">
+          <IconPin class="w-6 h-6 mt-0.5 flex-none text-primary" aria-hidden="true" />
+          <div class="min-w-0 flex-1">
+            <h2 id="clock-pin-title" class="text-title-m text-on-surface">Time clock PIN</h2>
+            <p class="mt-1 text-body-m text-on-surface-variant">
+              <template v-if="state.hasClockPin">
+                Set. Use it on the time clock iPad: tap your name, then enter your PIN.
+              </template>
+              <template v-else>
+                Not set yet. Choose one to clock in on the time clock iPad without signing in.
+              </template>
+            </p>
+          </div>
+        </div>
+        <div class="mt-4 flex sm:justify-end">
+          <AppButton :variant="state.hasClockPin ? 'outlined' : 'filled'" class="w-full sm:w-auto" @click="pinOpen = true">
+            {{ state.hasClockPin ? 'Change PIN' : 'Set a PIN' }}
+          </AppButton>
+        </div>
+      </Card>
     </template>
+
+    <AppDialog v-model:open="pinOpen" :title="state?.hasClockPin ? 'Change your time clock PIN' : 'Set your time clock PIN'" persistent size="sm">
+      <p class="mb-4 text-body-m text-on-surface-variant">
+        4 to 6 digits, just for the time clock. Keep it private. Forgot it? A manager can set a new one.
+      </p>
+      <PinChangeForm endpoint="/api/staff/clock-pin" :has-pin="!!state?.hasClockPin" @saved="onPinSaved" />
+      <template #actions="{ close }">
+        <AppButton variant="text" @click="close">Cancel</AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -184,6 +217,9 @@ import Card from '@/components/ui/Card.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import PinChangeForm from '@/components/staff/PinChangeForm.vue'
+import IconPin from '~icons/material-symbols/pin-rounded'
 import IconLogin from '~icons/material-symbols/login-rounded'
 import IconLogout from '~icons/material-symbols/logout-rounded'
 import IconCoffee from '~icons/material-symbols/coffee-rounded'
@@ -200,6 +236,13 @@ const loading     = ref(false)
 const loadError   = ref(null)
 const busy        = ref(null)     // the action being sent
 const actionError = ref(null)
+const pinOpen     = ref(false)
+
+function onPinSaved({ changed }) {
+  pinOpen.value = false
+  state.value = { ...state.value, hasClockPin: true }
+  snackbar.show(changed ? 'Time clock PIN changed' : 'Time clock PIN set')
+}
 
 // Ticks every second to drive the clock and running totals, on the server's clock (serverTime − client time)
 const skew = ref(0)

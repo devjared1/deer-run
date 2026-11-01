@@ -3,6 +3,7 @@
 import { bookingStatus, statusInfo } from '@/components/ui/statusChips'
 import { formatClockTime } from '@/lib/timeclock'
 import { formatCents } from '@/lib/money'
+import { balanceDue } from '@/lib/teesheet'
 
 /** The one status chip on a booking card: { label, tone, icon } (icon: a key of STATUS_ICONS in BookingCard.vue). */
 export function bookingChip(b) {
@@ -10,8 +11,16 @@ export function bookingChip(b) {
   if (status === 'CHECKED_IN') {
     return { label: `Checked in ${formatClockTime(b.checkedInAt)}`, tone: 'primary', icon: 'checkedIn' }
   }
+  // Pay at course: the hold fee was paid online and the balance is still owed (also once checked in, until it's rung up)
+  if ((status === 'CONFIRMED' || status === 'CHECKED_IN') && balanceDue(b)) {
+    const label = `${formatCents(balanceDue(b))} due at register`
+    return { label: status === 'CHECKED_IN' ? `Checked in · ${label}` : label, tone: 'warning', icon: 'balanceDue' }
+  }
   if (status === 'CONFIRMED') {
-    if (b.source === 'ONLINE') return { label: 'Paid online', tone: 'success', icon: 'paidOnline' }
+    if (b.source === 'ONLINE') {
+      if (b.holdFeeCents != null) return { label: 'Paid · hold fee online, rest at register', tone: 'success', icon: 'paidRegister' }
+      return { label: 'Paid online', tone: 'success', icon: 'paidOnline' }
+    }
     return { label: b.source === 'PHONE' ? 'Phone · paid at register' : 'Walk-in · paid at register', tone: 'success', icon: 'paidRegister' }
   }
   if (status === 'PENDING') return { label: 'Payment pending', tone: 'warning', icon: 'pending' }
@@ -35,7 +44,9 @@ export function canChange(b) {
 export function roundText(b) {
   if (b.status !== 'CONFIRMED') return null
   if (b.checkedInAt) return `${b.roundHoles} holes${b.startHole === 10 ? ' from 10' : ''}`
-  if (b.source === 'ONLINE') return `Paid for ${b.roundHoles} holes, ${b.cartIncluded ? 'cart paid' : 'walking'}`
+  if (b.source === 'ONLINE') {
+    return `${balanceDue(b) ? 'Booked' : 'Paid'} for ${b.roundHoles} holes, ${b.cartIncluded ? `cart ${balanceDue(b) ? 'included' : 'paid'}` : 'walking'}`
+  }
   return null
 }
 
@@ -45,7 +56,16 @@ export function moneyNote(b) {
     return "No money was taken. The unfinished online payment is cancelled too, so it can't go through later."
   }
   const receipts = (b.receipts || []).map(r => `#${r.number}`).join(', ')
+  // Pay at course: the hold fee is kept when a booking is cancelled or missed
+  if (b.holdFeeCents != null && balanceDue(b)) {
+    return `The ${formatCents(b.holdFeeCents)} hold fee paid online is non-refundable and is kept; the ` +
+      `${formatCents(balanceDue(b))} balance was never charged.`
+  }
   if (b.source === 'ONLINE' && b.totalCents > 0) {
+    if (b.holdFeeCents != null) {
+      return `Cancelling doesn't refund anything. The ${formatCents(b.holdFeeCents)} hold fee paid online is non-refundable; ` +
+        `the balance is on receipt ${receipts || '(none found)'} (refund those lines from Recent sales at the register, manager approval).`
+    }
     return `Cancelling doesn't refund anything. The golfer paid ${formatCents(b.totalCents)} online; if it should be ` +
       'refunded, ask an admin to refund the payment in the Stripe dashboard (and mark the booking Refunded in Admin → Bookings).' +
       (receipts ? ` Add-ons are on receipt ${receipts} (refund those from Recent sales at the register).` : '')

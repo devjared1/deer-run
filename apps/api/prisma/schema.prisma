@@ -59,6 +59,10 @@ model Booking {
   stripePaymentId String?
   source          BookingSource @default(ONLINE)
   checkedInAt     DateTime? // set when the group checks in at the pro shop
+  // Pay at course: the online payment was only this non-refundable hold fee (null = paid in full online), and
+  // balanceDueCents (totalCents − holdFeeCents) is collected at the register, then set to 0
+  holdFeeCents    Int?
+  balanceDueCents Int           @default(0)
   saleItems       SaleItem[]
   createdAt       DateTime      @default(now())
 
@@ -119,7 +123,10 @@ model CourseSettings {
   pricePerPlayerCents Int    @default(4500) // unused since migration 11: rates live on the products tagged with Product.rateKey
   // Dates ("YYYY-MM-DD") that get the weekend/holiday rates besides Saturdays and Sundays
   holidayDates        String[] @default([])
-  firstTeeTime        String @default("07:30")
+  // Pay at course: a flat, non-refundable fee per online booking holds the tee time; the rest is paid at the
+  // register (0 = online bookings pay in full)
+  payAtCourseFeeCents Int    @default(1000)
+  firstTeeTime       String @default("07:30")
   lastTeeTime         String @default("17:00")
   intervalMinutes     Int    @default(10)
 
@@ -248,7 +255,11 @@ model Employee {
   managerPinHash           String?
   managerPinFailedAttempts Int                  @default(0)
   managerPinLockedUntil    DateTime?
-  approvalsGiven           ManagerApproval[]    @relation("ApprovalApprover")
+  // Time clock PIN for the kiosk (/timeclock on the iPad): same hashing and lockout as the manager PIN, kept apart
+  clockPinHash             String?
+  clockPinFailedAttempts   Int                  @default(0)
+  clockPinLockedUntil      DateTime?
+  approvalsGiven          ManagerApproval[]    @relation("ApprovalApprover")
   approvalsReceived        ManagerApproval[]    @relation("ApprovalCashier")
   drawersOpened            CashDrawerSession[]  @relation("DrawerOpenedBy")
   drawersClosed            CashDrawerSession[]  @relation("DrawerClosedBy")
@@ -280,6 +291,17 @@ model TimeBreak {
   timeEntryId String
   startedAt   DateTime
   endedAt     DateTime?
+}
+
+// A shared time clock device (an iPad at /timeclock). An admin sets it up on the device, which keeps the token;
+// only its SHA-256 hash is stored. Deleting the row signs the device out.
+model ClockKiosk {
+  id          String    @id @default(cuid())
+  name        String
+  tokenHash   String    @unique
+  createdById String? // User.id of the admin who set it up
+  createdAt   DateTime  @default(now())
+  lastSeenAt  DateTime?
 }
 
 // A scheduled shift. Times use the same "HH:MM" convention as TeeTimeSlot.

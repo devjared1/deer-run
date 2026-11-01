@@ -3,7 +3,10 @@ import { isValidYmd } from '../../../src/lib/timeclock.js'
 import { POSITIONS } from './employees/_validate.js'
 import { makeStripe, syncTerminalTipping, stripeMessage } from '../staff/_stripe.js'
 import { MAX_ROUND_MINUTES, MIN_ROUND_MINUTES } from '../../../src/lib/pace.js'
-import { RATE_KEYS, RATE_LABELS, RATE_PRODUCTS } from '../../../src/lib/rates.js'
+import {
+  MAX_PAY_AT_COURSE_FEE_CENTS, MIN_PAY_AT_COURSE_FEE_CENTS, RATE_KEYS, RATE_LABELS, RATE_PRODUCTS,
+} from '../../../src/lib/rates.js'
+import { formatCents } from '../../../src/lib/money.js'
 import { loadRates } from '../_rates.js'
 
 const PAY_PERIOD_LENGTHS = [7, 14]
@@ -114,6 +117,14 @@ export async function onRequestPut({ request, env }) {
       return json({ error: 'The late fee must be between $0 (off) and $500' }, 400)
     }
     allowed.lateFeeCents = fee
+  }
+  // Pay at course: hold fee per online booking (0 = online bookings pay in full)
+  if (body.payAtCourseFeeCents !== undefined) {
+    const fee = Number(body.payAtCourseFeeCents)
+    if (!Number.isInteger(fee) || (fee !== 0 && (fee < MIN_PAY_AT_COURSE_FEE_CENTS || fee > MAX_PAY_AT_COURSE_FEE_CENTS))) {
+      return json({ error: `The hold fee must be $0 (off) or between ${formatCents(MIN_PAY_AT_COURSE_FEE_CENTS)} and ${formatCents(MAX_PAY_AT_COURSE_FEE_CENTS)}` }, 400)
+    }
+    allowed.payAtCourseFeeCents = fee
   }
   if (body.roundMinutes !== undefined) {
     const minutes = Number(body.roundMinutes)

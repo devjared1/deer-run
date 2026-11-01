@@ -19,13 +19,25 @@ export const POSITIONS = [
   'BEVERAGE_CART_ATTENDANT',
 ]
 
-export const EMPLOYEE_COLUMNS =
-  'id, userId, firstName, lastName, email, phone, position, hourlyRateCents, hireDate, active, createdAt, managerPinHash, managerPinLockedUntil'
+// (*): includes the time clock PIN columns once migration 13 has run; serializeEmployee drops the hashes
+export const EMPLOYEE_COLUMNS = '*'
 
-/** Employee for API responses: the PIN hash is replaced by whether one is set. */
-export function serializeEmployee({ managerPinHash, managerPinLockedUntil, ...employee }) {
-  const lockedUntil = managerPinLockedUntil ? new Date(toUtcIso(managerPinLockedUntil)) : null
-  return { ...employee, hasManagerPin: !!managerPinHash, managerPinLocked: !!lockedUntil && lockedUntil > new Date() }
+const lockedNow = until => !!until && new Date(toUtcIso(until)) > new Date()
+
+/**
+ * Employee for API responses: the PIN hashes are replaced by whether one is set (hasManagerPin, hasClockPin) and
+ * whether it's locked. hasClockPin is left out before migration 13.
+ */
+export function serializeEmployee({
+  managerPinHash, managerPinLockedUntil, managerPinFailedAttempts,
+  clockPinHash, clockPinLockedUntil, clockPinFailedAttempts, ...employee
+}) {
+  return {
+    ...employee,
+    hasManagerPin: !!managerPinHash,
+    managerPinLocked: lockedNow(managerPinLockedUntil),
+    ...(clockPinHash !== undefined ? { hasClockPin: !!clockPinHash, clockPinLocked: lockedNow(clockPinLockedUntil) } : {}),
+  }
 }
 
 // Clears a manager's PIN so they can set a new one (forgotten PIN or lockout)

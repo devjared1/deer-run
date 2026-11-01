@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { useAuthStore } from './auth'
-import { DEFAULT_RATES, bookingPrice } from '@/lib/rates'
+import { DEFAULT_RATES, bookingPrice, payAtCourseSplit } from '@/lib/rates'
 
 // Guest details checks, shared by the Details step (inline errors) and the wizard's step guard
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -22,11 +22,17 @@ export const useBookingStore = defineStore('booking', () => {
   // Greens fee + cart rates from GET /api/rates (defaults until loaded). Display only: the server prices the booking.
   const rates        = ref({ ...DEFAULT_RATES })
   const holidayDates = ref([])
+  // Pay at course: the hold fee per booking (0 = not offered; stays 0 until the rates load)
+  const payAtCourseFeeCents = ref(0)
   let ratesLoaded = null
   function loadRates() {
     ratesLoaded ??= fetch('/api/rates')
       .then(res => (res.ok ? res.json() : Promise.reject(new Error('rates'))))
-      .then((data) => { rates.value = { ...rates.value, ...data.rates }; holidayDates.value = data.holidayDates ?? [] })
+      .then((data) => {
+        rates.value = { ...rates.value, ...data.rates }
+        holidayDates.value = data.holidayDates ?? []
+        payAtCourseFeeCents.value = data.payAtCourseFeeCents ?? 0
+      })
       .catch(() => { ratesLoaded = null })
     return ratesLoaded
   }
@@ -37,6 +43,15 @@ export const useBookingStore = defineStore('booking', () => {
     holes: roundHoles.value, players: players.value, cart: cart.value,
   }))
   const totalPrice = computed(() => price.value.totalCents / 100)
+
+  // Pay now in full, or only the hold fee now and the rest at the course: { available, holdFeeCents, balanceCents }
+  const payAtCourse = ref(false)
+  const payAtCourseOption = computed(() => payAtCourseSplit(price.value.totalCents, payAtCourseFeeCents.value))
+  // What the online payment charges for the current selection
+  const chargeCents = computed(() => (payAtCourse.value && payAtCourseOption.value.available
+    ? payAtCourseOption.value.holdFeeCents
+    : price.value.totalCents))
+  const usingPayAtCourse = computed(() => payAtCourse.value && payAtCourseOption.value.available)
 
   const authHeaders = () => {
     const token = authStore.getToken()
@@ -88,12 +103,14 @@ export const useBookingStore = defineStore('booking', () => {
 
   function selectionKey() {
     return JSON.stringify([
-      selectedSlot.value?.id, Number(players.value), roundHoles.value, cart.value, authStore.profile?.id ?? null,
+      selectedSlot.value?.id, Number(players.value), roundHoles.value, cart.value, usingPayAtCourse.value,
+      authStore.profile?.id ?? null,
       authStore.isLoggedIn ? null : guestName.value.trim(), authStore.isLoggedIn ? null : guestEmail.value.trim(),
     ])
   }
 
-  // → { bookingId, clientSecret, totalCents?, players?, roundHoles?, cart? } (totalCents = the PaymentIntent's amount)
+  // → { bookingId, clientSecret, totalCents?, chargeCents?, holdFeeCents?, balanceDueCents?, players?, roundHoles?, cart? }
+  //   (chargeCents = the PaymentIntent's amount: the total, or the hold fee when paying at the course)
   async function createBooking() {
     const key = selectionKey()
     if (pending && pending.key === key && Date.now() - pending.createdAt < REUSE_MS) return pending.result
@@ -106,7 +123,8 @@ export const useBookingStore = defineStore('booking', () => {
         players: players.value,
         roundHoles: roundHoles.value,
         cart: cart.value,
-        guestName:  authStore.isLoggedIn ? null : guestName.value.trim(),
+        payAtCourse: usingPayAtCourse.value,
+        guestName: authStore.isLoggedIn ? null : guestName.value.trim(),
         guestEmail: authStore.isLoggedIn ? null : guestEmail.value.trim(),
       }),
     })
@@ -130,12 +148,14 @@ export const useBookingStore = defineStore('booking', () => {
     guestEmail.value = ''
     roundHoles.value = 18
     cart.value = true
+    payAtCourse.value = false
     timeOfDay.value = null
   }
 
   return {
     selectedDate, selectedSlot, players, guestName, guestEmail, roundHoles, cart, timeOfDay,
     rates, holidayDates, loadRates, price, totalPrice, fetchAvailableSlots,
+    payAtCourse, payAtCourseFeeCents, payAtCourseOption, usingPayAtCourse, chargeCents,
     availability, availabilityReady, loadAvailability, guestErrors, detailsComplete,
     createBooking, reset,
   }

@@ -31,9 +31,10 @@ export async function onRequestGet({ request, env }) {
         .lte('TeeTimeSlot.date', today)
         .in('status', ['PENDING', 'CONFIRMED'])
         .order('id')),
-      // Confirmed bookings made in the last 14 days (this week's and last week's revenue)
+      // Confirmed bookings made in the last 14 days (this week's and last week's revenue). select('*'): includes
+      // holdFeeCents once migration 12 has run
       fetchAll(() => supabase.from('Booking')
-        .select('id, totalCents, createdAt')
+        .select('*')
         .gte('createdAt', twoWeeksAgo)
         .eq('status', 'CONFIRMED')
         .order('id')),
@@ -70,12 +71,14 @@ export async function onRequestGet({ request, env }) {
   const madeAt = b => Date.parse(toUtcIso(b.createdAt))
   const thisWeek = madeBookings.filter(b => madeAt(b) >= weekAgoMs)
   const prevWeek = madeBookings.filter(b => madeAt(b) < weekAgoMs)
-  const sum = list => list.reduce((s, b) => s + b.totalCents, 0)
+  // Paid online: a pay-at-course booking only paid its hold fee (the balance is a register sale)
+  const paidOnline = b => b.holdFeeCents ?? b.totalCents
+  const sum = list => list.reduce((s, b) => s + paidOnline(b), 0)
 
   const revenueByDay = {}
   for (const b of madeBookings) {
     const day = localDate(new Date(toUtcIso(b.createdAt)))
-    revenueByDay[day] = (revenueByDay[day] || 0) + b.totalCents
+    revenueByDay[day] = (revenueByDay[day] || 0) + paidOnline(b)
   }
   const series = []
   for (let d = seriesStart; d <= today; d = addDays(d, 1)) {

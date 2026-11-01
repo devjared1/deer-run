@@ -16,7 +16,8 @@ const ACTIONS = ['check_in', 'undo_check_in', 'cancel', 'move']
 
 // POST /api/staff/teesheet/:bookingId — { action: 'check_in' | 'undo_check_in' | 'cancel' | 'move', teeTimeSlotId? }
 // Check-in records the time the group arrived. Only paid (CONFIRMED) bookings can be checked in; the
-// register then opens a sale with the prepaid greens fee at $0 so add-ons go on the same ticket.
+// register then opens a sale with the prepaid greens fee at $0 so add-ons go on the same ticket, or, for a
+// pay-at-course booking (hold fee paid online), with the balance due (Booking.balanceDueCents).
 // check_in also takes the round setup: { cartNumbers?: string[], ownCart?, startHole?: 1 | 10, roundHoles?: 9 | 18 }.
 // undo_check_in also clears the tee-off, position and finish, and deletes the position reports (the carts are kept).
 // cancel: sets CANCELLED (frees the spots). Checked-in groups must be un-checked-in first. An unpaid online

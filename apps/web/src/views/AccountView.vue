@@ -200,6 +200,8 @@ function summary(b) {
     `${b.roundHoles ?? 18} holes`,
     b.cartIncluded ? 'cart' : '',
     formatCents(b.totalCents),
+    // Pay at course: only the hold fee was paid online
+    b.holdFeeCents != null && b.status === 'CONFIRMED' && b.balanceDueCents > 0 ? `${formatCents(b.balanceDueCents)} due at the course` : '',
   ].filter(Boolean).join(' · ')
 }
 
@@ -207,7 +209,10 @@ async function cancelBooking(b) {
   const when = `${formatLocalDate(slotDate(b), { weekday: 'short', month: 'short', day: 'numeric' })} at ${teeTime(b.teeTimeSlot.startTime)}`
   const ok = await confirm({
     title: 'Cancel this tee time?',
-    message: `${when}, ${b.players} player${b.players === 1 ? '' : 's'}. Your spot is released and this can't be undone. Questions about payment? Call the pro shop at ${phone.display}.`,
+    message: `${when}, ${b.players} player${b.players === 1 ? '' : 's'}. Your spot is released and this can't be undone.` +
+      (b.holdFeeCents != null && b.status === 'CONFIRMED'
+        ? ` The ${formatCents(b.holdFeeCents)} hold fee isn't refunded.`
+        : ` Questions about payment? Call the pro shop at ${phone.display}.`),
     confirmLabel: 'Cancel tee time',
     cancelLabel: 'Keep it',
     destructive: true,

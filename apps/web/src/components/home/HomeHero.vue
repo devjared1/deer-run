@@ -25,9 +25,9 @@
         </p>
         <h1 id="home-title" class="mt-3 font-display text-display-s md:text-display-m xl:text-display-l text-on-primary">
           <span class="sr-only">Deer Run Golf Course: </span>
-          Eighteen holes at the edge of the <em class="italic">Bankhead</em>
+          Eighteen holes at the edge of <em class="italic">Bankhead</em>
         </h1>
-        <p class="mt-4 text-body-l md:text-title-m md:font-normal text-on-primary max-w-xl">
+        <p class="hidden md:block mt-4 text-body-l md:text-title-m md:font-normal text-on-primary max-w-xl">
           18 championship holes at the entrance to the Bankhead National Forest. Open to the public daily since 1980.
         </p>
         <div class="mt-6 hidden md:flex flex-wrap gap-3">

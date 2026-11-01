@@ -62,10 +62,9 @@
               <StatusChip label="No login yet" tone="neutral" :icon="false" size="sm" />
             </span>
             <StatusChip v-if="row.managerPinLocked" label="PIN locked" tone="error" icon="lock" size="sm" />
+            <StatusChip v-if="row.clockPinLocked" label="Clock PIN locked" tone="error" icon="lock" size="sm" />
           </span>
-          <span v-if="!row.managerPinLocked && row.hasManagerPin" class="block mt-1 text-body-s text-on-surface-variant">
-            Manager PIN set
-          </span>
+          <span v-if="pinNote(row)" class="block mt-1 text-body-s text-on-surface-variant">{{ pinNote(row) }}</span>
         </template>
         <template #empty>
           <EmptyState
@@ -130,6 +129,38 @@
         </AppButton>
       </template>
     </AppDialog>
+
+    <!-- Time clock (kiosk) PIN, set by an admin: staff without a login, or a forgotten PIN -->
+    <AppDialog
+      :open="!!clockPinFor"
+      :title="clockPinFor ? `Time clock PIN for ${fullName(clockPinFor)}` : ''"
+      persistent
+      size="sm"
+      @update:open="v => { if (!v) clockPinFor = null }"
+    >
+      <template v-if="clockPinFor">
+        <p class="mb-4 text-body-m text-on-surface-variant">
+          {{ clockPinFor.firstName }} uses it on the time clock iPad. Tell them the PIN; they can change it later on the
+          staff portal's Time Clock page.{{ clockPinFor.hasClockPin ? ' This replaces their current PIN.' : '' }}
+        </p>
+        <div class="flex justify-center">
+          <NumericKeypad
+            v-model="clockPin"
+            label="New PIN"
+            :max-length="6"
+            autofocus
+            :hint="clockPinError || '4 to 6 digits'"
+            :error="!!clockPinError"
+            submit-label="Save PIN"
+            :loading="clockPinSaving"
+            @submit="saveClockPin"
+          />
+        </div>
+      </template>
+      <template #actions="{ close }">
+        <AppButton variant="text" :disabled="clockPinSaving" @click="close">Cancel</AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
@@ -154,6 +185,8 @@ import MoneyField from '@/components/ui/MoneyField.vue'
 import Switch from '@/components/ui/Switch.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
+import NumericKeypad from '@/components/ui/NumericKeypad.vue'
+import IconPin from '~icons/material-symbols/pin-rounded'
 import IconPersonAdd from '~icons/material-symbols/person-add-rounded'
 import IconSearch from '~icons/material-symbols/search-rounded'
 import IconBadge from '~icons/material-symbols/badge-rounded'
@@ -211,6 +244,13 @@ function rowActions(emp) {
   return [
     { label: 'Edit', icon: IconEdit, onClick: () => openEdit(emp) },
     ...(emp.hasManagerPin ? [{ label: 'Reset manager PIN', icon: IconLockReset, onClick: () => resetPin(emp) }] : []),
+    // Time clock PIN: once the database has it (migration 13)
+    ...(emp.hasClockPin !== undefined
+      ? [
+          { label: emp.hasClockPin ? 'Change time clock PIN' : 'Set time clock PIN', icon: IconPin, onClick: () => openClockPin(emp) },
+          ...(emp.hasClockPin ? [{ label: 'Remove time clock PIN', icon: IconLockReset, onClick: () => clearClockPin(emp) }] : []),
+        ]
+      : []),
     emp.active
       ? { label: 'Deactivate', icon: IconPersonOff, onClick: () => setActive(emp, false) }
       : { label: 'Activate', icon: IconPersonCheck, onClick: () => setActive(emp, true) },
@@ -344,6 +384,65 @@ async function resetPin(emp) {
   try {
     await apiFetch(`/api/admin/employees/${emp.id}`, { method: 'PUT', body: { resetManagerPin: true } })
     snackbar.show(`${fullName(emp)}'s manager PIN was reset`)
+    await load()
+  } catch (e) {
+    actionError.value = e.message
+  }
+}
+
+// "Manager PIN set · Time clock PIN set" under the status chips (locked PINs show as chips instead)
+function pinNote(emp) {
+  return [
+    !emp.managerPinLocked && emp.hasManagerPin ? 'Manager PIN set' : '',
+    emp.hasClockPin === false ? 'No time clock PIN' : !emp.clockPinLocked && emp.hasClockPin ? 'Time clock PIN set' : '',
+  ].filter(Boolean).join(' · ')
+}
+
+// ─── Time clock PIN ─────────────────────────────────────────────────────────
+
+const clockPinFor    = ref(null)
+const clockPin       = ref('')
+const clockPinError  = ref('')
+const clockPinSaving = ref(false)
+
+function openClockPin(emp) {
+  clockPinFor.value = emp
+  clockPin.value = ''
+  clockPinError.value = ''
+}
+
+async function saveClockPin() {
+  if (!/^\d{4,6}$/.test(clockPin.value)) {
+    clockPinError.value = 'Use 4 to 6 digits'
+    return
+  }
+  const emp = clockPinFor.value
+  clockPinSaving.value = true
+  clockPinError.value = ''
+  try {
+    await apiFetch(`/api/admin/employees/${emp.id}`, { method: 'PUT', body: { clockPin: clockPin.value } })
+    clockPinFor.value = null
+    snackbar.show(`${fullName(emp)}'s time clock PIN was saved`)
+    await load()
+  } catch (e) {
+    clockPinError.value = e.message
+  } finally {
+    clockPinSaving.value = false
+    clockPin.value = ''
+  }
+}
+
+async function clearClockPin(emp) {
+  actionError.value = null
+  const ok = await confirm({
+    title: 'Remove time clock PIN?',
+    message: `${fullName(emp)} can't use the time clock iPad until they or a manager set a new PIN. Their punches are kept.`,
+    confirmLabel: 'Remove PIN',
+  })
+  if (!ok) return
+  try {
+    await apiFetch(`/api/admin/employees/${emp.id}`, { method: 'PUT', body: { clockPin: null } })
+    snackbar.show(`${fullName(emp)}'s time clock PIN was removed`)
     await load()
   } catch (e) {
     actionError.value = e.message

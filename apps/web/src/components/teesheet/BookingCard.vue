@@ -69,6 +69,8 @@ import StatusChip from '@/components/ui/StatusChip.vue'
 import AppButton from '@/components/ui/AppButton.vue'
 import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
 import { cartsLabel } from '@/components/oncourse/roundSetup'
+import { formatCents } from '@/lib/money'
+import { balanceDue } from '@/lib/teesheet'
 import { bookingChip, canChange, isInactive, playersText, roundText } from './teeSheetDisplay'
 import IconGolfCart from '~icons/deer/golf-cart'
 import IconCheckedIn from '~icons/material-symbols/check-circle-rounded'
@@ -90,10 +92,11 @@ import IconBehind from '~icons/material-symbols/trending-down-rounded'
 import IconOnPace from '~icons/material-symbols/trending-flat-rounded'
 import IconFlag from '~icons/material-symbols/flag-rounded'
 import IconWaiting from '~icons/material-symbols/schedule-rounded'
+import IconBalanceDue from '~icons/material-symbols/request-quote-rounded'
 
 const ICONS = {
   checkedIn: IconCheckedIn, paidOnline: IconPaidOnline, paidRegister: IconPaidRegister,
-  pending: IconPending, expired: IconExpired, cancelled: IconCancelled,
+  pending: IconPending, expired: IconExpired, cancelled: IconCancelled, balanceDue: IconBalanceDue,
 }
 
 const props = defineProps({
@@ -135,12 +138,15 @@ const noteIconClass = computed(() => {
 
 const confirmed = computed(() => props.booking.status === 'CONFIRMED')
 
-// One primary action: Check in (paid, not checked in) or Ring up add-ons (checked in)
+// One primary action: Check in (paid, not checked in) or Ring up add-ons (checked in); a pay-at-course group that
+// checked in without paying its balance gets Collect $X at the register
 const primary = computed(() => {
   if (!confirmed.value) return null
   if (!props.booking.checkedInAt) {
     return { label: 'Check in', icon: IconHowToReg, variant: 'filled', onClick: () => emit('check-in') }
   }
+  const due = balanceDue(props.booking)
+  if (due) return { label: `Collect ${formatCents(due)}`, icon: IconRegister, variant: 'filled', onClick: () => emit('register') }
   return { label: 'Ring up add-ons', icon: IconRegister, variant: 'tonal', onClick: () => emit('register') }
 })
 

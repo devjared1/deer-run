@@ -25,7 +25,8 @@ deer-run/
 │   │   │   │                  #   _db.js (fetchAll), _csv.js, _membership.js (expiry + reminder emails),
 │   │   │   │                  #   _houseAccounts.js / _statements.js (house accounts)
 │   │   │   ├── account/       # The signed-in member's own data (house account, statements)
-│   │   │   ├── staff/         # Staff portal APIs (requireStaff / requireRegister); _auth.js, _timesheet.js,
+│   │   │   ├── kiosk/         # Time clock iPad APIs (X-Kiosk-Token device token; _auth.js → requireKiosk)
+│   │   │   ├── staff/         # Staff portal APIs (requireStaff / requireRegister); _auth.js, _timesheet.js, _clock.js (punches),
 │   │   │   │                  #   _timeoff.js, _approvals.js, _pin.js, _drawer.js; register/, sales/, teesheet/ for the POS
 │   │   │   └── internal/      # Scheduled jobs (Bearer CRON_SECRET), called by apps/cron
 │   │   ├── public/_redirects  # SPA fallback: /* → /index.html 200
@@ -66,6 +67,7 @@ deer-run/
 │       ├── package.json       # Prisma devDep only
 │       └── .env.example       # DATABASE_URL only
 ├── docs/register-setup.md     # How to set up a POS register PC (printer, kiosk Chrome, scanner, reader)
+├── docs/timeclock-kiosk.md    # How to set up the time clock iPad (/timeclock, PINs, Guided Access)
 ├── docs/ui-ux-review.md       # UI/UX review + redesign brief (MD3, icons, logo); phases in TODO.md → Feature 4
 ├── TODO.md                    # Roadmap: employee time management + POS
 └── package.json               # Workspace root (npm workspaces)
@@ -227,8 +229,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | GET | `/api/auth/me` | Required | Upsert + return DB user, linked `employee`, `canUseRegister`, `isRegisterManager` |
 | GET | `/api/teetimes?date=YYYY-MM-DD` | Optional | Available slots (member-only slots hidden from guests) |
 | GET | `/api/teetimes?from=&to=` | Optional | Per-day availability `[{ date, open, spots }]` (≤ 31 days; booking calendar hints) |
-| GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates }` (cents, from the rate products) |
-| POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent → `{ bookingId, clientSecret }` |
+| GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates, payAtCourseFeeCents }` (cents, from the rate products) |
+| POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, payAtCourse?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent (the total, or only the hold fee with `payAtCourse`) → `{ bookingId, clientSecret, totalCents, chargeCents, holdFeeCents, balanceDueCents }` |
 | GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
 | GET | `/api/bookings/my` | Required | Signed-in user's bookings |
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
@@ -247,7 +249,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/events[/:id]` | GET, POST / PUT, DELETE | Tournaments |
 | `/api/admin/users[/:id]` | GET / PUT | Users, role changes |
 | `/api/admin/settings` | GET, PUT | `CourseSettings` (booking, payroll, POS, tipping, late fee) + `rates` (saved onto the rate products) and `holidayDates`; PUT returns `warning` if the tip percentages didn't reach Stripe |
-| `/api/admin/employees[/:id]` | GET, POST / PUT, DELETE | Employees (`resetManagerPin`; delete refused with clock history) |
+| `/api/admin/employees[/:id]` | GET, POST / PUT, DELETE | Employees (`resetManagerPin`, `clockPin` set / `null` clears; responses carry `hasManagerPin`, `hasClockPin` and the locks, never hashes; delete refused with clock history) |
+| `/api/admin/kiosks[/:id]` | GET, POST / DELETE | Time clock iPads; POST `{ name }` from the device → `{ kiosk, token }` (token shown once); DELETE signs the device out |
 | `/api/admin/timeclock` | GET | Who's on the clock / on break / forgot to clock out |
 | `/api/admin/timesheets?date=` | GET | All employees' hours for a pay period |
 | `/api/admin/time-entries[/:id]` | POST / PUT, DELETE | Manager corrections to punches |
@@ -277,7 +280,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 
 | Path | Methods | Description |
 |------|---------|-------------|
-| `/api/staff/clock` | GET, POST | Clock state / `clock_in\|clock_out\|break_start\|break_end` (server time) |
+| `/api/staff/clock` | GET, POST | Clock state (+ `hasClockPin`) / `clock_in\|clock_out\|break_start\|break_end` (server time) |
+| `/api/staff/clock-pin` | GET, PUT | Own time clock (kiosk) PIN: `{ currentPin?, newPin }` |
 | `/api/staff/timesheet?date=` | GET | Own timesheet for a pay period |
 | `/api/staff/schedule?view=&date=[&team=1]` | GET | Own shifts (or the whole team, read-only) + approved time off |
 | `/api/staff/time-off[/:id]` | GET, POST / PUT | Own requests; create; `{ action: 'cancel' }` while pending |
@@ -303,6 +307,13 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/internal/statements` | POST | Daily: last month's house account statements (only creates missing ones) + autopay + emails with PDF, then overdue statements: one reminder + optional late fee each |
 | `/api/internal/bookings` | POST | Daily: release unpaid online bookings past their 30-minute hold (cancel PaymentIntent → CANCELLED) |
 | `/api/internal/pace` | POST | Daily: learn per-hole times from the last 60 days of position reports → `CourseSettings.holeSeconds` |
+
+**Time clock kiosk** (`requireKiosk`: header `X-Kiosk-Token`, the device token from `POST /api/admin/kiosks`; no user)
+
+| Path | Methods | Description |
+|------|---------|-------------|
+| `/api/kiosk/employees` | GET | `{ kiosk, serverTime, employees: [{ id, firstName, lastName, position, status: off\|on\|break, hasPin, pinLocked }] }` |
+| `/api/kiosk/clock` | POST | `{ employeeId, pin, action? }`: checks the time clock PIN every time (lockout; codes `PIN_WRONG` / `PIN_LOCKED` / `PIN_NOT_SET`), then the state, or records the punch → clock state (+ `done`) |
 
 **Member** (`authenticate`: any signed-in user, their own data only)
 
@@ -364,11 +375,12 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 |------|-------|------------|
 | Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`, `memberUntil?` (last day; null = no expiry), `membershipTier?`, `renewalReminderKey?` |
 | | `TeeTimeSlot` | `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
-| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy), `roundHoles`, `cartIncluded` (online booking paid the cart fee); on-course: `cartNumbers`, `ownCart`, `startHole`, `roundHoles`, `teedOffAt?`, `positionHole?`/`positionStage?` (`HoleStage`)/`positionAt?` (latest report), `finishedAt?` |
+| | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy), `roundHoles`, `cartIncluded` (online booking paid the cart fee); pay at course: `holdFeeCents?` (null = paid in full online), `balanceDueCents` (collected at the register, then 0); on-course: `cartNumbers`, `ownCart`, `startHole`, `roundHoles`, `teedOffAt?`, `positionHole?`/`positionStage?` (`HoleStage`)/`positionAt?` (latest report), `finishedAt?` |
 | | `PositionReport` | Every on-course report: `bookingId`, `hole`, `stage`, `reportedAt`, `employeeId?` (history the hole times are learned from) |
-| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, `holidayDates` (weekend rates), tee time range (`pricePerPlayerCents` is unused since migration 11), pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off), on-course (`roundMinutes`, `coursePositions`, learned `holeSeconds`/`holeTimesUpdatedAt`/`holeTimesRounds`) |
+| | `CourseSettings` | Singleton (`id = "singleton"`): booking window, `holidayDates` (weekend rates), `payAtCourseFeeCents` (hold fee per online booking, 0 = off), tee time range (`pricePerPlayerCents` is unused since migration 11), pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off), on-course (`roundMinutes`, `coursePositions`, learned `holeSeconds`/`holeTimesUpdatedAt`/`holeTimesRounds`) |
 | | `TournamentEvent`, `Inquiry`, `ContactMessage` | Events and form submissions |
-| Staff | `Employee` | `userId?` (linked by email), names, `email`, `position` (`EmployeePosition`), `hourlyRateCents`, `active`, manager PIN hash/lockout |
+| Staff | `Employee` | `userId?` (linked by email), names, `email`, `position` (`EmployeePosition`), `hourlyRateCents`, `active`, manager PIN hash/lockout, time clock PIN hash/lockout (`clockPin*`) |
+| | `ClockKiosk` | A time clock iPad: `name`, `tokenHash` (SHA-256 of the device token), `createdById`, `lastSeenAt` |
 | | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
 | | `Shift` | `employeeId`, `date`, `startTime`/`endTime` ("HH:MM"; end ≤ start = overnight), `position?` override, `notes?` |
 | | `TimeOffRequest` | `startDate`/`endDate` (inclusive), `type`, `reason?`, `status` (PENDING/APPROVED/DENIED/CANCELLED), `reviewedById` (User.id), `reviewedAt`, `reviewNote` |
@@ -440,6 +452,7 @@ register, house accounts with statements, events and inquiries. It skips itself 
 | `/staff/register`, `/staff/teesheet` | `RegisterView.vue`, `TeeSheetView.vue` | `requiresStaff` + `requiresRegister` |
 | `/staff/oncourse` | `OnCourseView.vue`  | `requiresStaff` + `requiresCourse` |
 | `/staff/pin`    | `ManagerPinView.vue`  | `requiresStaff` + `requiresRegisterManager` |
+| `/timeclock`    | `kiosk/TimeClockKioskView.vue` (bare: the time clock iPad; device token, no sign-in) | — |
 
 The router guard awaits `auth.init()` (session + profile) before checking roles, so a page reload doesn't look
 signed out. Failing a guard redirects to `/login?redirect=<path>` (not signed in), `/` (wrong role) or `/staff`
@@ -482,7 +495,8 @@ shell is a bottom nav bar by role (phones) / rail (md) / drawer (lg) with a cloc
 
 ### `useBookingStore` (`stores/booking.js`)
 - `selectedDate`, `selectedSlot`, `players`, `roundHoles` (9/18), `cart` (riding), `guestName`, `guestEmail` — booking state
-- `rates`, `holidayDates`, `loadRates()` — from GET `/api/rates` (defaults until loaded)
+- `rates`, `holidayDates`, `payAtCourseFeeCents`, `loadRates()` — from GET `/api/rates` (defaults until loaded)
+- `payAtCourse` (the golfer's choice), `payAtCourseOption` (`{ available, holdFeeCents, balanceCents }`), `usingPayAtCourse`, `chargeCents` (what's paid online)
 - `price` / `totalPrice` — computed with `bookingPrice()` (display only; the server prices the booking from the rates)
 - `fetchAvailableSlots(date)` — GET `/api/teetimes?date=<date>`
 - `createBooking()` — POST `/api/bookings` → returns `{ bookingId, clientSecret }`; reuses the booking already made for
@@ -506,9 +520,9 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 | `timeclock.js` | `COURSE_TZ` (America/Chicago), course-local date helpers (`localDate`, `addDays`, `localDateTimeToUtc`…), worked/overtime minutes, pay periods, display formatting |
 | `schedule.js` | Shift length (overnight wrap), overlaps, `scheduleWarnings()`, week/2-week/month `schedulePeriod()` |
 | `membership.js` | `isActiveMember()`, `isLapsedMember()`, `extendMembership()`, `shortenMembership()` (shared: register pricing, tee times, sales, refunds) |
-| `teesheet.js` | Tee time labels (`teeTime`, `teeTimeLabel`) used on the tee sheet and on receipt lines, and the unpaid-hold rule (`UNPAID_HOLD_MINUTES`, `isExpiredHold`, `holdsSpot`, `bookedPlayers`, `HOLD_COLUMNS`) used wherever slot capacity is counted |
+| `teesheet.js` | Tee time labels (`teeTime`, `teeTimeLabel`, `bookingLineDescription`: the register's booking line) used on the tee sheet and on receipt lines, `balanceDue()` (pay at course), and the unpaid-hold rule (`UNPAID_HOLD_MINUTES`, `isExpiredHold`, `holdsSpot`, `bookedPlayers`, `HOLD_COLUMNS`) used wherever slot capacity is counted |
 | `pace.js` | On-course estimates: round plan from the pace profile `{ roundMinutes, holeSeconds }` (learned hole times, else split by par: `paceProfile`, `perHoleMinutes`, `roundPlan`, `holeOrder`, `stagesFor`), `learnHoleSeconds()` (fit from past rounds), `trackGroup()` (where a checked-in group probably is, ahead/behind its tee time), `trackedGroups`, `coursePace`, `openHolesAhead`, `cartsInUse` (imports `../data/holes.js`) |
-| `rates.js` | Greens fee / cart rates: `RATE_KEYS`, `DEFAULT_RATES`, `isWeekendRate()` (Sat/Sun or a holiday), `greensRateKey()`, `bookingPrice()` (greens + cart per rider × players). Server side, `functions/api/_rates.js` → `loadRates()` reads the rate products |
+| `rates.js` | Greens fee / cart rates: `RATE_KEYS`, `DEFAULT_RATES`, `isWeekendRate()` (Sat/Sun or a holiday), `greensRateKey()`, `bookingPrice()` (greens + cart per rider × players), `payAtCourseSplit()` (hold fee / balance). Server side, `functions/api/_rates.js` → `loadRates()` reads the rate products |
 | `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
 | `pricing.js` | Register line/tax/total math incl. the member Pro Shop discount (`memberDiscountBps`; imports `../data/membershipTiers.js`), shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
@@ -538,6 +552,11 @@ arrival tips) are in `components/booking/bookingFlow.js`.
 Stripe then sends `payment_intent.succeeded` to `/api/webhooks/stripe`, which sets the booking `status` to
 `CONFIRMED`, stores the PaymentIntent id in `stripePaymentId`, and emails a confirmation.
 
+**Pay at course**: when `CourseSettings.payAtCourseFeeCents` is set and less than the total, the Details step offers
+paying only that flat, non-refundable hold fee online. The booking keeps the full `totalCents`, with `holdFeeCents` and
+`balanceDueCents`; checking it in on the tee sheet opens the register with the balance as the booking line, and the
+saved sale sets `balanceDueCents` to 0 (a refund of that line puts it back). Cancelling or a no-show keeps the fee.
+
 An unpaid booking holds its spots for 30 minutes; then it's released (`functions/api/bookings/_holds.js`: PaymentIntent
 cancelled, booking CANCELLED). The webhook re-confirms a late payment if there's room, otherwise refunds it.
 
@@ -553,7 +572,11 @@ Steps communicate via `@next` / `@back` events. Animated with `step-fade` CSS tr
   Staff access comes from an active `Employee` record, not a `Role`; register managers are employees whose
   position is in `CourseSettings.managerPositions`.
 - **Time clock**: punches use server time; one open entry per employee; overtime over 40 h per workweek, which starts
-  on the pay period anchor's weekday. Everything is displayed in `America/Chicago`.
+  on the pay period anchor's weekday. Everything is displayed in `America/Chicago`. Punch logic is in
+  `staff/_clock.js`, shared with the **time clock iPad** (`/timeclock`): an admin sets the device up once (kiosk token
+  in localStorage, `src/lib/kioskApi.js`), then employees tap their name and enter their **time clock PIN** (set by
+  themselves on the Time Clock page or by an admin in Employees; `_pin.js` → `checkEmployeePin`, separate from the
+  manager PIN). 30 s idle → back to the names. Set-up guide: `docs/timeclock-kiosk.md`.
 - **Scheduling**: admins build the schedule on `/admin/schedule`; warnings (overlaps, time off, inactive employees)
   are shown, not enforced. Staff see theirs on `/staff/schedule`. Both print in landscape. **Email schedule** sends
   each employee their shifts for the period shown.

@@ -408,6 +408,13 @@ manager can print a statement for any member **on demand**.
       until it runs; Settings hides Rates until then), then `prisma migrate resolve --applied 11_rates`. It sets the
       starting rates and deactivates the old Twilight / 9 Holes products; check Admin → Products for other old
       greens fee products (Walking, Junior, Senior Rate) the course no longer sells
+- [ ] Run `apps/api/prisma/sql/12_pay_at_course.sql` after 11, together with the deploy that needs it (the tee sheet
+      and On Course pages fail until it runs; online booking only offers pay at course once it has), then
+      `prisma migrate resolve --applied 12_pay_at_course`. It turns pay at course on with a $10 hold fee: change or
+      turn it off in Admin → Settings → Booking & Rates
+- [ ] Run `apps/api/prisma/sql/13_timeclock_kiosk.sql` after 12, then
+      `prisma migrate resolve --applied 13_timeclock_kiosk`. Until it runs the time clock iPad, time clock PINs and the
+      Settings list of iPads don't work (everything else does). Then set up the iPad: `docs/timeclock-kiosk.md`
 - [ ] Redeploy the cron Worker (`cd apps/cron && npm run deploy`): it now also calls `/api/internal/bookings` and
       `/api/internal/pace`
 - [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
@@ -733,3 +740,63 @@ dialogs. Receipts and slips aren't redesigned.
 - [x] Update `CLAUDE.md` (Design System, components, routes) and this file
 - [ ] Verify on staging with real data: sign in / sign up / password reset (Supabase now loads on demand), a real
       online booking through Stripe, a register sale with the card reader, the PDF statement download
+      
+## Feature 5: Pay at course
+
+Request: add option to pay at course during an online booking. Charge a flat rate to hold the booking. When they pay
+at the course, the amount will be the total minus the holding fee. Holding fee is non-refundable if booking is
+cancelled or missed.
+
+Decisions: the hold fee is **one flat amount per booking** (not per player), set in **Admin → Settings → Booking &
+Rates → Pay at course** (`CourseSettings.payAtCourseFeeCents`, default $10, $0 = off, otherwise $0.50–$100). It's
+offered only when it's less than the booking's total. The balance is charged untaxed and undiscounted, like the online
+price it comes from. Cancelling never moves money (as before), so the fee is simply kept; a no-show never pays the
+balance.
+
+- [x] Schema (SQL `apps/api/prisma/sql/12_pay_at_course.sql`): `CourseSettings.payAtCourseFeeCents`,
+      `Booking.holdFeeCents` (null = paid in full online) and `Booking.balanceDueCents` (what the register still collects)
+- [x] Booking flow: Details step asks **Pay $X now** or **Pay at the course ($10 now)** with the non-refundable line;
+      Payment step shows the round total, the balance due at the course and charges only the fee
+      (`POST /api/bookings { payAtCourse: true }` → PaymentIntent for the fee; `GET /api/rates` → `payAtCourseFeeCents`;
+      split in `src/lib/rates.js` → `payAtCourseSplit()`)
+- [x] Confirmation page, confirmation email, My Account (balance due; cancel confirm says the fee isn't refunded)
+- [x] Tee sheet: "$X due at register" chip; check-in has one way out, **Check in and collect $X**, which opens the
+      register with the balance as the booking line (`bookingLineDescription()` in `src/lib/teesheet.js`, shared with the
+      server); a group checked in without paying shows **Collect $X**. Cancel notes say the fee is kept
+- [x] Register: the booking line charges `balanceDueCents` (`_build.js` → `bookingLine`); after the sale saves, the
+      booking's balance is set to 0 (`saveSale` → `settleBalances`, only if it's still the amount rung up, so two sales
+      can't both clear it). Refunding that line puts the refunded amount back on the balance (`refundBalances`)
+- [x] Admin: Settings field, Bookings list shows the fee and what's still due, dashboard online revenue counts only the
+      hold fee for these bookings (the balance is a register sale)
+- [ ] Check on staging after migration 12: book with pay at course, check in, collect the balance (cash and card),
+      refund it, cancel a pay-at-course booking
+
+## Feature 6: Time clock iPad (kiosk)
+
+Request: standalone Time Clock UI / UX that can be run on an iPad. Employees find themselves in the employee list, they
+are prompted for their PIN. After successful auth, they can clock in / out and start / end break.
+
+Decisions: the iPad isn't signed in as anyone. An admin sets it up once at `/timeclock` (signed out right after), and
+the device keeps a **kiosk token** (only its SHA-256 hash is stored, `ClockKiosk`; removing it signs the device out).
+Each employee has a **time clock PIN**, separate from the register manager PIN, same hashing and 5-tries / 15-minute
+lockout. Every kiosk request re-checks the PIN; nothing about the employee stays on the iPad. Set-up guide (Guided
+Access, Add to Home Screen): `docs/timeclock-kiosk.md`.
+
+- [x] Schema (SQL `apps/api/prisma/sql/13_timeclock_kiosk.sql`): `Employee.clockPinHash` / `clockPinFailedAttempts` /
+      `clockPinLockedUntil`, `ClockKiosk` (name, token hash, last seen)
+- [x] Punch logic shared by the staff portal and the kiosk (`functions/api/staff/_clock.js`: `clockStatus`,
+      `recordPunch`); PIN checks for both PIN kinds (`_pin.js` → `checkEmployeePin`)
+- [x] Kiosk API (`X-Kiosk-Token`): `GET /api/kiosk/employees` (active employees, on / off / on break, PIN set / locked),
+      `POST /api/kiosk/clock { employeeId, pin, action? }`; admin: `GET/POST /api/admin/kiosks`, `DELETE /api/admin/kiosks/:id`
+- [x] `/timeclock` page (`views/kiosk/TimeClockKioskView.vue` + `components/kiosk/`): big name tiles with search →
+      PIN keypad (or "no PIN yet" / "locked" help) → status and the punches that fit → confirmation that returns to
+      the names after 6 s; 30 s idle timeout; server clock in the header; Screen Wake Lock; own web app manifest
+      (`public/timeclock.webmanifest`, and `dist/timeclock.html` from the prerender) so Add to Home Screen opens it
+- [x] PINs: admins set / change / remove one in **Admin → Employees** (row menu; status shows "Time clock PIN set" /
+      locked); staff set their own on the **Time Clock** page (`/api/staff/clock-pin`, shared `PinChangeForm` with the
+      Manager PIN page)
+- [x] **Admin → Settings → Payroll → Time clock iPads**: list, last used, Remove
+- [x] Gallery preview with mocked APIs (`/dev/ui?section=timeclockkiosk`, iPad landscape / portrait / mini)
+- [ ] Try it on the real iPad after migration 13: set up, Add to Home Screen, Guided Access, a full shift with a break
+- [ ] Maybe later: record which kiosk a punch came from (`TimeEntry`), a photo on punch, and limiting the kiosk to
+      the course network

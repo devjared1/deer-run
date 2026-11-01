@@ -1,5 +1,5 @@
 import { unitPriceCents, memberDiscountBps, memberDiscountCents, priceLine, saleTotals, variantDescription } from '../../../../src/lib/pricing.js'
-import { teeTimeLabel } from '../../../../src/lib/teesheet.js'
+import { balanceDue, bookingLineDescription, teeTimeLabel } from '../../../../src/lib/teesheet.js'
 
 // Tenders the register accepts
 export const ACCEPTED_METHODS = ['CASH', 'CARD_TERMINAL', 'HOUSE_ACCOUNT']
@@ -17,11 +17,12 @@ const MAX_BOOKING_NAME = 80
  * Prices a sale on the server from the request and the current catalog. Pure: no database access.
  *   items:          [{ variantId, quantity, discountCents }                 discountCents: the manager's discount
  *                   | { custom: { description, priceCents }, quantity, discountCents }
- *                   | { booking: { bookingId } }                         prepaid greens fee for a checked-in booking ($0)
+ *                   | { booking: { bookingId } }                         prepaid greens fee for a checked-in booking ($0),
+ *                     or a pay-at-course booking's balance (Booking.balanceDueCents)
  *                   | { newBooking: { teeTimeSlotId, players, name, source: 'POS' | 'PHONE' } }   walk-in/phone ($0 line;
  *                     the greens fees are rung up as normal products on the same sale)]
  *   variantsById:   variant rows with product and category embedded
- *   bookingsById:   existing bookings for `booking` lines: { id, status, source, players, slot: { date, startTime } }
+ *   bookingsById:   existing bookings for `booking` lines: { id, status, source, players, balanceDueCents?, slot: { date, startTime } }
  *   slotsById:      tee time slots for `newBooking` lines: { id, date, startTime, maxPlayers, memberOnly, bookedPlayers }
  *   hasCustomer:    a customer account is attached (a walk-in without one needs a name)
  *   today:          course-local date (no bookings in the past)
@@ -157,20 +158,17 @@ function zeroLine(fields) {
   return { ...line, ...priceLine(line) }
 }
 
-// A booking that's already paid (online, or earlier at the register), checked in so add-ons go on one ticket
+// A booking that's already paid (online, or earlier at the register), checked in so add-ons go on one ticket: a $0
+// line. A pay-at-course booking still owes its balance (the online price less the hold fee): the line charges that,
+// untaxed and undiscounted like the online price it comes from, and `balanceCents` tells saveSale to mark it paid.
 function bookingLine({ bookingId }, bookingsById, label) {
   const booking = bookingsById[bookingId]
   if (!booking) return { error: `${label}: booking not found`, status: 400 }
   if (booking.status !== 'CONFIRMED') return { error: `${label}: this booking isn't paid (${booking.status.toLowerCase()})`, status: 409 }
-  const paidWhere = booking.source === 'ONLINE' ? 'paid online' : 'paid'
-  const players = `${booking.players} player${booking.players === 1 ? '' : 's'}`
-  return {
-    line: zeroLine({
-      description: `Greens fee ${paidWhere} — ${teeTimeLabel(booking.slot.date, booking.slot.startTime)}, ${players}`,
-      categoryName: 'Greens Fees',
-      bookingId: booking.id,
-    }),
-  }
+  const fields = { description: bookingLineDescription(booking, booking.slot), categoryName: 'Greens Fees', bookingId: booking.id }
+  const balanceCents = balanceDue(booking)
+  if (!balanceCents) return { line: zeroLine(fields) }
+  return { line: { ...zeroLine({ ...fields, unitPriceCents: balanceCents }), balanceCents } }
 }
 
 // A walk-in or phone booking made at the register: validated here, created when the sale completes

@@ -3,7 +3,7 @@ import { isExpiredHold } from '../../../../src/lib/teesheet.js'
 import { isValidYmd } from '../../../../src/lib/timeclock.js'
 
 // GET /api/admin/bookings?status=&date=&from=&to=&search=&page=&limit=
-// → { bookings: [{ …, source, checkedInAt, holdExpired }], total, page, limit }
+// → { bookings: [{ …, source, checkedInAt, holdFeeCents, balanceDueCents, holdExpired }], total, page, limit }
 // status: one status or a comma-separated list (PENDING,CONFIRMED). date (one tee date) or from/to (tee dates,
 // inclusive, either may be left out). search: guest or member name / email (contains, any case).
 // holdExpired marks an unpaid online booking past its 30-minute hold (src/lib/teesheet.js).
@@ -33,7 +33,8 @@ export async function onRequestGet({ request, env }) {
 
   let query = supabase
     .from('Booking')
-    .select(`id, players, totalCents, status, source, checkedInAt, guestName, guestEmail, stripeSessionId, stripePaymentId, createdAt, ${slot}, User(id, name, email, role)`, { count: 'exact' })
+    // (*): includes holdFeeCents / balanceDueCents (pay at course) once migration 12 has run
+    .select(`*, ${slot}, User(id, name, email, role)`, { count: 'exact' })
     .order('createdAt', { ascending: false })
     .range(offset, offset + limit - 1)
 

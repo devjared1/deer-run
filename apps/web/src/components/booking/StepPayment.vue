@@ -19,14 +19,28 @@
         <dt class="text-on-surface-variant">{{ row.label }}</dt>
         <dd class="text-on-surface text-right break-words min-w-0">{{ row.value }}</dd>
       </div>
+      <template v-if="payAtCourse">
+        <div class="flex justify-between gap-4 pt-3 mt-1 border-t border-outline-variant">
+          <dt class="text-on-surface-variant">Round total</dt>
+          <dd class="text-on-surface tabular-nums">{{ formatCents(totalCents) }}</dd>
+        </div>
+        <div class="flex justify-between gap-4">
+          <dt class="text-on-surface-variant">Due at the course</dt>
+          <dd class="text-on-surface tabular-nums">{{ formatCents(balanceCents) }}</dd>
+        </div>
+      </template>
       <div class="flex justify-between items-baseline gap-4 pt-3 mt-1 border-t border-outline-variant">
-        <dt class="text-title-m text-on-surface">Total</dt>
-        <dd class="font-display text-headline-s text-on-surface tabular-nums">{{ formatCents(totalCents) }}</dd>
+        <dt class="text-title-m text-on-surface">{{ payAtCourse ? 'Hold fee due now' : 'Total' }}</dt>
+        <dd class="font-display text-headline-s text-on-surface tabular-nums">{{ formatCents(chargeCents) }}</dd>
       </div>
+      <p v-if="payAtCourse" class="flex items-start gap-2 text-body-s text-on-surface-variant pt-1">
+        <IconInfo class="w-5 h-5 flex-shrink-0" aria-hidden="true" />
+        {{ HOLD_FEE_POLICY }}
+      </p>
       <p v-if="priceChanged" class="flex items-start gap-2 text-body-s text-on-surface-variant pt-1">
         <IconInfo class="w-5 h-5 flex-shrink-0" aria-hidden="true" />
         The total was updated to {{ formatCents(serverTotal) }} when your booking was placed (shown earlier as
-        {{ formatCents(store.price.totalCents) }}). This is the amount charged.
+        {{ formatCents(store.price.totalCents) }}). {{ payAtCourse ? 'The balance due at the course is based on this.' : 'This is the amount charged.' }}
       </p>
     </dl>
 
@@ -45,7 +59,7 @@
       <ErrorBanner v-if="error" class="mb-4" :message="error" />
 
       <AppButton variant="gold" size="lg" block :loading="processing" :icon="IconLock" @click="pay">
-        {{ processing ? 'Processing payment…' : `Pay ${formatCents(totalCents)}` }}
+        {{ processing ? 'Processing payment…' : `Pay ${formatCents(chargeCents)}${payAtCourse ? ' hold fee' : ''}` }}
       </AppButton>
     </div>
 
@@ -63,7 +77,8 @@
 </template>
 
 <script setup>
-// Booking step 4: creates (or reuses) the PENDING booking + PaymentIntent, shows the server's total, mounts the
+// Booking step 4: creates (or reuses) the PENDING booking + PaymentIntent, shows the server's total (and, paying at
+// the course, the hold fee charged now and the balance due there), mounts the
 // Stripe Payment Element (styled from the design tokens) and confirms the payment on the page.
 import AppButton from '@/components/ui/AppButton.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'
@@ -83,7 +98,7 @@ import IconArrowBack from '~icons/material-symbols/arrow-back-rounded'
 import IconEventBusy from '~icons/material-symbols/event-busy-rounded'
 import IconInfo from '~icons/material-symbols/info-rounded'
 import IconLock from '~icons/material-symbols/lock-rounded'
-import { CANCEL_POLICY, plural } from './bookingFlow'
+import { CANCEL_POLICY, HOLD_FEE_POLICY, plural } from './bookingFlow'
 
 const emit = defineEmits(['back'])
 const store = useBookingStore()
@@ -95,14 +110,19 @@ const loadingForm = ref(true)
 const processing = ref(false)
 const error = ref('')
 const initError = ref('')
-const serverTotal = ref(null) // the PaymentIntent's amount, from POST /api/bookings
+// From POST /api/bookings: { totalCents, chargeCents (the PaymentIntent's amount), balanceDueCents, payAtCourse }
+const server = ref(null)
+const serverTotal = computed(() => server.value?.totalCents ?? null)
 
 let stripe = null
 let elements = null
 let bookingId = null
 
-// The server's amount once it's known; the same calculation in the browser until then
+// The server's amounts once they're known; the same calculation in the browser until then
+const payAtCourse = computed(() => server.value?.payAtCourse ?? store.usingPayAtCourse)
 const totalCents = computed(() => serverTotal.value ?? store.price.totalCents)
+const chargeCents = computed(() => server.value?.chargeCents ?? store.chargeCents)
+const balanceCents = computed(() => server.value?.balanceDueCents ?? store.payAtCourseOption.balanceCents)
 const priceChanged = computed(() => serverTotal.value !== null && serverTotal.value !== store.price.totalCents)
 
 const summaryRows = computed(() => [
@@ -110,6 +130,7 @@ const summaryRows = computed(() => [
   { label: 'Tee time', value: store.selectedSlot ? teeTime(store.selectedSlot.startTime) : '' },
   { label: 'Players', value: plural(store.players, 'player') },
   { label: 'Round', value: `${store.roundHoles} holes, ${store.cart ? 'riding' : 'walking'}` },
+  { label: 'Payment', value: payAtCourse.value ? 'Hold fee now, the rest at the course' : 'In full now' },
   { label: 'Name', value: auth.isLoggedIn ? auth.profile?.name || auth.profile?.email || 'Your account' : store.guestName },
 ])
 
@@ -155,7 +176,14 @@ onMounted(async () => {
     // Create (or reuse) the booking + PaymentIntent
     const result = await store.createBooking()
     bookingId = result.bookingId
-    if (Number.isInteger(result.totalCents)) serverTotal.value = result.totalCents
+    if (Number.isInteger(result.totalCents)) {
+      server.value = {
+        totalCents: result.totalCents,
+        chargeCents: result.chargeCents ?? result.totalCents,
+        balanceDueCents: result.balanceDueCents ?? 0,
+        payAtCourse: result.holdFeeCents != null,
+      }
+    }
 
     stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY)
     if (!stripe) throw new Error('Stripe did not load')

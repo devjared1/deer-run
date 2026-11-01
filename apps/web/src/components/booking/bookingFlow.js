@@ -35,6 +35,10 @@ export const bookingReference = id => String(id || '').replace(/-/g, '').slice(0
 export const CANCEL_POLICY = `Signed-in golfers can cancel from My Account up to 24 hours before the tee time. `
   + `Booked as a guest, or within 24 hours? Call the pro shop at ${phone.display}.`
 
+// Pay at course (booking Details / Payment steps and the confirmation page)
+export const HOLD_FEE_POLICY = 'The hold fee is non-refundable: it isn\'t returned if the booking is cancelled or the tee '
+  + 'time is missed. Pay the rest at the pro shop when you check in.'
+
 // Shown on the confirmation page
 export const ARRIVAL_TIPS = [
   'Check in at the pro shop 15 minutes before your tee time.',
@@ -42,6 +46,14 @@ export const ARRIVAL_TIPS = [
   'Collared shirts, no denim, and no metal spikes on the greens.',
   'Running late or need to change the group size? Call the pro shop.',
 ]
+
+/** The arrival tips for a booking: paying at the course, the second one says what's still owed. */
+export function arrivalTips(balanceDueCents = 0, formatMoney = String) {
+  if (!(balanceDueCents > 0)) return ARRIVAL_TIPS
+  return ARRIVAL_TIPS.map((tip, i) => (i === 1
+    ? `Give the pro shop the name on the booking and pay the ${formatMoney(balanceDueCents)} balance when you check in.`
+    : tip))
+}
 
 // Calendar event length (time on the course plus checking in)
 export const ROUND_MINUTES = { 9: 135, 18: 255 }
