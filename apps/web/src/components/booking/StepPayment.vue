@@ -125,7 +125,10 @@ onMounted(async () => {
     paymentElement.on('ready', () => { loadingForm.value = false })
   } catch (e) {
     loadingForm.value = false
-    initError.value = 'Unable to load payment form. Please call (256) 974-7384.'
+    // API refusals (slot just filled, members only…) carry a message worth showing; anything else is generic
+    initError.value = e.status && e.status < 500
+      ? `${e.message}. Go back to choose another time, or call (256) 974-7384.`
+      : 'Unable to load payment form. Please call (256) 974-7384.'
   }
 })
 
