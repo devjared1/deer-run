@@ -3,7 +3,7 @@
     <!-- Hero with course photo background -->
     <PageHero label="An Earl Stone Design" title-html="<em>Deer Run</em>"
       description="18 championship holes at the entrance to the Bankhead National Forest. Open to the public daily since 1980."
-      bg-image="/images/course-4.jpg" height="650px" logo>
+      photo="course-4" height="650px" logo>
       <div class="mt-8 flex flex-col sm:flex-row gap-3 items-start">
         <RouterLink to="/book" class="btn-amber">Book a Tee Time →</RouterLink>
         <RouterLink to="/scorecard" class="btn-outline">View the Course</RouterLink>
