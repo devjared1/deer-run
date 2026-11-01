@@ -30,6 +30,9 @@
         aria-hidden="true"
       />
     </template>
+    <!-- No error icon: the <select> fills the box absolutely, so the icon would sit over the text. The red outline and
+         message carry the error. -->
+    <template #trailing />
   </TextField>
 </template>
 

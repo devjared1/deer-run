@@ -39,6 +39,8 @@ const highContrast = ref(false)
 
 // Every gallery/*.vue file becomes a section, sorted by file name ("10-Foundations.vue" → "Foundations")
 const files = import.meta.glob('./gallery/*.vue', { eager: true })
+// ?section=forms shows one section only (handy for screenshots and reviews)
+const only = new URLSearchParams(location.search).get('section')
 const sections = Object.entries(files)
   .sort(([a], [b]) => a.localeCompare(b))
   .map(([path, mod]) => {
@@ -50,4 +52,5 @@ const sections = Object.entries(files)
       component: mod.default,
     }
   })
+  .filter(s => !only || s.id === only)
 </script>
