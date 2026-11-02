@@ -3,7 +3,7 @@
 Roadmap for two large features: **Employee Time Management** and a **Point of Sale (POS)** system, plus
 **On-course tracking** built on the tee sheet, a site-wide **UI / UX overhaul** (Feature 4, brief in
 `docs/ui-ux-review.md`), **Pay at course** (5), the **Time clock iPad** (6) and a second round of
-**UX enhancements** (7).
+**UX enhancements** (7), **bug fixes from the code review** (8) and an **ideas backlog** (9).
 Employee Time Management comes first. The POS depends on it, because every sale is rung up by an
 employee and the register lives in the staff portal.
 
@@ -922,3 +922,97 @@ ordered by value; Phases 1–3 are the first picks.
       (`GET /api/admin/reports/teetime-usage?weeks=` → `components/admin/dashboard/TeeTimeUsage.vue` on the dashboard:
       paid players over capacity for the last 4 / 8 / 12 weeks, a percentage in every cell, busiest and quietest hour.
       Gallery: `?section=admindashboard`, a new preview of the whole dashboard)
+
+## Feature 8: Bug fixes from the code review (2026-11-02)
+
+Found by a read-through of booking, POS, staff/auth and the frontend. Ordered by severity; the first block is the
+"fix this week" list. Items marked ❓ need a decision on how manager approval should work.
+
+### High
+- [ ] Members-only slots: `POST /api/bookings` only checks `!dbUser` (`bookings/index.js:64`), so any signed-in GUEST
+      or lapsed member can book them. Use the same active-member / admin check as `teetimes.js` and `_change.js`
+- [ ] Booking window and past times aren't enforced on `POST /api/bookings` (only in `quoteChange`): reject slots past
+      `publicBookingDays` / `memberBookingDays` and tee times that have already started
+- [ ] PIN lockout can be raced (`staff/_pin.js:96-104`, `admin/_houseAccounts.js:82`): the attempt count is read, +1 in
+      JS and written back, so parallel guesses each add 1. Increment atomically in SQL (`attempts = attempts + 1
+      RETURNING`) and refuse when locked/over the limit. Covers time clock (register switch → full sign-in), manager
+      and house account PINs
+- [ ] Duplicate refund lines over-refund the card (`staff/sales/[id].js:132-148`): `[{A,1},{A,1}]` passes the checks,
+      Stripe refunds twice, then `refund_sale()` rolls back so nothing is recorded. Merge or reject repeated `saleItemId`s
+- [ ] Double-tap Refund / Void refunds twice (`RegisterView.vue:917-928`): set `refundBusy` before
+      `requestApproval()`, like `submitCashMovement`
+
+### Medium
+- [ ] Golfer's own unpaid hold blocks their booking: going back from Payment and changing walking/riding, holes or
+      players creates a second PENDING booking; the first still counts, so a foursome gets "Not enough spots" for
+      30 minutes (`stores/booking.js:114-140`). Send the previous `bookingId` so the server releases/replaces it
+- [ ] ❓ Manager approvals aren't bound to a sale or amount (`staff/_approvals.js:24-30`): a "refund a $5 glove"
+      approval works for any refund within 10 minutes. Carry the sale / items / amount on the approval and check on use
+- [ ] ❓ A register manager's time clock PIN (typed on the shared iPad) is enough to switch the register to them, and
+      then approvals need no manager PIN (`register/_cashiers.js:19-25` + `approvals.js:28-30`). Either block PIN
+      switch to managers or always ask for the manager PIN on approvals
+- [ ] Two concurrent card refunds of the same sale both reach Stripe (refund before `refund_sale` locks). Reserve the
+      refund in the database first, or refund Stripe after `refund_sale` succeeds
+- [ ] Overbooking race: the capacity check, Stripe call and insert aren't atomic, and nothing in the DB enforces
+      capacity (also `_change.js` and register `newBooking`). A Postgres function that locks the slot row
+- [ ] Timesheets and schedules lose rows past 1,000: `fetchEntries` (`staff/_timesheet.js:57-68`) and `fetchShifts`
+      (`admin/shifts/_validate.js:82-94`) → `fetchAll()`
+- [ ] Golfer can cancel a booking the pro shop was paid for: `DELETE /api/bookings/:id` ignores `source`, register
+      sales and `checkedInAt` (and `manage.js` says `canCancel: true`). Use the same blockers as `changeBlocker`
+- [ ] `auth/me.js:50-55` links a new login to an employee by email without checking `email_confirmed_at` (safe only
+      while Supabase "Confirm email" is on)
+- [ ] Register cart is lost when leaving the page or reloading (`RegisterView.vue:314`): keep it in sessionStorage
+      and/or warn on route leave
+
+### Low
+- [ ] Tee Sheet (`TeeSheetView.vue:400-414`) and On Course (`OnCourseView.vue:458-478`) loads have no request
+      sequence guard: a slow older load can show the wrong day / undo a just-recorded action
+- [ ] `openStatementsOwed` (`_houseAccounts.js:104-108`) counts refunds of later charges against an older
+      statement, which can mark it PAID and skip its reminder / late fee. Count only PAYMENT / ADJUSTMENT credits
+- [ ] Shift swap approve (`admin/shift-offers/[id].js:36-52`): add `.eq('claimedById', …)` and update the offer
+      before moving the shift
+- [ ] Unescaped search text in `.or()` filters: `admin/users/index.js:23`, `admin/bookings/index.js:52` (commas or
+      parentheses → 500). Strip like `admin/search.js`
+- [ ] Duplicate confirmation emails on Stripe retries (`_holds.js:167`, `webhooks/stripe.js:110-153`): record that
+      the confirmation was sent
+- [ ] `GET /api/bookings/:id` returns the whole row (`select('*')`, guest email, Stripe id) with no link token:
+      return only what the confirmation page needs
+- [ ] `auth.init()` memoizes a rejected promise (`stores/auth.js:90-104`): reset it on failure. `getToken()` can
+      return an expired token after sleep: refresh when `expires_at` is close
+- [ ] Waitlist: anyone can add or overwrite entries for any email (`waitlist/index.js:23,38-42`)
+- [ ] Any register user can close any register's drawer (`register/drawer.js:59`): check the register
+- [ ] Split card + cash sale completing after the drawer closes isn't in any drawer's expected cash
+- [ ] Overtime: an overnight entry counts entirely in the workweek it started (`_timesheet.js:74-95`)
+- [ ] `POST /api/bookings` accepts fractional `players` (2.5 → 500): require an integer
+- [ ] Smaller: release a used DISCOUNT approval when the card is cancelled or the save fails;
+      `ConfirmationView` poll can outlive the page and `reset()` a new booking; clear the booking store's `pending`
+      after `confirmPayment`; after a cashier switch to someone without register access, re-run the route guard
+
+
+## Feature 9: Ideas backlog (from the 2026-11-02 review)
+
+Not decided or scheduled; ❓ for the course to pick from.
+
+### Revenue
+- [ ] ❓ Gift cards and store credit: sell at the register and online, redeem as a tender, ledger like house accounts
+- [ ] ❓ Prepaid round packs / punch cards, and rain checks issued from the tee sheet
+- [ ] ❓ Online tournament registration and payment (today an inquiry), team entry, pairings sheet
+- [ ] ❓ Demand / weather pricing suggestions (twilight or quiet-hour rates) from the tee time usage heatmap
+- [ ] ❓ No-show protection: save the card on pay-at-course bookings and charge a no-show fee
+
+### Operations
+- [ ] ❓ Reorder levels, purchase orders and receiving (Needs attention "low stock" is only 0 today)
+- [ ] ❓ Food & beverage: open tabs per group, kitchen order screen, modifiers
+- [ ] ❓ Accounting export (QuickBooks / Xero daily journal) and payroll export (Gusto / ADP) from timesheets
+- [ ] ❓ SMS (Twilio) for reminders, waitlist openings and "your group is up"
+
+### Golfers
+- [ ] ❓ Member-guest booking with member-guest rates and a monthly limit
+- [ ] ❓ Saved playing partners to fill a booking; Apple / Google Wallet passes for tee times
+- [ ] ❓ Leagues and handicaps: score entry, weekly results
+
+### Engineering
+- [ ] No tests or CI: unit tests for the shared libraries (`pricing.js`, `rates.js`, `timeclock.js` DST and pay
+      periods, `pace.js`, `schedule.js`), a SQL check that `create_sale` / `refund_sale` totals reconcile, and a
+      GitHub Action running lint + build + tests
+- [ ] Error monitoring (e.g. Sentry) for Functions and the Vue app
