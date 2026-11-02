@@ -145,6 +145,7 @@ CONTACT_EMAIL_TO=proshop@deerrun.golf
 ```bash
 npm run build               # Vite production build → apps/web/dist/
 npm run deploy              # Build + wrangler pages deploy
+npm run deploy:cron         # Redeploy the apps/cron Worker (after adding a job to JOBS)
 npm run lint                # ESLint all workspaces (report only; 0 errors expected, many formatting warnings)
 npm run lint:fix --workspace=apps/web   # ESLint with --fix (rewrites files)
 npm run db:migrate          # Prisma migrate dev (schema changes)
