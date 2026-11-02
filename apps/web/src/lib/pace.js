@@ -10,6 +10,8 @@ import { holes } from '../data/holes.js'
 import { localDateTimeToUtc, toUtcIso } from './timeclock.js'
 
 export const DEFAULT_ROUND_MINUTES = 255 // 4 h 15 min
+// On Course alerts: a group this far behind its tee time is called out (CourseSettings.behindAlertMinutes; 0 = off)
+export const DEFAULT_BEHIND_ALERT_MINUTES = 10
 export const MIN_ROUND_MINUTES = 120
 export const MAX_ROUND_MINUTES = 420
 // Within this many minutes of the plan counts as on pace
@@ -192,6 +194,17 @@ export function trackGroup(booking, slot, pace = DEFAULT_ROUND_MINUTES, now = ne
   const pos = positionAtOffset(plan, progress)
   if (!pos) return { ...common, state: 'DONE', hole: null, stage: null }
   return { ...common, state: 'ON_COURSE', ...pos, holeNumber: plan.findIndex(p => p.hole === pos.hole) + 1 }
+}
+
+/**
+ * Groups on the course at least `alertMinutes` behind their tee time, furthest behind first (the On Course alert).
+ * groups: trackedGroups() items. alertMinutes 0 (or less) turns alerts off.
+ */
+export function behindGroups(groups, alertMinutes = DEFAULT_BEHIND_ALERT_MINUTES) {
+  if (!(alertMinutes > 0)) return []
+  return (groups || [])
+    .filter(g => g.track.state === 'ON_COURSE' && g.track.deltaMinutes >= alertMinutes)
+    .sort((a, b) => b.track.deltaMinutes - a.track.deltaMinutes)
 }
 
 /** Checked-in, paid bookings from a tee sheet's slots, in tee time order: [{ booking, slot, track }]. */

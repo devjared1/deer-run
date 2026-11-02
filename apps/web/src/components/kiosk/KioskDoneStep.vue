@@ -5,6 +5,7 @@
     </span>
     <h2 class="mt-6 font-display text-display-s text-on-surface">{{ done.title }}</h2>
     <p class="mt-3 text-headline-s text-on-surface-variant max-w-xl">{{ done.message }}</p>
+    <p v-if="done.detail" class="mt-2 text-title-l text-on-surface max-w-xl">{{ done.detail }}</p>
     <AppButton size="xl" class="mt-10 min-w-[16rem]" :icon="IconDone" @click="emit('close')">
       Done
     </AppButton>
@@ -22,7 +23,7 @@ import IconLogout from '~icons/material-symbols/logout-rounded'
 import IconCoffee from '~icons/material-symbols/coffee-rounded'
 
 defineProps({
-  // { title, message, icon: in | out | break } from doneMessage()
+  // { title, message, detail?, icon: in | out | break } from doneMessage() (detail: today's schedule after a clock-in)
   done:        { type: Object, required: true },
   secondsLeft: { type: Number, default: 0 },
 })

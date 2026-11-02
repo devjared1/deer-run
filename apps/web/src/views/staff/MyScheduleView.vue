@@ -152,6 +152,17 @@
                   v-if="(s.position && s.position !== me?.position) || s.notes"
                   class="block sm:inline sm:ml-2"
                 >{{ [s.position && s.position !== me?.position ? positionLabel(s.position) : null, s.notes].filter(Boolean).join(' · ') }}</span>
+                <!-- Swap: offered already, or offer it (upcoming shifts only) -->
+                <span v-if="activeOffer(s)" class="block sm:inline sm:ml-2 text-label-l">
+                  <IconSwap class="inline w-4 h-4 -mt-0.5" aria-hidden="true" />
+                  {{ activeOffer(s).status === 'CLAIMED' ? 'Picked up, waiting for a manager' : 'Offered to the team' }}
+                </span>
+                <button
+                  v-else-if="offersReady && upcomingShift(s)"
+                  type="button"
+                  class="ml-2 text-label-l text-primary underline underline-offset-2 print:hidden touch-target"
+                  @click="startOffer(s)"
+                >Offer<span class="sr-only"> the {{ longTime(s.startTime) }} shift on {{ formatLocalDate(s.date, { weekday: 'long', month: 'long', day: 'numeric' }) }}</span></button>
               </span>
               <span
                 v-if="!myShifts.some(s => s.date === d) && !timeOffOn(data.timeOff, data.employeeId, d)"
@@ -168,19 +179,54 @@
       />
 
       <p class="text-body-s text-on-surface-variant print:hidden">
-        Schedules can change. If you can't work a shift, talk to your manager.
+        Schedules can change. Can't work a shift? Offer it to the team below, or talk to your manager.
       </p>
+
+      <ErrorBanner v-if="offersError" :message="offersError" @retry="loadOffers" />
+      <ShiftOffersList
+        v-else-if="offersReady"
+        :open="offers.open"
+        :mine="offers.mine"
+        :employee-id="data.employeeId"
+        :busy="offerBusy"
+        @act="act"
+      />
     </template>
+
+    <!-- Offer one of my shifts -->
+    <AppDialog v-model:open="offerOpen" title="Offer this shift" :icon="IconSwap" persistent>
+      <template v-if="offering">
+        <p class="text-body-m text-on-surface-variant">
+          {{ formatLocalDate(offering.date, { weekday: 'long', month: 'long', day: 'numeric' }) }},
+          {{ longTime(offering.startTime) }} – {{ longTime(offering.endTime) }}
+        </p>
+        <p class="mt-2 text-body-m text-on-surface">
+          Everyone on the team can see it and pick it up. It stays your shift until a manager approves the swap.
+        </p>
+        <TextField v-model="offerNote" class="mt-4" label="Note (optional)" maxlength="300" placeholder="e.g. Family event" />
+        <ErrorBanner v-if="offerError" class="mt-3" :message="offerError" />
+      </template>
+      <template #actions="{ close }">
+        <AppButton variant="text" @click="close">Cancel</AppButton>
+        <AppButton :icon="IconSwap" :loading="offerBusy === 'new'" @click="submitOffer">Offer shift</AppButton>
+      </template>
+    </AppDialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/lib/api'
 import { printLandscape } from '@/lib/print'
-import { localDate, formatLocalDate, isValidYmd } from '@/lib/timeclock'
+import { localDate, formatLocalDate, isValidYmd, localDateTimeToUtc } from '@/lib/timeclock'
+import { useConfirm } from '@/composables/useConfirm'
+import { useSnackbar } from '@/composables/useSnackbar'
+import ShiftOffersList from '@/components/schedule/ShiftOffersList.vue'
+import AppDialog from '@/components/ui/AppDialog.vue'
+import TextField from '@/components/ui/TextField.vue'
+import IconSwap from '~icons/material-symbols/swap-horiz-rounded'
 import { SCHEDULE_VIEWS, datesBetween, longTime } from '@/lib/schedule'
 import {
   positionLabel, shiftClasses, timeOffClasses, timeOffOn, timeOffLabel, totalHours,
@@ -202,6 +248,8 @@ import IconBeach from '~icons/material-symbols/beach-access-rounded'
 const route     = useRoute()
 const router    = useRouter()
 const authStore = useAuthStore()
+const confirm   = useConfirm()
+const snackbar  = useSnackbar()
 
 const data    = ref(null)
 const loading = ref(false)
@@ -287,4 +335,75 @@ async function load() {
 }
 
 watch(() => [view.value, date.value, team.value], load, { immediate: true })
+
+// ── Shift swaps (GET/POST /api/staff/shift-offers) ──
+const offers      = ref({ open: [], mine: [] })
+const offersReady = ref(false)
+const offersError = ref(null)
+const offerBusy   = ref(null)
+const offerOpen   = ref(false)
+const offering    = ref(null)
+const offerNote   = ref('')
+const offerError  = ref(null)
+
+async function loadOffers() {
+  offersError.value = null
+  try {
+    const res = await apiFetch('/api/staff/shift-offers')
+    offers.value = res
+    // Before the database has shift swaps (migration 16) the section stays hidden
+    offersReady.value = !res.unavailable
+  } catch (e) {
+    offersError.value = e.message
+  }
+}
+
+const activeOffer = s => offers.value.mine.find(o => o.shift?.id === s.id && ['OPEN', 'CLAIMED'].includes(o.status)) ?? null
+const upcomingShift = s => localDateTimeToUtc(s.date, s.startTime) > new Date()
+
+function startOffer(s) {
+  offering.value = s
+  offerNote.value = ''
+  offerError.value = null
+  offerOpen.value = true
+}
+
+async function submitOffer() {
+  offerBusy.value = 'new'
+  offerError.value = null
+  try {
+    await apiFetch('/api/staff/shift-offers', { method: 'POST', body: { shiftId: offering.value.id, note: offerNote.value } })
+    offerOpen.value = false
+    snackbar.show('Shift offered to the team. It\'s still yours until a manager approves a swap.')
+    await loadOffers()
+  } catch (e) {
+    offerError.value = e.message
+  } finally {
+    offerBusy.value = null
+  }
+}
+
+async function act(o, action) {
+  if (action === 'claim') {
+    const ok = await confirm({
+      title: 'Pick up this shift?',
+      message: 'A manager approves it before it goes on your schedule. You\'ll get an email either way.',
+      confirmLabel: 'Pick up',
+    })
+    if (!ok) return
+  }
+  offerBusy.value = `${o.id}:${action}`
+  try {
+    await apiFetch(`/api/staff/shift-offers/${o.id}`, { method: 'POST', body: { action } })
+    snackbar.show({ claim: 'Picked up. Waiting for a manager to approve.', release: 'You let the shift go.', cancel: 'Offer withdrawn. The shift is still yours.' }[action])
+  } catch (e) {
+    snackbar.show({ message: e.message, tone: 'error' })
+  } finally {
+    offerBusy.value = null
+    loadOffers()
+    if (action === 'claim') load()
+  }
+}
+
+onMounted(loadOffers)
 </script>

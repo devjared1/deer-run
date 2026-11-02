@@ -124,6 +124,12 @@ for (let w = -14; w <= 35; w += 7) {
     store.shifts.push({ id: `s${nextId++}`, employeeId, date: addDays(today, w + d), startTime, endTime, position, notes })
   }
 }
+// Shift swaps: one picked up (to approve), one offered with nobody yet
+const upcomingShifts = store.shifts.filter(s => s.date > today)
+const swapOffers = reactive([
+  { id: 'o-a', status: 'CLAIMED', note: 'Daughter\'s recital', posted: false, shift: upcomingShifts[0], offeredBy: EMPLOYEES.find(e => e.id === upcomingShifts[0].employeeId), claimedBy: EMPLOYEES.find(e => e.id !== upcomingShifts[0].employeeId) },
+  { id: 'o-b', status: 'OPEN', note: null, posted: true, shift: upcomingShifts[3], offeredBy: EMPLOYEES.find(e => e.id === upcomingShifts[3].employeeId), claimedBy: null },
+])
 const timeOffRequests = reactive([
   {
     id: 'r1', status: 'PENDING', type: 'PERSONAL', startDate: TIME_OFF[1].startDate, endDate: TIME_OFF[1].endDate, days: 1,
@@ -164,6 +170,19 @@ window.fetch = async (input, opts = {}) => {
     const s = { id: `s${nextId++}`, ...body }
     store.shifts.push(s)
     return json(s, 201)
+  }
+  if (p === '/api/admin/shift-offers' && method === 'GET') return json({ offers: swapOffers.filter(o => ['OPEN', 'CLAIMED'].includes(o.status)) })
+  if (p === '/api/admin/shift-offers' && method === 'POST') {
+    const shift = store.shifts.find(s => s.id === body.shiftId)
+    const offer = { id: `o${nextId++}`, status: 'OPEN', note: body.note, posted: true, shift, offeredBy: EMPLOYEES.find(e => e.id === shift?.employeeId), claimedBy: null }
+    swapOffers.push(offer)
+    return json({ offer }, 201)
+  }
+  if (p.startsWith('/api/admin/shift-offers/')) {
+    const o = swapOffers.find(x => x.id === p.split('/').pop())
+    o.status = { approve: 'APPROVED', deny: 'DENIED', cancel: 'CANCELLED' }[body.action]
+    if (body.action === 'approve') store.shifts.find(s => s.id === o.shift.id).employeeId = o.claimedBy.id
+    return json({ offer: o })
   }
   if (p === '/api/admin/shifts/copy') return json({ created: 12, skippedExisting: 3, skippedInactive: 1 })
   if (p === '/api/admin/shifts/email') {

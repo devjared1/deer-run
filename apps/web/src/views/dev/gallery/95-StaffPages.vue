@@ -225,6 +225,13 @@ for (let w = -42; w <= 42; w += 7) {
     SHIFTS.push({ id: `s${SHIFTS.length}`, employeeId, date: addDays(weekStart(today), w + d), startTime, endTime, position, notes })
   }
 }
+// Shift swaps: Dana offered a shift (Pick up), and one of mine is offered with nobody yet
+const nextShift = id => SHIFTS.find(s => s.employeeId === id && s.date > today)
+const swapOffers = reactive([
+  { id: 'so1', shiftId: nextShift('e1').id, offeredById: 'e1', claimedById: null, status: 'OPEN', note: 'Doctor\'s appointment', posted: false },
+  { id: 'so2', shiftId: SHIFTS.filter(s => s.employeeId === ME && s.date > today)[1].id, offeredById: ME, claimedById: null, status: 'OPEN', note: null, posted: false },
+])
+
 function schedule(url) {
   const view = SCHEDULE_VIEWS[url.searchParams.get('view')] ? url.searchParams.get('view') : 'week'
   const period = schedulePeriod(view, url.searchParams.get('date') || today, { anchor: DEFAULT_PAY_PERIOD.anchor })
@@ -254,6 +261,24 @@ function route(method, path, url, body) {
   if (path === '/api/staff/clock') return method === 'POST' ? punch(body.action) : clockStatus()
   if (path === '/api/staff/timesheet') return timesheet(url.searchParams.get('date'))
   if (path === '/api/staff/schedule') return schedule(url)
+  if (path === '/api/staff/shift-offers' && method === 'GET') {
+    const offer = o => ({ ...o, shift: SHIFTS.find(s => s.id === o.shiftId), offeredBy: EMPLOYEES.find(e => e.id === o.offeredById), claimedBy: EMPLOYEES.find(e => e.id === o.claimedById) ?? null })
+    return {
+      open: swapOffers.filter(o => o.status === 'OPEN' && o.offeredById !== ME).map(offer),
+      mine: swapOffers.filter(o => o.offeredById === ME || o.claimedById === ME).map(offer),
+    }
+  }
+  if (path === '/api/staff/shift-offers' && method === 'POST') {
+    swapOffers.push({ id: `so${swapOffers.length + 1}`, shiftId: body.shiftId, offeredById: ME, claimedById: null, status: 'OPEN', note: body.note, posted: false })
+    return { offer: {} }
+  }
+  if (path.startsWith('/api/staff/shift-offers/')) {
+    const o = swapOffers.find(x => x.id === path.split('/').pop())
+    if (body.action === 'claim') Object.assign(o, { status: 'CLAIMED', claimedById: ME })
+    if (body.action === 'release') Object.assign(o, { status: 'OPEN', claimedById: null })
+    if (body.action === 'cancel') o.status = 'CANCELLED'
+    return { offer: {} }
+  }
   if (path === '/api/staff/time-off' && method === 'GET') return [...requests].sort((a, b) => b.startDate.localeCompare(a.startDate))
   if (path === '/api/staff/time-off' && method === 'POST') {
     const r = { id: `r${requests.length + 1}`, status: 'PENDING', type: body.type, startDate: body.startDate, endDate: body.endDate, days: daysBetween(body.startDate, body.endDate) + 1, reason: body.reason || null, reviewNote: null }

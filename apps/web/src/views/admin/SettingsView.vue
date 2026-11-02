@@ -273,6 +273,16 @@
                 help="Besides everyone who can use the register: record tee-offs, where groups are, and finishes."
                 class="mt-4 sm:max-w-md"
               />
+              <div v-if="course.behindAlert !== null" class="mt-6 sm:max-w-xs">
+                <SelectField
+                  v-model="course.behindAlert"
+                  label="Alert when a group is behind by"
+                  :options="BEHIND_ALERT_STEPS.map(m => ({ value: m, label: m ? `${m} minutes or more` : 'Off (no alerts)' }))"
+                />
+                <p class="mt-2 text-body-m text-on-surface-variant">
+                  The On Course page shows those groups at the top, and phones vibrate when one falls that far behind.
+                </p>
+              </div>
             </Card>
           </div>
         </template>
@@ -419,7 +429,8 @@ const tipping     = ref({ enabled: false, percentages: [15, 18, 20], preTax: tru
 const saveWarning = ref(null)
 // On-course tracking: only shown (and saved) once the database has CourseSettings.roundMinutes
 const hasCourse = ref(false)
-const course    = ref({ hours: 4, minutes: 15, positions: [] })
+const course    = ref({ hours: 4, minutes: 15, positions: [], behindAlert: null }) // behindAlert null: before migration 16
+const BEHIND_ALERT_STEPS = [0, 5, 10, 15, 20, 30]
 const learnedTimes = ref({ holeSeconds: [], rounds: 0, updatedAt: null })
 const relearning   = ref(false)
 const relearnError = ref(null)
@@ -545,7 +556,10 @@ async function load() {
     tipping.value = { enabled: !!data.tippingEnabled, percentages, preTax: data.tipPreTax !== false }
     hasCourse.value = data.roundMinutes !== undefined
     const roundMinutes = data.roundMinutes ?? DEFAULT_ROUND_MINUTES
-    course.value = { hours: Math.floor(roundMinutes / 60), minutes: roundMinutes % 60, positions: data.coursePositions ?? [] }
+    course.value = {
+      hours: Math.floor(roundMinutes / 60), minutes: roundMinutes % 60, positions: data.coursePositions ?? [],
+      behindAlert: data.behindAlertMinutes ?? null,
+    }
     learnedTimes.value = { holeSeconds: data.holeSeconds ?? [], rounds: data.holeTimesRounds ?? 0, updatedAt: data.holeTimesUpdatedAt ?? null }
     if (!tabs.value.some(t => t.key === tab.value)) tab.value = 'booking'
     takeSnapshot()
@@ -572,7 +586,11 @@ function settingsPayload() {
         }
       : {}),
     ...(hasCourse.value
-      ? { roundMinutes: course.value.hours * 60 + course.value.minutes, coursePositions: course.value.positions }
+      ? {
+          roundMinutes: course.value.hours * 60 + course.value.minutes,
+          coursePositions: course.value.positions,
+          ...(course.value.behindAlert !== null ? { behindAlertMinutes: course.value.behindAlert } : {}),
+        }
       : {}),
   }
 }

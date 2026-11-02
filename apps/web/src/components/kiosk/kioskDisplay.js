@@ -1,6 +1,13 @@
 // Display rules for the time clock kiosk (views/kiosk/TimeClockKioskView.vue and the components in this folder).
 // No icon imports here: components map the `icon` keys to components.
 import { formatClockTime, formatMinutes } from '@/lib/timeclock'
+import { teeTime as clockTime } from '@/lib/teesheet'
+
+/** Today's scheduled shifts from the clock state, "7:00 AM – 3:00 PM and 6:00 PM – 9:00 PM", or '' (none / unknown). */
+export function scheduledToday(state) {
+  const shifts = state?.today?.shifts ?? []
+  return shifts.map(s => `${clockTime(s.startTime)} – ${clockTime(s.endTime)}`).join(' and ')
+}
 
 // How long the kiosk waits before going back to the name list (nobody touching it), and the done screen's countdown
 export const IDLE_SECONDS = 30
@@ -40,7 +47,13 @@ export function doneMessage(action, state) {
   const name = state.employee.firstName
   const openBreak = state.openEntry?.breaks?.find(b => !b.endedAt)
   if (action === 'clock_in') {
-    return { title: `Clocked in at ${formatClockTime(state.openEntry.clockIn)}`, message: `Have a good shift, ${name}.`, icon: 'in' }
+    const shifts = scheduledToday(state)
+    return {
+      title: `Clocked in at ${formatClockTime(state.openEntry.clockIn)}`,
+      message: `Have a good shift, ${name}.`,
+      detail: shifts ? `You're scheduled ${shifts} today.` : 'You\'re not on the schedule today.',
+      icon: 'in',
+    }
   }
   if (action === 'break_start') {
     return { title: `Break started at ${formatClockTime(openBreak?.startedAt ?? state.serverTime)}`, message: `Enjoy your break, ${name}.`, icon: 'break' }

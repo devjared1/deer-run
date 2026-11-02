@@ -203,6 +203,8 @@ model CourseSettings {
   // On-course tracking: expected 18-hole round (9 holes take that nine's share), and the positions that can
   // update where groups are besides register staff (who always can)
   roundMinutes       Int                @default(255)
+  // On Course: alert (and vibrate) when a group falls this far behind its tee time (0 = no alerts)
+  behindAlertMinutes Int                @default(10)
   coursePositions    EmployeePosition[] @default([STARTER, PLAYER_ASSISTANT, OUTSIDE_SERVICES, BEVERAGE_CART_ATTENDANT])
   // Per-hole times learned from position reports (18 values, seconds, hole 1 first; empty = not learned yet, so the
   // par split of roundMinutes is used), when they were worked out, and how many rounds they came from
@@ -367,8 +369,38 @@ model Shift {
   position   EmployeePosition? // overrides the employee's position for this shift
   notes      String?
   createdAt  DateTime          @default(now())
+  offers     ShiftOffer[]
 
   @@index([date])
+}
+
+enum ShiftOfferStatus {
+  OPEN // offered: anyone on the team can pick it up
+  CLAIMED // someone picked it up; waiting for a manager
+  APPROVED // the shift moved to the claimer
+  DENIED // a manager said no (back to the original employee)
+  CANCELLED // the employee (or a manager) withdrew it, or the shift changed / went by
+}
+
+// Shift swaps and open shifts: an employee offers their shift to the team (My Schedule), or a manager posts one as an
+// open shift (Admin → Schedule). A coworker picks it up, and a manager approves before the shift changes hands.
+model ShiftOffer {
+  id            String           @id @default(cuid())
+  shift         Shift            @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  shiftId       String
+  offeredById   String // Employee.id whose shift it was when offered
+  postedById    String? // User.id of the manager who posted it as an open shift (null: the employee offered it)
+  note          String?
+  status        ShiftOfferStatus @default(OPEN)
+  claimedById   String? // Employee.id who picked it up
+  claimedAt     DateTime?
+  reviewedById  String? // User.id of the manager who approved / denied
+  reviewedAt    DateTime?
+  reviewNote    String?
+  createdAt     DateTime         @default(now())
+
+  @@index([shiftId])
+  @@index([status])
 }
 
 model TimeOffRequest {

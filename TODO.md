@@ -426,6 +426,9 @@ manager can print a statement for any member **on demand**.
       then `prisma migrate resolve --applied 15_reminders_waitlist`, and redeploy the cron Worker (new jobs
       `/api/internal/reminders` and `/api/internal/waitlist`). Optional: set `BOOKING_LINK_SECRET` (else the service role
       key signs the manage links; changing it later breaks links already sent) and `SITE_URL` on the Pages project
+- [ ] Run `apps/api/prisma/sql/16_course_alerts_shift_swaps.sql` after 15 (On Course alerts and shift swaps stay off
+      until it runs), then `prisma migrate resolve --applied 16_course_alerts_shift_swaps`. Its partial unique index
+      `ShiftOffer_one_active_per_shift`: delete any DROP INDEX line for it from later generated migrations
 - [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
       Membership comes from buying a membership product or an admin setting it in Admin → Users. Accounts created
       before this as MEMBER stay members: review them in Admin → Users
@@ -893,10 +896,21 @@ ordered by value; Phases 1–3 are the first picks.
       interested" link → `/waitlist/:id?t=`. Migration `sql/15_reminders_waitlist.sql`)
 
 ### Phase 4: Course and staff
-- [ ] On Course alerts: a sticky alert + vibration when a group falls 10+ minutes behind (threshold in Settings)
-- [ ] Missed clock-in nudge: scheduled 10 minutes ago and not clocked in → flag on Admin → Time Clock (and the Needs
+- [x] On Course alerts: a sticky alert + vibration when a group falls 10+ minutes behind (threshold in Settings)
+      (`components/oncourse/BehindAlert.vue` ← `pace.js` → `behindGroups`: groups on the course, furthest behind first,
+      each with Update position; a phone vibrates when one newly crosses; dismiss hides it until it slips 5 more minutes.
+      `CourseSettings.behindAlertMinutes` (default 10, 0 = off) in Settings → On Course. Not sticky after all: the pace
+      bar already sticks there, so the alert is the first thing under it)
+- [x] Missed clock-in nudge: scheduled 10 minutes ago and not clocked in → flag on Admin → Time Clock (and the Needs
       attention list); the time clock iPad shows "You're scheduled 7:00–3:00" after a clock-in
-- [ ] Shift swaps and open shifts: offer a shift or pick up an open one on My Schedule, a manager approves (like time off)
+      (`missedClockIn` in `/api/admin/attention`, linked to the schedule (there's no admin Time Clock page). Clock state
+      carries `today.shifts`: the iPad's done screen and the staff Time Clock page show today's schedule)
+- [x] Shift swaps and open shifts: offer a shift or pick up an open one on My Schedule, a manager approves (like time off)
+      (`ShiftOffer`: OPEN → CLAIMED → APPROVED / DENIED, or CANCELLED; one active offer per shift (partial unique
+      index). Staff: **Offer** on an upcoming shift, **Open shifts** with Pick up (refused if they already work then or
+      have approved time off), My swaps with Withdraw / Let it go (`/api/staff/shift-offers`). Admin: Shift swaps panel on
+      the Schedule page (Approve moves the shift and emails both; Deny; Take down) and **Post as open shift** in the shift
+      dialog (`/api/admin/shift-offers`); pending ones on Needs attention. Migration `sql/16_course_alerts_shift_swaps.sql`)
 
 ### Phase 5: Planning insights
 - [ ] Bookings next to the schedule: booked players and planned labor cost per day on `/admin/schedule`

@@ -5,6 +5,8 @@ import { addDays, localDate, localDateTimeToUtc, toUtcIso } from '../../../src/l
 
 // A card charge whose sale still isn't saved after this long needs a person (the register and webhook retry first)
 const STUCK_CARD_MINUTES = 10
+// Someone scheduled this long ago who hasn't clocked in
+const MISSED_CLOCK_IN_MINUTES = 10
 
 // GET /api/admin/attention — the dashboard's "Needs attention" list: things a manager has to act on. Each check runs
 // on its own, so one failing doesn't hide the rest.
@@ -12,6 +14,8 @@ const STUCK_CARD_MINUTES = 10
 //   cardNotSaved      { count, checkouts: [{ id, amountCents, registerName, lastError, createdAt }] }
 //   timeOff           { count, firstStart }  (pending requests; the soonest start date)
 //   missedClockOut    { count, names }       (open punches older than LONG_OPEN_ENTRY_MINUTES)
+//   missedClockIn     { count, people: [{ name, startTime }] }  (shift started 10+ minutes ago, not clocked in today)
+//   shiftSwaps        { count }              (shifts a coworker picked up, waiting for approval)
 //   drawersLeftOpen   { count, registers }   (open drawer sessions from before today)
 //   statementsPastDue { count, totalCents }  (OPEN / AUTOPAY_FAILED statements past their due date)
 //   teeTimeGaps       { count, dates }       (days in the member booking window with no tee time slots)
@@ -65,6 +69,37 @@ export async function onRequestGet({ request, env }) {
         count: stale.length,
         names: stale.map(e => [e.employee?.firstName, e.employee?.lastName].filter(Boolean).join(' ')),
       }
+    },
+
+    // Scheduled to have started MISSED_CLOCK_IN_MINUTES ago (and not ended), but not clocked in today
+    async missedClockIn() {
+      const nowMs = now.getTime()
+      const [{ data: shifts, error }, { data: punches, error: punchError }] = await Promise.all([
+        supabase.from('Shift').select('employeeId, startTime, endTime, employee:Employee(firstName, lastName, active)').eq('date', today),
+        supabase.from('TimeEntry').select('employeeId').or(`clockIn.gte."${startOfToday}",clockOut.is.null`),
+      ])
+      if (error || punchError) throw new Error((error || punchError).message)
+      const clocked = new Set((punches || []).map(p => p.employeeId))
+      const missed = new Map()
+      for (const s of shifts || []) {
+        if (!s.employee?.active || clocked.has(s.employeeId)) continue
+        const start = localDateTimeToUtc(today, s.startTime).getTime()
+        // End ≤ start: an overnight shift that ends tomorrow
+        const end = s.endTime > s.startTime ? localDateTimeToUtc(today, s.endTime).getTime() : start + 24 * 3600_000
+        if (nowMs >= start + MISSED_CLOCK_IN_MINUTES * 60_000 && nowMs < end) {
+          missed.set(s.employeeId, { name: `${s.employee.firstName} ${s.employee.lastName}`.trim(), startTime: s.startTime })
+        }
+      }
+      const list = [...missed.values()]
+      return list.length && { count: list.length, people: list }
+    },
+
+    // Shift swaps a coworker picked up, waiting for a manager
+    async shiftSwaps() {
+      const { data, error } = await supabase.from('ShiftOffer').select('id, shift:Shift(date, startTime)').eq('status', 'CLAIMED')
+      if (error) return error.code === '42P01' ? 0 : Promise.reject(new Error(error.message))
+      const upcoming = (data || []).filter(o => o.shift && localDateTimeToUtc(String(o.shift.date).slice(0, 10), o.shift.startTime) > now)
+      return upcoming.length && { count: upcoming.length }
     },
 
     async drawersLeftOpen() {

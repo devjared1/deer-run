@@ -268,6 +268,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/time-off?status=&from=&to=` | GET | Time off requests + shifts scheduled during each |
 | `/api/admin/time-off/:id` | PUT | `{ action: approve\|deny, note }` (pending only) or `revoke` (approved, not yet ended; note required → DENIED "Approval revoked: …") + email the employee |
 | `/api/admin/time-off/count` | GET | `{ pending }` for the sidebar badge |
+| `/api/admin/shift-offers[/:id]` | GET, POST / PUT | Active swaps / post a shift as open `{ shiftId }`; `{ action: 'approve' \| 'deny' \| 'cancel', note? }` (approve moves the shift, emails both) |
 | `/api/admin/product-categories[/:id]` | GET, POST / PUT, DELETE | POS categories (`taxExempt`) |
 | `/api/admin/products[/:id]` | GET, POST / PUT, DELETE | Products with nested variants |
 | `/api/admin/inventory/:variantId` | GET, POST | Stock history / adjust (`adjust_inventory()`) |
@@ -293,6 +294,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/timesheet?date=` | GET | Own timesheet for a pay period |
 | `/api/staff/schedule?view=&date=[&team=1]` | GET | Own shifts (or the whole team, read-only) + approved time off |
 | `/api/staff/time-off[/:id]` | GET, POST / PUT | Own requests; create; `{ action: 'cancel' }` while pending |
+| `/api/staff/shift-offers[/:id]` | GET, POST / POST | `{ open, mine }`; offer my shift `{ shiftId, note? }`; `{ action: 'claim' \| 'release' \| 'cancel' }` (`_shiftOffers.js`) |
 | `/api/staff/pin` | GET, PUT | Register manager's own PIN |
 | `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch, paid-ins/outs, safe drops |
 | `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
@@ -398,6 +400,8 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 | | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
 | | `Shift` | `employeeId`, `date`, `startTime`/`endTime` ("HH:MM"; end ≤ start = overnight), `position?` override, `notes?` |
 | | `TimeOffRequest` | `startDate`/`endDate` (inclusive), `type`, `reason?`, `status` (PENDING/APPROVED/DENIED/CANCELLED), `reviewedById` (User.id), `reviewedAt`, `reviewNote` |
+| | `ShiftOffer` | Shift swap / open shift: `shiftId`, `offeredById`, `postedById?` (manager-posted), `status` (OPEN → CLAIMED → APPROVED/DENIED, CANCELLED), `claimedById`, review fields; one active per shift (partial unique index) |
+| | `WaitlistEntry` | Full-day waitlist: `date`, `players`, `name`, `email`, `userId?`, `notifiedAt` (emailed once), `cancelledAt` |
 | POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant; `Product.rateKey?` marks the greens fee / cart rate products (`src/lib/rates.js`; online booking charges their prices too); `Product.membershipMonths?`/`membershipTier?` mark membership products; `ProductCategory.memberDiscount` gets the member Pro Shop discount |
 | | `InventoryAdjustment` | Stock change log (`InventoryReason`) |
 | | `Register` | Physical register; `stripeReaderId` |

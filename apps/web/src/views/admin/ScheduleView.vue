@@ -113,6 +113,9 @@
     />
 
     <template v-else-if="data">
+      <!-- Shift swaps and open shifts waiting on a manager -->
+      <ShiftSwapsPanel ref="swapsPanel" :initially-open="route.query.swaps === '1'" @changed="load" />
+
       <!-- Warnings: icon + text, each shift listed -->
       <div
         v-if="warningShifts.length"
@@ -298,6 +301,16 @@
           Delete
         </AppButton>
         <AppButton
+          v-if="form?.id && !shiftStartedAlready(form)"
+          variant="text"
+          :icon="IconSwap"
+          :disabled="saving"
+          title="Anyone on the team can pick it up; you approve before it changes hands"
+          @click="postOpenShift"
+        >
+          Post as open shift
+        </AppButton>
+        <AppButton
           variant="text"
           :disabled="saving"
           @click="close"
@@ -419,7 +432,7 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
 import { printLandscape } from '@/lib/print'
-import { localDate, addDays, formatLocalDate, isValidYmd, isValidHhmm } from '@/lib/timeclock'
+import { localDate, addDays, formatLocalDate, isValidYmd, isValidHhmm, localDateTimeToUtc } from '@/lib/timeclock'
 import { SCHEDULE_VIEWS, scheduleWarnings, datesBetween, shiftMinutes, longTime } from '@/lib/schedule'
 import { employeePositions, departments, positionLabel } from '@/data/employeePositions'
 import { departmentOf } from '@/components/schedule/scheduleDisplay'
@@ -438,7 +451,9 @@ import TextField from '@/components/ui/TextField.vue'
 import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'
+import ShiftSwapsPanel from '@/components/schedule/ShiftSwapsPanel.vue'
 import IconAdd from '~icons/material-symbols/add-rounded'
+import IconSwap from '~icons/material-symbols/swap-horiz-rounded'
 import IconCopy from '~icons/material-symbols/content-copy-rounded'
 import IconMail from '~icons/material-symbols/mail-rounded'
 import IconPrint from '~icons/material-symbols/print-rounded'
@@ -676,6 +691,26 @@ async function saveShift() {
     putShift(saved)
     formOpen.value = false
     snackbar.show(`${f.id ? 'Shift saved' : 'Shift added'}: ${employeeName(saved.employeeId)}, ${shiftWhen(saved)}`)
+  } catch (e) {
+    formError.value = e.message
+  } finally {
+    saving.value = false
+  }
+}
+
+// ── Open shifts: a saved shift posted for anyone to pick up (ShiftSwapsPanel shows it; approve to hand it over) ──
+const swapsPanel = ref(null)
+const shiftStartedAlready = f => !f.date || !f.startTime || localDateTimeToUtc(f.date, f.startTime) <= new Date()
+
+async function postOpenShift() {
+  const f = form.value
+  saving.value    = true
+  formError.value = null
+  try {
+    await apiFetch('/api/admin/shift-offers', { method: 'POST', body: { shiftId: f.id, note: f.notes || null } })
+    formOpen.value = false
+    snackbar.show(`Posted as an open shift: ${shiftWhen(f)}. It stays with ${employeeName(f.employeeId)} until you approve someone.`)
+    swapsPanel.value?.load()
   } catch (e) {
     formError.value = e.message
   } finally {
