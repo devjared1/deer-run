@@ -12,6 +12,14 @@
     />
 
     <div class="max-w-6xl pt-3 space-y-6">
+      <!-- Groups that have fallen behind (CourseSettings.behindAlertMinutes) -->
+      <BehindAlert
+        v-if="sheet"
+        :groups="groups"
+        :alert-minutes="sheet.behindAlertMinutes ?? 0"
+        @update="openPosition"
+      />
+
       <!-- Toolbar -->
       <div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <p
@@ -355,6 +363,7 @@ import { setupForm, setupPayload } from '@/components/oncourse/roundSetup'
 import GroupCard from '@/components/oncourse/GroupCard.vue'
 import CourseMap from '@/components/oncourse/CourseMap.vue'
 import CoursePaceBar from '@/components/oncourse/CoursePaceBar.vue'
+import BehindAlert from '@/components/oncourse/BehindAlert.vue'
 import HoleGroupsSheet from '@/components/oncourse/HoleGroupsSheet.vue'
 import UpdatePositionSheet from '@/components/oncourse/UpdatePositionSheet.vue'
 import IconRefresh from '~icons/material-symbols/refresh-rounded'

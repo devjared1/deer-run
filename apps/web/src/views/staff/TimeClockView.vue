@@ -41,6 +41,9 @@
                 Worked today: {{ formatMinutes(todayMinutes) }}
               </template>
             </p>
+            <p v-if="scheduledToday(state)" class="text-body-m text-on-surface">
+              Scheduled today: {{ scheduledToday(state) }}
+            </p>
           </div>
         </div>
 
@@ -212,6 +215,7 @@ import {
 } from '@/lib/timeclock'
 import { useConfirm } from '@/composables/useConfirm'
 import { useSnackbar } from '@/composables/useSnackbar'
+import { scheduledToday } from '@/components/kiosk/kioskDisplay'
 import AppButton from '@/components/ui/AppButton.vue'
 import Card from '@/components/ui/Card.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'

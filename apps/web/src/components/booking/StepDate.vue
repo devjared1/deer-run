@@ -28,7 +28,10 @@
 
     <p class="mt-3 text-body-s text-on-surface-variant" aria-live="polite">
       <template v-if="loadingHints">Checking availability…</template>
-      <template v-else-if="store.availabilityReady">Numbers show the tee times still open each day. Pick a day to see them.</template>
+      <template v-else-if="store.availabilityReady">
+        Numbers show the tee times still open each day, with the forecast for the week ahead. Pick a day to see them; a
+        full day lets you join its waitlist.
+      </template>
       <template v-else>Pick a day to see its open tee times.</template>
     </p>
   </section>
@@ -42,6 +45,9 @@ import { computed, onMounted, ref } from 'vue'
 import BookingCalendar from './BookingCalendar.vue'
 import DateStrip from './DateStrip.vue'
 import { bookingWindow, plural } from './bookingFlow'
+import { useForecast } from '@/composables/useForecast'
+
+const { forecastFor } = useForecast()
 
 const emit = defineEmits(['next'])
 const auth = useAuthStore()
@@ -55,13 +61,17 @@ onMounted(async () => {
   loadingHints.value = false
 })
 
-// Availability hint for a day: only once the summary has loaded; a day with nothing open can't be picked
+// Availability hint for a day: only once the summary has loaded. A day with no tee times can't be picked; a full one
+// can (the Time step offers the waitlist). Plus the forecast for the next 7 days, when the weather service answers.
 function dayInfo(ymd) {
-  if (!store.availabilityReady) return { hint: '', disabled: false, aria: '' }
+  const weather = forecastFor(ymd)
+  const w = weather ? { weather, aria: weather.label } : { weather: null, aria: '' }
+  const aria = text => [text, w.aria].filter(Boolean).join(', ')
+  if (!store.availabilityReady) return { hint: '', disabled: false, ...w }
   const day = store.availability[ymd]
-  if (!day) return { hint: 'No times', disabled: true, aria: 'no tee times online' }
-  if (!day.open) return { hint: 'Full', disabled: true, aria: 'fully booked' }
-  return { hint: `${day.open} open`, disabled: false, aria: `${plural(day.open, 'tee time')} open` }
+  if (!day) return { hint: 'No times', disabled: true, weather: w.weather, aria: aria('no tee times online') }
+  if (!day.open) return { hint: 'Full', disabled: false, weather: w.weather, aria: aria('fully booked, join the waitlist') }
+  return { hint: `${day.open} open`, disabled: false, weather: w.weather, aria: aria(`${plural(day.open, 'tee time')} open`) }
 }
 
 function select(ymd) {

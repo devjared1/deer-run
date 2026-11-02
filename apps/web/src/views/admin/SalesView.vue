@@ -234,6 +234,15 @@
           <div class="flex flex-wrap items-center gap-2 mb-4 text-body-m">
             <span>{{ formatWhen(selected.createdAt) }} · {{ selected.register?.name }} · {{ selected.cashier?.firstName }} {{ selected.cashier?.lastName }}</span>
             <StatusChip kind="sale" :status="selected.status" size="sm" />
+            <AppButton
+              v-if="selected.customerId"
+              variant="text"
+              :icon="IconPerson"
+              :to="`/admin/users/${selected.customerId}`"
+              class="ml-auto"
+            >
+              {{ selected.customer?.name || selected.customer?.email || 'Customer' }}
+            </AppButton>
           </div>
           <div class="grid md:grid-cols-[auto,1fr] gap-6 pb-2">
             <div class="rounded-shape-sm border border-outline-variant overflow-hidden self-start justify-self-center bg-surface-container-lowest">
@@ -332,6 +341,7 @@ import IconPrint from '~icons/material-symbols/print-rounded'
 import IconMail from '~icons/material-symbols/mail-rounded'
 import IconTable from '~icons/material-symbols/table-view-rounded'
 import IconSell from '~icons/material-symbols/sell-rounded'
+import IconPerson from '~icons/material-symbols/person-rounded'
 
 const TABS = [
   { key: 'sales',   label: 'Sales',   icon: IconReceipt },
@@ -353,7 +363,7 @@ const PAYMENT_LABELS = { CASH: 'Cash', CARD_TERMINAL: 'Card', HOUSE_ACCOUNT: 'Ho
 const authStore = useAuthStore()
 const snackbar  = useSnackbar()
 
-// ?tab=report|drawers opens that tab (the dashboard's "drawer left open" links here)
+// ?tab=report|drawers opens that tab (the dashboard's "drawer left open" links here); ?sale=<id> opens a receipt
 const route      = useRoute()
 const tab        = ref(TABS.some(t => t.key === route.query.tab) ? route.query.tab : 'sales')
 const today      = localDate()
@@ -511,6 +521,9 @@ async function submitAdminClose() {
 
 onMounted(async () => {
   load()
+  // ?sale=<id> opens that receipt (links from a customer's page and the search)
+  if (typeof route.query.sale === 'string') openSale(route.query.sale)
+  watch(() => route.query.sale, id => { if (typeof id === 'string') openSale(id) })
   try {
     registers.value = await apiFetch('/api/admin/registers')
   } catch {

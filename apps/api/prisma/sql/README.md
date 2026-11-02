@@ -16,6 +16,8 @@ wrapped in a transaction and says how to record it with `prisma migrate resolve`
 | `12_pay_at_course.sql` | Pay at course: `CourseSettings.payAtCourseFeeCents` (hold fee per online booking, default $10), `Booking.holdFeeCents` and `balanceDueCents` |
 | `13_timeclock_kiosk.sql` | Time clock kiosk: `Employee.clockPinHash` / `clockPinFailedAttempts` / `clockPinLockedUntil`, `ClockKiosk` (device tokens, hashed) |
 | `14_booking_changes.sql` | Golfers change their own bookings: `BookingChange` (+ `BookingChangeStatus`): price difference charged, refunded or put on the balance due |
+| `15_reminders_waitlist.sql` | `Booking.reminderSentAt` (day-before reminder), `WaitlistEntry` (tell me if a time opens up) |
+| `16_course_alerts_shift_swaps.sql` | `CourseSettings.behindAlertMinutes` (On Course alerts), `ShiftOffer` (+ `ShiftOfferStatus`, one active offer per shift) |
 
 When changing `create_sale()` or `refund_sale()`, start from the latest copy in this folder (currently `8_…`) and
 `CREATE OR REPLACE` the whole function.

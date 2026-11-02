@@ -1,8 +1,11 @@
 import { requireAdmin, json } from '../_auth.js'
 import { stopPendingPayment } from '../../bookings/_holds.js'
+import { notifyWaitlistInBackground } from '../../bookings/_waitlist.js'
+import { siteOrigin } from '../../_links.js'
 
-// PUT /api/admin/bookings/:id — update status (cancel, refund, confirm)
-export async function onRequestPut({ request, env, params }) {
+// PUT /api/admin/bookings/:id — update status (cancel, refund, confirm). Cancelled / refunded tells the day's waitlist.
+export async function onRequestPut(context) {
+  const { request, env, params } = context
   const result = await requireAdmin(request, env)
   if (result instanceof Response) return result
   const { supabase } = result
@@ -31,5 +34,8 @@ export async function onRequestPut({ request, env, params }) {
   if (error) return json({ error: error.message }, 500)
   if (!data) return json({ error: 'Booking not found' }, 404)
 
+  if (status === 'CANCELLED' || status === 'REFUNDED') {
+    notifyWaitlistInBackground(context, supabase, [data.TeeTimeSlot?.date], siteOrigin(env, request))
+  }
   return json(data)
 }

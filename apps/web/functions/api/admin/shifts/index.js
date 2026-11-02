@@ -1,11 +1,15 @@
 import { requireAdmin, json } from '../_auth.js'
+import { fetchAll } from '../_db.js'
 import { resolveScheduleRange, parseShift, fetchShifts, fetchTimeOff, SHIFT_COLUMNS } from './_validate.js'
+import { holdsSpot, HOLD_COLUMNS } from '../../../../src/lib/teesheet.js'
 
-const EMPLOYEE_FIELDS = 'id, firstName, lastName, position, active'
+// hourlyRateCents: the schedule's planned labor cost per day (admin only; the staff schedule API doesn't send it)
+const EMPLOYEE_FIELDS = 'id, firstName, lastName, position, active, hourlyRateCents'
 
 // GET /api/admin/shifts?from=YYYY-MM-DD&to=YYYY-MM-DD  or  ?view=week|biweek|month&date=YYYY-MM-DD
 // Shifts in the range, every active employee plus inactive ones who have shifts in it,
-// and approved/pending time off that overlaps it.
+// and approved/pending time off that overlaps it. Also `booked: { [date]: { players, groups } }`, the tee times booked
+// each day (what holds a spot), so the schedule can be staffed to how busy the day is.
 export async function onRequestGet({ request, env }) {
   const result = await requireAdmin(request, env)
   if (result instanceof Response) return result
@@ -15,7 +19,7 @@ export async function onRequestGet({ request, env }) {
   if (range.error) return json({ error: range.error }, 400)
 
   try {
-    const [shifts, timeOff, employeesRes] = await Promise.all([
+    const [shifts, timeOff, employeesRes, bookings] = await Promise.all([
       fetchShifts(supabase, range.from, range.to),
       fetchTimeOff(supabase, range.from, range.to),
       supabase
@@ -23,13 +27,28 @@ export async function onRequestGet({ request, env }) {
         .select(EMPLOYEE_FIELDS)
         .order('lastName', { ascending: true })
         .order('firstName', { ascending: true }),
+      fetchAll(() => supabase.from('Booking')
+        .select(`id, ${HOLD_COLUMNS}, slot:TeeTimeSlot!inner(date)`)
+        .gte('slot.date', range.from).lte('slot.date', range.to)
+        .in('status', ['PENDING', 'CONFIRMED'])
+        .order('id')),
     ])
     if (employeesRes.error) throw new Error(employeesRes.error.message)
 
     const scheduled = new Set(shifts.map(s => s.employeeId))
     const employees = (employeesRes.data || []).filter(e => e.active || scheduled.has(e.id))
 
-    return json({ ...range, shifts, employees, timeOff })
+    const now = new Date()
+    const booked = {}
+    for (const b of bookings) {
+      if (!holdsSpot(b, now)) continue
+      const day = String(b.slot.date).slice(0, 10)
+      booked[day] ??= { players: 0, groups: 0 }
+      booked[day].players += b.players
+      booked[day].groups += 1
+    }
+
+    return json({ ...range, shifts, employees, timeOff, booked })
   } catch (e) {
     return json({ error: e.message }, 500)
   }

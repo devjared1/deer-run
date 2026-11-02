@@ -125,6 +125,15 @@
                 <p class="text-body-m text-on-surface-variant">{{ summary(b) }}</p>
               </div>
               <StatusChip size="sm" kind="booking" :status="displayStatus(b)" />
+              <AppButton
+                v-if="b.status === 'CONFIRMED' && slotDate(b) < today"
+                variant="text"
+                :icon="IconReplay"
+                :to="bookAgainLink(b)"
+                class="-mr-3"
+              >
+                Book again<span class="sr-only">: {{ b.players }} players, {{ formatLocalDate(nextSameWeekday(b), { weekday: 'long', month: 'long', day: 'numeric' }) }}</span>
+              </AppButton>
             </li>
           </ul>
         </Card>
@@ -140,7 +149,8 @@ import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/lib/api'
 import { formatCents } from '@/lib/money'
 import { isExpiredHold, teeTime } from '@/lib/teesheet'
-import { formatLocalDate, localDate, localDateTimeToUtc } from '@/lib/timeclock'
+import { addDays, dayOfWeek, formatLocalDate, localDate, localDateTimeToUtc } from '@/lib/timeclock'
+import { TIME_GROUPS } from '@/components/booking/bookingFlow'
 import { useConfirm } from '@/composables/useConfirm'
 import { useSnackbar } from '@/composables/useSnackbar'
 import { phone } from '@/data/site'
@@ -156,6 +166,7 @@ import HouseAccountPanel from '@/components/accounts/HouseAccountPanel.vue'
 import ChangeBookingDialog from '@/components/accounts/ChangeBookingDialog.vue'
 import IconAdd from '~icons/material-symbols/add-rounded'
 import IconEditCalendar from '~icons/material-symbols/edit-calendar-rounded'
+import IconReplay from '~icons/material-symbols/replay-rounded'
 import IconCheck from '~icons/material-symbols/check-circle-rounded'
 import IconEventAvailable from '~icons/material-symbols/event-available-rounded'
 import IconEventBusy from '~icons/material-symbols/event-busy-rounded'
@@ -208,6 +219,25 @@ const pastBookings = computed(() => {
 function canCancel(b) {
   const teeTimeAt = localDateTimeToUtc(slotDate(b), b.teeTimeSlot.startTime)
   return ['PENDING', 'CONFIRMED'].includes(b.status) && teeTimeAt.getTime() - Date.now() > 24 * 60 * 60 * 1000
+}
+
+// Book again: the same group, round and time of day on the next same weekday, starting tomorrow (today's times may
+// have gone). A date past the booking window opens on the Date step with the rest filled in.
+function nextSameWeekday(b) {
+  const from = addDays(today, 1)
+  const want = dayOfWeek(slotDate(b))
+  return addDays(from, (want - dayOfWeek(from) + 7) % 7)
+}
+
+function bookAgainLink(b) {
+  const time = TIME_GROUPS.find(g => g.test(b.teeTimeSlot.startTime))?.key
+  return {
+    path: '/book',
+    query: {
+      date: nextSameWeekday(b), players: String(b.players), holes: String(b.roundHoles ?? 18), cart: b.cartIncluded ? '1' : '0',
+      ...(time ? { time } : {}),
+    },
+  }
 }
 
 // Same rules as POST /api/bookings/:id/change (the server also refuses one already paid at the pro shop): a paid

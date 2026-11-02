@@ -6,6 +6,8 @@ import { serializeBooking, TEESHEET_BOOKING_COLUMNS } from './index.js'
 import { loadSlots } from '../sales/_save.js'
 import { stopPendingPayment } from '../../bookings/_holds.js'
 import { sendBookingEmail, slotWhen } from '../../bookings/_email.js'
+import { notifyWaitlistInBackground } from '../../bookings/_waitlist.js'
+import { siteOrigin } from '../../_links.js'
 import { CLEAR_TRACKING, dropStalePosition, parseRoundSetup } from '../_oncourse.js'
 
 const BOOKING_SELECT = `${TEESHEET_BOOKING_COLUMNS}, ` +
@@ -20,7 +22,7 @@ const ACTIONS = ['check_in', 'undo_check_in', 'cancel', 'move']
 // pay-at-course booking (hold fee paid online), with the balance due (Booking.balanceDueCents).
 // check_in also takes the round setup: { cartNumbers?: string[], ownCart?, startHole?: 1 | 10, roundHoles?: 9 | 18 }.
 // undo_check_in also clears the tee-off, position and finish, and deletes the position reports (the carts are kept).
-// cancel: sets CANCELLED (frees the spots). Checked-in groups must be un-checked-in first. An unpaid online
+// cancel: sets CANCELLED (frees the spots; the day's waitlist is told). Checked-in groups must be un-checked-in first. An unpaid online
 //   booking has its PaymentIntent cancelled first (409 BOOKING_PAID if the payment just went through).
 //   No money moves: a paid booking's online payment is refunded in Stripe by an admin, and greens fees paid at
 //   the register are refunded on the sale (Recent sales → refund, manager approval). The page says which.
@@ -28,7 +30,8 @@ const ACTIONS = ['check_in', 'undo_check_in', 'cancel', 'move']
 //   re-checking space and members-only. The price doesn't depend on the time, so no money changes. Online
 //   bookings get an email with the new time (`emailError` if it failed).
 // Returns the booking (with `slot`).
-export async function onRequestPost({ request, env, params }) {
+export async function onRequestPost(context) {
+  const { request, env, params } = context
   const result = await requireRegister(request, env)
   if (result instanceof Response) return result
   const { supabase } = result
@@ -52,6 +55,8 @@ export async function onRequestPost({ request, env, params }) {
       : await moveBooking(supabase, env, booking, body.teeTimeSlotId)
     if (done instanceof Response) return done
     extra = done
+    // The spots it held are free: tell that day's waitlist
+    notifyWaitlistInBackground(context, supabase, [booking.slot?.date], siteOrigin(env, request))
   } else if (body.action === 'check_in') {
     if (booking.status !== 'CONFIRMED') {
       return json({

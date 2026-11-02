@@ -133,6 +133,14 @@ export async function onRequestPut({ request, env }) {
     }
     allowed.roundMinutes = minutes
   }
+  // On Course: alert when a group is this many minutes behind (0 = off)
+  if (body.behindAlertMinutes !== undefined) {
+    const minutes = Number(body.behindAlertMinutes)
+    if (!Number.isInteger(minutes) || minutes < 0 || minutes > 60) {
+      return json({ error: 'The behind alert must be between 0 (off) and 60 minutes' }, 400)
+    }
+    allowed.behindAlertMinutes = minutes
+  }
   for (const f of ['registerPositions', 'managerPositions', 'coursePositions']) {
     if (body[f] === undefined) continue
     if (!Array.isArray(body[f]) || body[f].some(p => !POSITIONS.includes(p))) {

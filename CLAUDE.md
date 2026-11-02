@@ -145,6 +145,7 @@ CONTACT_EMAIL_TO=proshop@deerrun.golf
 ```bash
 npm run build               # Vite production build → apps/web/dist/
 npm run deploy              # Build + wrangler pages deploy
+npm run deploy:cron         # Redeploy the apps/cron Worker (after adding a job to JOBS)
 npm run lint                # ESLint all workspaces (report only; 0 errors expected, many formatting warnings)
 npm run lint:fix --workspace=apps/web   # ESLint with --fix (rewrites files)
 npm run db:migrate          # Prisma migrate dev (schema changes)
@@ -184,6 +185,8 @@ Accessed in Functions via `context.env.<NAME>`.
 | `RESEND_API_KEY`          | Resend API key                                    |
 | `CONTACT_EMAIL_TO`        | Recipient for inquiry notification emails         |
 | `CRON_SECRET`             | Shared secret for `/api/internal/*`; the `apps/cron` Worker has the same value |
+| `BOOKING_LINK_SECRET`     | Optional: signs the manage-booking / waitlist links in emails (default: the service role key) |
+| `SITE_URL`                | Optional: origin for links in emails sent by jobs (default `https://deerrun.golf`) |
 
 Emails (inquiries, booking confirmations, receipts, time off decisions) are skipped silently when
 `RESEND_API_KEY` isn't set, so local dev works without it.
@@ -232,7 +235,10 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates, payAtCourseFeeCents }` (cents, from the rate products) |
 | POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, payAtCourse?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent (the total, or only the hold fee with `payAtCourse`) → `{ bookingId, clientSecret, totalCents, chargeCents, holdFeeCents, balanceDueCents }` |
 | GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
-| POST | `/api/bookings/:id/change` | Owner | Golfer changes time/players (`_change.js`): `{ teeTimeSlotId, players, preview? }` → quote, or applied / `payment_required` `{ clientSecret }` (difference charged first) / failed; then `{ action: 'confirm' \| 'cancel', changeId }`. Lower price refunded to the card; pay at course adjusts the balance |
+| GET | `/api/bookings/:id/manage?t=` | Owner or link | Manage page: booking, `canChange`/`changeBlocker`, `canCancel`/`cancelBlocker` (`?t=` = signed link token, `_links.js`; DELETE and change take it too) |
+| GET | `/api/weather` | Public | Course forecast, next 7 days (National Weather Service, cached 1 h): `{ days: [{ date, high, low, forecast, precipChance, kind }] }` |
+| POST | `/api/waitlist` | Optional | `{ date, players, name?, email? }` join a full day's waitlist; GET/DELETE `/api/waitlist/:id?t=` (leave link) |
+| POST | `/api/bookings/:id/change` | Owner or link | Golfer changes time/players (`_change.js`): `{ teeTimeSlotId, players, preview? }` → quote, or applied / `payment_required` `{ clientSecret }` (difference charged first) / failed; then `{ action: 'confirm' \| 'cancel', changeId }`. Lower price refunded to the card; pay at course adjusts the balance |
 | GET | `/api/bookings/my` | Required | Signed-in user's bookings |
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
@@ -256,13 +262,15 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/timeclock` | GET | Who's on the clock / on break / forgot to clock out |
 | `/api/admin/timesheets?date=` | GET | All employees' hours for a pay period |
 | `/api/admin/time-entries[/:id]` | POST / PUT, DELETE | Manager corrections to punches |
-| `/api/admin/shifts?view=week\|biweek\|month&date=` (or `?from=&to=`) | GET, POST | Schedule: shifts, employees, time off |
+| `/api/admin/shifts?view=week\|biweek\|month&date=` (or `?from=&to=`) | GET, POST | Schedule: shifts, employees (+ `hourlyRateCents`), time off, `booked` golfers per day (planning rows) |
+| `/api/admin/reports/teetime-usage?weeks=` | GET | Dashboard heatmap: paid players / capacity by weekday × hour over the last 1–26 weeks |
 | `/api/admin/shifts/:id` | PUT, DELETE | Edit / delete a shift |
 | `/api/admin/shifts/copy` | POST | Copy the previous 7/14 days of shifts forward (skips duplicates, inactive) |
 | `/api/admin/shifts/email` | POST | `{ from, to }`: email each active employee their own shifts for the period (sent/skipped/failed; 503 `EMAIL_NOT_CONFIGURED`) |
 | `/api/admin/time-off?status=&from=&to=` | GET | Time off requests + shifts scheduled during each |
 | `/api/admin/time-off/:id` | PUT | `{ action: approve\|deny, note }` (pending only) or `revoke` (approved, not yet ended; note required → DENIED "Approval revoked: …") + email the employee |
 | `/api/admin/time-off/count` | GET | `{ pending }` for the sidebar badge |
+| `/api/admin/shift-offers[/:id]` | GET, POST / PUT | Active swaps / post a shift as open `{ shiftId }`; `{ action: 'approve' \| 'deny' \| 'cancel', note? }` (approve moves the shift, emails both) |
 | `/api/admin/product-categories[/:id]` | GET, POST / PUT, DELETE | POS categories (`taxExempt`) |
 | `/api/admin/products[/:id]` | GET, POST / PUT, DELETE | Products with nested variants |
 | `/api/admin/inventory/:variantId` | GET, POST | Stock history / adjust (`adjust_inventory()`) |
@@ -273,7 +281,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/sales/report?date=` (or `?from=&to=`, `&registerId=`) | GET | Sales / end-of-day (Z) report (`_report.js` → `buildReport`), incl. drawer sessions |
 | `/api/admin/drawer-sessions?from=&to=&registerId=` | GET | Cash drawer sessions in a range (open ones with running totals) |
 | `/api/admin/drawer-sessions/:id` | POST | `{ action: 'close', countedCents, note }` — close a stuck drawer |
-| `/api/admin/users/:id` | PUT | `{ role?, memberUntil?, membershipTier? }` |
+| `/api/admin/users/:id` | GET, PUT | Customer page (user, employee, house account, bookings, latest sales, stats) / `{ role?, memberUntil?, membershipTier? }` |
+| `/api/admin/search?q=` | GET | Admin search (Ctrl+K): `{ customers, sales (receipt #), bookings (name / reference), employees }`, 5 each |
 | `/api/admin/pace` | POST | Recalculate the learned per-hole times now (`_pace.js` → `recalculateHoleTimes`) |
 | `/api/admin/house-accounts` | GET, POST | Accounts with balances; open one `{ userId, creditLimitCents }` |
 | `/api/admin/house-accounts/:id[?from=&to=]` | GET, PUT, POST | Account, entries, statements (+ on-demand statement); PUT `{ status, creditLimitCents, resetPin }`; POST `adjust` / `email_statement` |
@@ -287,9 +296,12 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/timesheet?date=` | GET | Own timesheet for a pay period |
 | `/api/staff/schedule?view=&date=[&team=1]` | GET | Own shifts (or the whole team, read-only) + approved time off |
 | `/api/staff/time-off[/:id]` | GET, POST / PUT | Own requests; create; `{ action: 'cancel' }` while pending |
+| `/api/staff/shift-offers[/:id]` | GET, POST / POST | `{ open, mine }`; offer my shift `{ shiftId, note? }`; `{ action: 'claim' \| 'release' \| 'cancel' }` (`_shiftOffers.js`) |
 | `/api/staff/pin` | GET, PUT | Register manager's own PIN |
 | `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch, paid-ins/outs, safe drops |
 | `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
+| `/api/staff/register/cashiers` | GET | Lock screen: who can take over this register (status, `hasPin`, `pinLocked`, `needsPassword` for admins) |
+| `/api/staff/register/switch` | POST | `{ employeeId, pin }` (time clock PIN): `{ same: true }` (unlock) or `{ tokenHash }` that signs that cashier in on this PC (`authStore.signInWithTokenHash`) |
 | `/api/staff/register/reader?registerId=` | GET | `{ readerStatus: 'online' \| 'offline' \| null }` from Stripe Terminal; the register polls it (30 s) as its connection check too |
 | `/api/staff/register/report?registerId=&date=` | GET | Z report for one register and day (register managers only) |
 | `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session + its paid-ins/outs (expected only for managers); `open` with a float / `close` with a count / `movement` (`PAID_IN\|PAID_OUT\|SAFE_DROP`, manager approval) |
@@ -310,6 +322,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/internal/statements` | POST | Daily: last month's house account statements (only creates missing ones) + autopay + emails with PDF, then overdue statements: one reminder + optional late fee each |
 | `/api/internal/bookings` | POST | Daily: release unpaid online bookings past their 30-minute hold (cancel PaymentIntent → CANCELLED) |
 | `/api/internal/pace` | POST | Daily: learn per-hole times from the last 60 days of position reports → `CourseSettings.holeSeconds` |
+| `/api/internal/reminders` | POST | Daily: tomorrow's paid bookings get a reminder email (forecast, balance, manage link; `Booking.reminderSentAt`) |
+| `/api/internal/waitlist` | POST | Daily backstop: email waitlists for upcoming days that have room (`bookings/_waitlist.js`) |
 
 **Time clock kiosk** (`requireKiosk`: header `X-Kiosk-Token`, the device token from `POST /api/admin/kiosks`; no user)
 
@@ -388,6 +402,8 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 | | `TimeEntry` / `TimeBreak` | Clock punches (UTC); `editedById`/`editedAt` for manager corrections |
 | | `Shift` | `employeeId`, `date`, `startTime`/`endTime` ("HH:MM"; end ≤ start = overnight), `position?` override, `notes?` |
 | | `TimeOffRequest` | `startDate`/`endDate` (inclusive), `type`, `reason?`, `status` (PENDING/APPROVED/DENIED/CANCELLED), `reviewedById` (User.id), `reviewedAt`, `reviewNote` |
+| | `ShiftOffer` | Shift swap / open shift: `shiftId`, `offeredById`, `postedById?` (manager-posted), `status` (OPEN → CLAIMED → APPROVED/DENIED, CANCELLED), `claimedById`, review fields; one active per shift (partial unique index) |
+| | `WaitlistEntry` | Full-day waitlist: `date`, `players`, `name`, `email`, `userId?`, `notifiedAt` (emailed once), `cancelledAt` |
 | POS | `ProductCategory`, `Product`, `ProductVariant` | Catalog; stock, SKU and barcode live on the variant; `Product.rateKey?` marks the greens fee / cart rate products (`src/lib/rates.js`; online booking charges their prices too); `Product.membershipMonths?`/`membershipTier?` mark membership products; `ProductCategory.memberDiscount` gets the member Pro Shop discount |
 | | `InventoryAdjustment` | Stock change log (`InventoryReason`) |
 | | `Register` | Physical register; `stripeReaderId` |
@@ -447,10 +463,12 @@ register, house accounts with statements, events and inquiries. It skips itself 
 | `/tournaments/:id` | `EventView.vue` (details, registration inquiry, .ics, `Event` JSON-LD) | — |
 | `/book`         | `BookView.vue`        | — |
 | `/confirmation` | `ConfirmationView.vue` (`?booking_id=`) | — |
+| `/booking/:id`  | `ManageBookingView.vue` (`?t=` signed link from the emails: change / cancel, guests too) | — |
+| `/waitlist/:id` | `WaitlistLeaveView.vue` (`?t=`: leave the waitlist) | — |
 | `/login`        | `LoginView.vue`       | — |
 | `/account`      | `AccountView.vue` (+ `HouseAccountPanel`) | `requiresAuth` |
 | `/account/statements/:id` | `StatementView.vue` (printable) | `requiresAuth` |
-| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `house-accounts` (+ `/:id`), `registers` | `requiresAdmin` |
+| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users` (+ `/:id` customer page), `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `house-accounts` (+ `/:id`), `registers` | `requiresAdmin` |
 | `/staff`        | `staff/StaffLayout.vue` + `TimeClockView` | `requiresStaff` |
 | `/staff/timesheet`, `/staff/schedule`, `/staff/time-off` | `MyTimesheetView`, `MyScheduleView`, `TimeOffView` | `requiresStaff` |
 | `/staff/register`, `/staff/teesheet` | `RegisterView.vue`, `TeeSheetView.vue` | `requiresStaff` + `requiresRegister` |
@@ -476,7 +494,8 @@ below md that sets `--bottom-bar-height` / `--snackbar-offset`) and `AppFooter`;
 map links, social) live in `src/data/site.js`. The admin shell is a top app bar + modal drawer (phones) / rail (md) /
 drawer (lg); pages put their primary action in the bar with `<Teleport to="#admin-page-actions" defer>`. The staff
 shell is a bottom nav bar by role (phones) / rail (md) / drawer (lg) with a clock-status chip and **Switch cashier**
-(signs out to `/login?redirect=<page>`). Both portals have gallery previews at `/dev/ui`.
+(locks the register PC: `RegisterLockScreen`, name + time clock PIN; also after 10 idle minutes on the register; Sign
+out in the menus signs out to `/login?redirect=<page>`). Both portals have gallery previews at `/dev/ui`.
 
 ---
 

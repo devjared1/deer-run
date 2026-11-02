@@ -9,6 +9,7 @@
     "dev:pages": "npm run dev:pages --workspace=apps/web",
     "build": "npm run build --workspace=apps/web",
     "deploy": "npm run deploy --workspace=apps/web",
+    "deploy:cron": "npm run deploy --workspace=apps/cron",
     "lint": "npm run lint --workspace=apps/web && npm run lint --workspace=apps/api",
     "db:migrate": "npm run migrate --workspace=apps/api",
     "db:migrate:deploy": "npm run migrate:deploy --workspace=apps/api",

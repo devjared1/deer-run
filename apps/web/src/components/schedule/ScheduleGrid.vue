@@ -117,6 +117,33 @@
             {{ visibleShifts.length ? totalHours(visibleShifts) : '' }}
           </td>
         </tr>
+        <!-- Planning (admin): golfers booked and the labor the shifts shown will cost, per day -->
+        <template v-if="planning">
+          <tr class="bg-surface-container text-label-m text-on-surface-variant border-t border-outline-variant">
+            <th scope="row" class="name-col bg-surface-container px-4 py-2 text-left uppercase tracking-wider">
+              Golfers booked
+            </th>
+            <td v-for="date in dates" :key="date" class="px-2 py-2 text-center tabular-nums border-l border-outline-variant">
+              <template v-if="planning.booked?.[date]">
+                {{ planning.booked[date].players }}<span class="block text-body-s normal-case">{{ planning.booked[date].groups }} group{{ planning.booked[date].groups === 1 ? '' : 's' }}</span>
+              </template>
+            </td>
+            <td class="px-3 py-2 text-right tabular-nums text-on-surface border-l border-outline-variant">
+              {{ bookedTotal || '' }}
+            </td>
+          </tr>
+          <tr class="bg-surface-container text-label-m text-on-surface-variant">
+            <th scope="row" class="name-col bg-surface-container px-4 py-2 text-left uppercase tracking-wider">
+              Labor cost<span v-if="unratedShifts" class="block text-body-s normal-case tracking-normal">{{ unratedShifts }} shift{{ unratedShifts === 1 ? '' : 's' }} without a pay rate</span>
+            </th>
+            <td v-for="date in dates" :key="date" class="px-2 py-2 text-center tabular-nums border-l border-outline-variant">
+              {{ laborByDay[date] ? dollars(laborByDay[date]) : '' }}
+            </td>
+            <td class="px-3 py-2 text-right tabular-nums text-on-surface border-l border-outline-variant">
+              {{ laborTotal ? dollars(laborTotal) : '' }}
+            </td>
+          </tr>
+        </template>
       </tfoot>
     </table>
   </div>
@@ -127,10 +154,12 @@
 //   <ScheduleGrid :dates :employees :shifts :time-off :warnings editable @add="({ employeeId, date }) => …" @edit="shift => …" />
 // Props: dates ("YYYY-MM-DD"[]), employees, shifts, timeOff (requests), warnings ({ [shiftId]: string[] } from
 // scheduleWarnings()), editable (shifts and empty cells become buttons; clicking a cell's free space adds a shift),
-// highlightEmployeeId (the signed-in employee's row on the staff page), caption (screen reader table caption).
+// highlightEmployeeId (the signed-in employee's row on the staff page), caption (screen reader table caption),
+// planning ({ booked: { [date]: { players, groups } } }; admin only: footer rows with golfers booked and the labor cost
+// of the shifts shown, from each employee's hourlyRateCents).
 import { computed } from 'vue'
 import { formatLocalDate, localDate } from '@/lib/timeclock'
-import { shortTime, longTime } from '@/lib/schedule'
+import { shortTime, longTime, shiftMinutes } from '@/lib/schedule'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import { positionLabel, shiftClasses, timeOffClasses, timeOffOn, timeOffLabel, totalHours, shiftHoursText } from './scheduleDisplay'
 import IconWarning from '~icons/material-symbols/warning-rounded'
@@ -146,8 +175,25 @@ const props = defineProps({
   editable:            { type: Boolean, default: false },
   highlightEmployeeId: { type: String, default: null },
   caption:             { type: String, default: '' },
+  planning:            { type: Object, default: null },
 })
 defineEmits(['add', 'edit'])
+
+// ── Planning rows ──
+const rateOf = computed(() => Object.fromEntries(props.employees.map(e => [e.id, e.hourlyRateCents ?? null])))
+const laborByDay = computed(() => {
+  const out = {}
+  for (const s of visibleShifts.value) {
+    const rate = rateOf.value[s.employeeId]
+    if (rate == null) continue
+    out[s.date] = (out[s.date] ?? 0) + Math.round((shiftMinutes(s) / 60) * rate)
+  }
+  return out
+})
+const laborTotal = computed(() => Object.values(laborByDay.value).reduce((a, b) => a + b, 0))
+const unratedShifts = computed(() => visibleShifts.value.filter(s => rateOf.value[s.employeeId] == null).length)
+const bookedTotal = computed(() => props.dates.reduce((sum, d) => sum + (props.planning?.booked?.[d]?.players ?? 0), 0))
+const dollars = cents => (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
 
 const today = localDate()
 

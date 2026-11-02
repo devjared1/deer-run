@@ -64,6 +64,9 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import IconCardOff from '~icons/material-symbols/credit-card-off-rounded'
 import IconBeach from '~icons/material-symbols/beach-access-rounded'
 import IconPunchClock from '~icons/material-symbols/punch-clock-rounded'
+import IconAlarm from '~icons/material-symbols/alarm-rounded'
+import IconSwap from '~icons/material-symbols/swap-horiz-rounded'
+import { teeTime } from '@/lib/teesheet'
 import IconPointOfSale from '~icons/material-symbols/point-of-sale-rounded'
 import IconQuote from '~icons/material-symbols/request-quote-rounded'
 import IconEventBusy from '~icons/material-symbols/event-busy-rounded'
@@ -79,7 +82,8 @@ const TONES = {
 }
 
 const CHECK_NAMES = {
-  cardNotSaved: 'card payments', timeOff: 'time off', missedClockOut: 'clock-outs', drawersLeftOpen: 'cash drawers',
+  cardNotSaved: 'card payments', timeOff: 'time off', missedClockOut: 'clock-outs', missedClockIn: 'clock-ins', shiftSwaps: 'shift swaps',
+  drawersLeftOpen: 'cash drawers',
   statementsPastDue: 'statements', teeTimeGaps: 'tee times', outOfStock: 'stock',
 }
 
@@ -112,6 +116,11 @@ const BUILDERS = {
     title: `${plural(i.count, 'missed clock-out')}`,
     detail: `${listOf(i.names)} still on the clock from earlier. Fix the punch in Timesheets.`,
   }),
+  missedClockIn: i => ({
+    tone: 'warning', icon: IconAlarm, to: '/admin/schedule',
+    title: `${plural(i.count, 'person', 'people')} scheduled but not clocked in`,
+    detail: `${listOf(i.people.map(p => `${p.name} (${teeTime(p.startTime)})`))}.`,
+  }),
   drawersLeftOpen: i => ({
     tone: 'error', icon: IconPointOfSale, to: { path: '/admin/sales', query: { tab: 'drawers' } },
     title: `${plural(i.count, 'cash drawer')} left open from an earlier day`,
@@ -125,6 +134,11 @@ const BUILDERS = {
       detail: `${listOf(i.dates.map(shortDate), 4)}. Generate slots so these days show up online.`,
     }
   },
+  shiftSwaps: i => ({
+    tone: 'warning', icon: IconSwap, to: { path: '/admin/schedule', query: { swaps: '1' } },
+    title: `${plural(i.count, 'shift swap')} to approve`,
+    detail: 'A coworker picked up a shift; it changes hands once you approve.',
+  }),
   timeOff: i => ({
     tone: 'warning', icon: IconBeach, to: '/admin/time-off',
     title: `${plural(i.count, 'time off request')} to review`,

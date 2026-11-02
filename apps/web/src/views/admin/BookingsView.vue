@@ -8,7 +8,7 @@
             v-model="search"
             type="search"
             label="Search"
-            placeholder="Guest or member name, email"
+            placeholder="Guest or member name, email, reference"
             :leading-icon="IconSearch"
             autocomplete="off"
             class="flex-1 min-w-0"
@@ -35,7 +35,8 @@
         :row-label="b => `${nameOf(b)}, ${teeLabel(b)}`"
       >
         <template #cell-name="{ row }">
-          <span class="block">{{ nameOf(row) }}</span>
+          <RouterLink v-if="row.userId" :to="`/admin/users/${row.userId}`" class="block text-primary underline">{{ nameOf(row) }}</RouterLink>
+          <span v-else class="block">{{ nameOf(row) }}</span>
           <span class="block text-body-s font-normal text-on-surface-variant">{{ row.User?.email || row.guestEmail || 'Guest' }}</span>
         </template>
         <template #cell-tee="{ row }">
@@ -100,6 +101,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { apiFetch } from '@/lib/api'
 import { formatLocalDate, isValidYmd, toUtcIso } from '@/lib/timeclock'
 import { teeTime } from '@/lib/teesheet'
@@ -124,6 +126,7 @@ import IconClose from '~icons/material-symbols/close-rounded'
 import IconEditNote from '~icons/material-symbols/edit-note-rounded'
 import IconBookOnline from '~icons/material-symbols/book-online-rounded'
 
+const route    = useRoute()
 const confirm  = useConfirm()
 const snackbar = useSnackbar()
 
@@ -148,7 +151,9 @@ const error    = ref(null)
 const total    = ref(0)
 const page     = ref(1)
 
-const search   = ref('')
+// ?search= starts with that text (links from the admin search)
+const search   = ref(typeof route.query.search === 'string' ? route.query.search : '')
+watch(() => route.query.search, s => { if (typeof s === 'string') search.value = s })
 const statuses = ref([])
 const range    = ref({ from: '', to: '' })
 

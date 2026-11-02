@@ -15,6 +15,10 @@
       <p class="text-body-m text-on-surface-variant mt-1">
         <span class="text-on-surface">{{ dateLong }}</span> · {{ rateLine }}
       </p>
+      <p v-if="weather" class="mt-1 flex items-center gap-1.5 text-body-m text-on-surface-variant">
+        <component :is="weather.icon" class="w-5 h-5 flex-none" aria-hidden="true" />
+        <span>Forecast: {{ weather.label }}</span>
+      </p>
 
       <!-- Players first: only times with room for the whole group are shown -->
       <div class="mt-5">
@@ -72,6 +76,7 @@
                 />
               </template>
               <AppButton v-else variant="text" :icon="IconArrowBack" @click="emit('back')">Pick another day</AppButton>
+              <WaitlistForm :date="store.selectedDate" :players="store.players" class="mt-3" />
             </div>
           </template>
         </EmptyState>
@@ -146,7 +151,8 @@
 
 <script setup>
 // Booking step 2: players first, then only the times with room for them, grouped by time of day. The summary bar
-// at the bottom stays in view while scrolling; Continue goes to Details.
+// at the bottom stays in view while scrolling; Continue goes to Details. The day's forecast is under the date, and a
+// day with no room for the group offers its waitlist (WaitlistForm).
 import AppButton from '@/components/ui/AppButton.vue'
 import ChipGroup from '@/components/ui/ChipGroup.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
@@ -167,6 +173,8 @@ import IconArrowForward from '~icons/material-symbols/arrow-forward-rounded'
 import IconEventBusy from '~icons/material-symbols/event-busy-rounded'
 import IconSchedule from '~icons/material-symbols/schedule-rounded'
 import { TIME_GROUPS, bookingWindow, plural } from './bookingFlow'
+import WaitlistForm from './WaitlistForm.vue'
+import { useForecast } from '@/composables/useForecast'
 
 const emit = defineEmits(['next', 'back'])
 const store = useBookingStore()
@@ -181,6 +189,9 @@ const error = ref('')
 
 const dateLong = computed(() => (store.selectedDate ? formatLocalDate(store.selectedDate, { weekday: 'long', month: 'long', day: 'numeric' }) : ''))
 const dateShort = computed(() => (store.selectedDate ? formatLocalDate(store.selectedDate) : ''))
+
+const { forecastFor } = useForecast()
+const weather = computed(() => (store.selectedDate ? forecastFor(store.selectedDate) : null))
 
 // "Weekday rates: $20 for 9 holes, $30 for 18, per player"
 const rateLine = computed(() => {

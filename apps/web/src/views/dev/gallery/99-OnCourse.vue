@@ -100,7 +100,7 @@ book(slotNear(30), 'Kim', 2, { checkedInAt: null })
 
 function payload() {
   return {
-    date: local(nowMs).date, today: local(nowMs).date, roundMinutes: DEFAULT_ROUND_MINUTES, holeSeconds: [],
+    date: local(nowMs).date, today: local(nowMs).date, roundMinutes: DEFAULT_ROUND_MINUTES, holeSeconds: [], behindAlertMinutes: 10,
     slots: slots.map(({ ms, ...s }) => {
       const bookedPlayers = s.bookings.reduce((sum, b) => sum + b.players, 0)
       return { ...s, bookings: s.bookings.map(b => ({ ...b })), bookedPlayers, available: Math.max(0, s.maxPlayers - bookedPlayers) }

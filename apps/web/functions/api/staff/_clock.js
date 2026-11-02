@@ -20,14 +20,15 @@ async function getOpenEntry(supabase, employeeId) {
 }
 
 /**
- * Current clock state plus today's entries (course-local day):
- * { status: 'off' | 'on' | 'break', openEntry, today: { date, entries, workedMinutes }, serverTime, employee }
+ * Current clock state plus today's entries and scheduled shifts (course-local day):
+ * { status: 'off' | 'on' | 'break', openEntry, today: { date, entries, workedMinutes, shifts: [{ startTime, endTime,
+ *   position }] }, serverTime, employee }
  */
 export async function clockStatus(supabase, employee) {
   const now = new Date()
   const today = localDate(now)
 
-  const [openEntry, { data: todays, error }] = await Promise.all([
+  const [openEntry, { data: todays, error }, { data: shifts }] = await Promise.all([
     getOpenEntry(supabase, employee.id),
     supabase
       .from('TimeEntry')
@@ -35,6 +36,9 @@ export async function clockStatus(supabase, employee) {
       .eq('employeeId', employee.id)
       .gte('clockIn', startOfLocalDay(today).toISOString())
       .order('clockIn', { ascending: true }),
+    // Shown after a clock-in ("You're scheduled 7:00 AM – 3:00 PM"); missing shifts just aren't shown
+    supabase.from('Shift').select('startTime, endTime, position').eq('employeeId', employee.id).eq('date', today)
+      .order('startTime', { ascending: true }),
   ])
   if (error) throw new Error(error.message)
 
@@ -49,6 +53,7 @@ export async function clockStatus(supabase, employee) {
       date: today,
       entries,
       workedMinutes: entries.reduce((sum, e) => sum + e.workedMinutes, 0),
+      shifts: shifts ?? [],
     },
     serverTime: now.toISOString(),
     employee: { id: employee.id, firstName: employee.firstName, lastName: employee.lastName, position: employee.position },

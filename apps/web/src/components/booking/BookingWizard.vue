@@ -68,7 +68,8 @@
 <script setup>
 // Booking wizard. The step lives in the URL (/book, /book?step=time|details|payment), so browser Back/Forward move
 // between steps; a step whose prerequisites aren't set falls back to the first missing one. Also handles:
-//   /book?date=YYYY-MM-DD&players=N&time=morning|midday|afternoon  — the Home tee time search (starts on Time)
+//   /book?date=YYYY-MM-DD&players=N&time=morning|midday|afternoon  — the Home tee time search (starts on Time);
+//        also &holes=9|18&cart=1|0 (My Account's Book again)
 //   /book?resume=details                                          — back from signing in (StepDetails)
 import { addDays, isValidYmd, localDate } from '@/lib/timeclock'
 import { useAuthStore } from '@/stores/auth'
@@ -117,6 +118,9 @@ const queryFor = key => (key === 'date' ? {} : { step: key })
 function applyPrefill(q) {
   const players = Number(q.players)
   if (Number.isInteger(players) && players >= 1 && players <= 4) store.players = players
+  // Book again (My Account) also brings the round: 9/18 holes and riding/walking
+  if (q.holes === '9' || q.holes === '18') store.roundHoles = Number(q.holes)
+  if (q.cart === '1' || q.cart === '0') store.cart = q.cart === '1'
   if (q.time !== undefined) store.timeOfDay = TIMES_OF_DAY.includes(q.time) ? q.time : null
   const today = localDate()
   const date = typeof q.date === 'string' ? q.date : ''
@@ -130,9 +134,9 @@ function applyPrefill(q) {
 const q = route.query
 let initial = KEYS.includes(q.step) ? q.step : 'date'
 if (q.resume === 'details') initial = 'details'
-else if (q.date || q.players || q.time) initial = applyPrefill(q) ? 'time' : 'date'
+else if (q.date || q.players || q.time || q.holes || q.cart) initial = applyPrefill(q) ? 'time' : 'date'
 initial = allowedStep(initial)
-const needsReplace = q.resume || q.date || q.players || q.time || (q.step || 'date') !== initial
+const needsReplace = q.resume || q.date || q.players || q.time || q.holes || q.cart || (q.step || 'date') !== initial
 if (needsReplace) router.replace({ query: queryFor(initial) })
 
 const step = ref(initial)

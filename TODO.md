@@ -422,6 +422,13 @@ manager can print a statement for any member **on demand**.
       golfer's **Change** on My Account needs it; it errors until then), then
       `prisma migrate resolve --applied 14_booking_changes`. Then try on staging: a change that costs more (pay the
       difference), one that costs less (refund shows in Stripe), and one on a pay-at-course booking
+- [ ] Run `apps/api/prisma/sql/15_reminders_waitlist.sql` after 14 (the waitlist and reminders do nothing until it runs),
+      then `prisma migrate resolve --applied 15_reminders_waitlist`, and redeploy the cron Worker (new jobs
+      `/api/internal/reminders` and `/api/internal/waitlist`). Optional: set `BOOKING_LINK_SECRET` (else the service role
+      key signs the manage links; changing it later breaks links already sent) and `SITE_URL` on the Pages project
+- [ ] Run `apps/api/prisma/sql/16_course_alerts_shift_swaps.sql` after 15 (On Course alerts and shift swaps stay off
+      until it runs), then `prisma migrate resolve --applied 16_course_alerts_shift_swaps`. Its partial unique index
+      `ShiftOffer_one_active_per_shift`: delete any DROP INDEX line for it from later generated migrations
 - [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
       Membership comes from buying a membership product or an admin setting it in Admin → Users. Accounts created
       before this as MEMBER stay members: review them in Admin → Users
@@ -821,8 +828,15 @@ ordered by value; Phases 1–3 are the first picks.
       register and re-checked when the payment screen opens, so the cart chip and TenderModal's `readerOnline` light up
       (moved from Feature 4 Phase 6; its own endpoint rather than the catalog, so the catalog stays fast and the status
       stays current). Gallery: `/dev/ui?section=register&connection=lost`
-- [ ] PIN lock / quick cashier switch on the register: tap your name + PIN instead of a full sign-out (reuse the
+- [x] PIN lock / quick cashier switch on the register: tap your name + PIN instead of a full sign-out (reuse the
       `_pin.js` checks and lockout from the time clock iPad)
+      (**Switch cashier** now locks the register PC, and the register page locks itself after 10 minutes untouched
+      (`REGISTER_IDLE_LOCK_MINUTES`); the lock survives a reload (`composables/useRegisterLock.js`). The lock screen
+      (`RegisterLockScreen.vue`, reusing the kiosk's name tiles and PIN step) takes the **time clock PIN**: the same
+      cashier just unlocks; someone else is signed in on that PC with a one-time token
+      (`POST /api/staff/register/switch` → Supabase `generateLink` → `verifyOtp` in the browser). Admin logins can't be
+      opened with a PIN and use "Sign in with a password" (the menus' Sign out still signs out fully). The cart stays
+      through a switch. No scanning while locked. Gallery: `/dev/ui?section=register&locked=1`)
 
 ### Phase 2: Manager tools
 - [x] Dashboard **Needs attention** list: pending time off, forgot to clock out, drawers left open, overdue
@@ -832,10 +846,16 @@ ordered by value; Phases 1–3 are the first picks.
       days in the booking window with no tee times, time off to review, statements past due, products out of stock.
       Unpaid holds left out: the cron releases them on its own. "Low" stock is 0 or below for now: there's no reorder
       level per product yet. Each check runs on its own; a failed one is named under the list)
-- [ ] Customer page `/admin/users/:id`: bookings, purchases, house account, membership dates and renewal status in one
+- [x] Customer page `/admin/users/:id`: bookings, purchases, house account, membership dates and renewal status in one
       place; linked from Users, Sales, Bookings and House Accounts
-- [ ] Global search (Ctrl+K / a search button in the admin top bar): members, sale numbers, bookings, employees →
+      (`CustomerView.vue` ← `GET /api/admin/users/:id`: rounds played / upcoming, net register spend, paid online, house
+      account balance; tee times and the latest 50 purchases, each opening its receipt (`/admin/sales?sale=<id>`). Users
+      rows open it; the role/membership editor moved to `components/admin/users/UserEditDialog.vue`, used by both)
+- [x] Global search (Ctrl+K / a search button in the admin top bar): members, sale numbers, bookings, employees →
       jump straight there
+      (`AdminSearch.vue` ← `GET /api/admin/search?q=`: customers, receipt number, bookings by guest or booking reference,
+      employees, plus admin pages by name; also "/" outside a field. A combobox: arrows + Enter. Bookings search on
+      `/admin/bookings` now matches the reference too, and takes `?search=`. Gallery: `?section=adminpeople&page=customer&search=jane`)
 
 ### Phase 3: Golfer self-service
 - [x] Change a booking from My Account: move to another time and change players (reuse the tee sheet `move` rules;
@@ -852,20 +872,53 @@ ordered by value; Phases 1–3 are the first picks.
       `sql/14_booking_changes.sql`); the golfer is emailed; a refund that fails emails the pro shop
 - [ ] Staff **move** on the tee sheet still keeps the price (its comment predates weekday/weekend rates): reprice it like
       the golfer's change, or keep it as the pro shop's call
-- [ ] Guests manage their booking from a signed link in the confirmation email (no account needed)
-- [ ] **Book again** in My Account: same players / holes / cart, opens the Time step on the next same weekday
-- [ ] Reminder email the day before (cron job): tee time, balance due at the course, forecast, directions, manage link
-- [ ] Forecast in the booking flow: National Weather Service API (free, no key) icon + high per day on the date strip /
+- [x] Guests manage their booking from a signed link in the confirmation email (no account needed)
+      (`/booking/:id?t=` → `ManageBookingView` ← `GET /api/bookings/:id/manage`; Change uses `ChangeBookingDialog` with
+      the token, Cancel `DELETE /api/bookings/:id?t=`. The token is an HMAC of the id (`functions/api/_links.js`, key
+      `BOOKING_LINK_SECRET`, else the service role key), so links can't be made up; the booking's own rules (24 hours…)
+      still apply. The link is in the confirmation, change and reminder emails. Optional `SITE_URL` sets the links'
+      origin for jobs that have no request)
+- [x] **Book again** in My Account: same players / holes / cart, opens the Time step on the next same weekday
+      (past paid bookings; `/book?date=&players=&time=&holes=&cart=`)
+- [x] Reminder email the day before (cron job): tee time, balance due at the course, forecast, directions, manage link
+      (`POST /api/internal/reminders`, in `apps/cron` JOBS; Resend batch sends, 100 per request, so a full tee sheet
+      fits the Workers subrequest limit; `Booking.reminderSentAt` keeps it to one each)
+- [x] Forecast in the booking flow: National Weather Service API (free, no key) icon + high per day on the date strip /
       calendar for the next 7 days, rain note on the confirmation page
-- [ ] Waitlist for full days: "Tell me if a time opens up"; email the first in line when an expired hold or a
+      (`GET /api/weather` ← `functions/api/_weather.js`, cached an hour at the edge; `composables/useForecast.js`. Also the
+      Time step header and the manage page; nothing shows when the NWS is down)
+- [x] Waitlist for full days: "Tell me if a time opens up"; email the first in line when an expired hold or a
       cancellation frees spots
+      (`WaitlistForm` on the Time step when nothing fits the group; full days on the Date step can now be picked for it.
+      `POST /api/waitlist`; `bookings/_waitlist.js` → `notifyWaitlist` runs after a golfer/staff/admin cancel, a staff
+      move, a golfer change and released holds, plus a daily backstop `POST /api/internal/waitlist`. Earliest entries
+      that fit are emailed once, as many as the open spots could seat; members-only times aren't offered. "Not
+      interested" link → `/waitlist/:id?t=`. Migration `sql/15_reminders_waitlist.sql`)
 
 ### Phase 4: Course and staff
-- [ ] On Course alerts: a sticky alert + vibration when a group falls 10+ minutes behind (threshold in Settings)
-- [ ] Missed clock-in nudge: scheduled 10 minutes ago and not clocked in → flag on Admin → Time Clock (and the Needs
+- [x] On Course alerts: a sticky alert + vibration when a group falls 10+ minutes behind (threshold in Settings)
+      (`components/oncourse/BehindAlert.vue` ← `pace.js` → `behindGroups`: groups on the course, furthest behind first,
+      each with Update position; a phone vibrates when one newly crosses; dismiss hides it until it slips 5 more minutes.
+      `CourseSettings.behindAlertMinutes` (default 10, 0 = off) in Settings → On Course. Not sticky after all: the pace
+      bar already sticks there, so the alert is the first thing under it)
+- [x] Missed clock-in nudge: scheduled 10 minutes ago and not clocked in → flag on Admin → Time Clock (and the Needs
       attention list); the time clock iPad shows "You're scheduled 7:00–3:00" after a clock-in
-- [ ] Shift swaps and open shifts: offer a shift or pick up an open one on My Schedule, a manager approves (like time off)
+      (`missedClockIn` in `/api/admin/attention`, linked to the schedule (there's no admin Time Clock page). Clock state
+      carries `today.shifts`: the iPad's done screen and the staff Time Clock page show today's schedule)
+- [x] Shift swaps and open shifts: offer a shift or pick up an open one on My Schedule, a manager approves (like time off)
+      (`ShiftOffer`: OPEN → CLAIMED → APPROVED / DENIED, or CANCELLED; one active offer per shift (partial unique
+      index). Staff: **Offer** on an upcoming shift, **Open shifts** with Pick up (refused if they already work then or
+      have approved time off), My swaps with Withdraw / Let it go (`/api/staff/shift-offers`). Admin: Shift swaps panel on
+      the Schedule page (Approve moves the shift and emails both; Deny; Take down) and **Post as open shift** in the shift
+      dialog (`/api/admin/shift-offers`); pending ones on Needs attention. Migration `sql/16_course_alerts_shift_swaps.sql`)
 
 ### Phase 5: Planning insights
-- [ ] Bookings next to the schedule: booked players and planned labor cost per day on `/admin/schedule`
-- [ ] Tee time usage heatmap (weekday × hour, booked share) on the dashboard or sales reports
+- [x] Bookings next to the schedule: booked players and planned labor cost per day on `/admin/schedule`
+      (`GET /api/admin/shifts` adds `booked: { [date]: { players, groups } }` and the employees' `hourlyRateCents`;
+      `ScheduleGrid`'s `planning` prop adds footer rows "Golfers booked" and "Labor cost", worked out from the shifts
+      shown, so the department filter applies; shifts without a pay rate are counted under the row. Week / 2-week grid
+      only, not the month view)
+- [x] Tee time usage heatmap (weekday × hour, booked share) on the dashboard or sales reports
+      (`GET /api/admin/reports/teetime-usage?weeks=` → `components/admin/dashboard/TeeTimeUsage.vue` on the dashboard:
+      paid players over capacity for the last 4 / 8 / 12 weeks, a percentage in every cell, busiest and quietest hour.
+      Gallery: `?section=admindashboard`, a new preview of the whole dashboard)

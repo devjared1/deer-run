@@ -5,7 +5,8 @@ import { isValidYmd } from '../../../../src/lib/timeclock.js'
 // GET /api/admin/bookings?status=&date=&from=&to=&search=&page=&limit=
 // → { bookings: [{ …, source, checkedInAt, holdFeeCents, balanceDueCents, holdExpired }], total, page, limit }
 // status: one status or a comma-separated list (PENDING,CONFIRMED). date (one tee date) or from/to (tee dates,
-// inclusive, either may be left out). search: guest or member name / email (contains, any case).
+// inclusive, either may be left out). search: guest or member name / email (contains, any case), or the booking
+// reference (first 8 characters of the id).
 // holdExpired marks an unpaid online booking past its 30-minute hold (src/lib/teesheet.js).
 export async function onRequestGet({ request, env }) {
   const result = await requireAdmin(request, env)
@@ -53,6 +54,8 @@ export async function onRequestGet({ request, env }) {
     if (userError) return json({ error: userError.message }, 500)
     const filters = [`guestName.ilike.*${search}*`, `guestEmail.ilike.*${search}*`]
     if (users?.length) filters.push(`userId.in.(${users.map(u => u.id).join(',')})`)
+    // The booking reference from the confirmation page: the first 8 characters of the id
+    if (/^[0-9a-f]{6,8}$/i.test(search)) filters.push(`id.ilike.${search.toLowerCase()}*`)
     query = query.or(filters.join(','))
   }
 

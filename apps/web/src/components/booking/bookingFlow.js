@@ -31,9 +31,9 @@ export const bookingReference = id => String(id || '').replace(/-/g, '').slice(0
 
 // ── Customer-facing copy. Edit freely; confirm with the course (TODO.md → Feature 4) ──
 
-// Matches DELETE /api/bookings/:id (signed-in owner, more than 24 hours before the tee time) and the Account page
-export const CANCEL_POLICY = `Signed-in golfers can cancel from My Account up to 24 hours before the tee time. `
-  + `Booked as a guest, or within 24 hours? Call the pro shop at ${phone.display}.`
+// Matches DELETE /api/bookings/:id and POST …/change (owner or the emailed link, more than 24 hours before the tee time)
+export const CANCEL_POLICY = `Change or cancel up to 24 hours before the tee time from My Account or the link in your `
+  + `confirmation email. Within 24 hours? Call the pro shop at ${phone.display}.`
 
 // Pay at course (booking Details / Payment steps and the confirmation page)
 export const HOLD_FEE_POLICY = 'The hold fee is non-refundable: it isn\'t returned if the booking is cancelled or the tee '

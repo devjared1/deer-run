@@ -3,7 +3,7 @@ import { requireRegister } from '../_auth.js'
 import { isValidYmd, localDate, toUtcIso } from '../../../../src/lib/timeclock.js'
 import { isActiveMember } from '../../../../src/lib/membership.js'
 import { holdsSpot, isExpiredHold } from '../../../../src/lib/teesheet.js'
-import { DEFAULT_ROUND_MINUTES } from '../../../../src/lib/pace.js'
+import { DEFAULT_BEHIND_ALERT_MINUTES, DEFAULT_ROUND_MINUTES } from '../../../../src/lib/pace.js'
 import { releaseInBackground, slotsWithExpiredHolds } from '../../bookings/_holds.js'
 
 export const TEESHEET_BOOKING_COLUMNS = 'id, players, status, source, guestName, guestEmail, checkedInAt, createdAt, totalCents, stripePaymentId, ' +
@@ -22,7 +22,7 @@ export const TEESHEET_BOOKING_COLUMNS = 'id, players, status, source, guestName,
 // On-course tracking per booking: cartNumbers, ownCart, startHole, roundHoles, teedOffAt, positionHole,
 // positionStage, positionAt, finishedAt; `roundMinutes` is the expected 18-hole round and `holeSeconds` the learned
 // per-hole times ([] until learned), the pace profile for src/lib/pace.js.
-// → { date, today, roundMinutes, holeSeconds, slots }
+// → { date, today, roundMinutes, holeSeconds, behindAlertMinutes (On Course alerts, 0 = off), slots }
 export async function onRequestGet(context) {
   const { request, env } = context
   const result = await requireRegister(request, env)
@@ -43,7 +43,8 @@ export async function loadTeeSheet(context, supabase, date) {
         'user:User(id, name, email, role, memberUntil, membershipTier), saleItems:SaleItem(sale:Sale!SaleItem_saleId_fkey(id, number)))')
       .eq('date', date)
       .order('startTime', { ascending: true }),
-    supabase.from('CourseSettings').select('roundMinutes, holeSeconds').eq('id', 'singleton').maybeSingle(),
+    // (*): includes behindAlertMinutes once migration 16 has run
+    supabase.from('CourseSettings').select('*').eq('id', 'singleton').maybeSingle(),
   ])
   if (error) return json({ error: error.message }, 500)
 
@@ -59,7 +60,8 @@ export async function loadTeeSheet(context, supabase, date) {
   })
 
   return json({
-    date, today, roundMinutes: settings?.roundMinutes ?? DEFAULT_ROUND_MINUTES, holeSeconds: settings?.holeSeconds ?? [], slots,
+    date, today, roundMinutes: settings?.roundMinutes ?? DEFAULT_ROUND_MINUTES, holeSeconds: settings?.holeSeconds ?? [],
+    behindAlertMinutes: settings?.behindAlertMinutes ?? DEFAULT_BEHIND_ALERT_MINUTES, slots,
   })
 }
 

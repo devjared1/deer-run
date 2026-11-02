@@ -115,6 +115,13 @@
           <h2 id="conf-weather" class="text-title-l text-on-surface mb-2 flex items-center gap-2">
             <IconWeather class="w-6 h-6 text-primary" aria-hidden="true" /> Weather
           </h2>
+          <p v-if="teeWeather" class="mb-2 flex items-center gap-2 text-body-l text-on-surface">
+            <component :is="teeWeather.icon" class="w-6 h-6 flex-none text-on-surface-variant" aria-hidden="true" />
+            {{ teeWeather.label }}
+          </p>
+          <p v-if="teeWeather?.precipChance >= 40" class="mb-2 text-body-m text-on-surface">
+            Rain is likely. If the course closes for weather, the pro shop will contact you.
+          </p>
           <p class="text-body-m text-on-surface-variant">
             <template v-if="daysAhead <= 6">See the National Weather Service forecast for {{ dateShort }} at the course.</template>
             <template v-else>The National Weather Service forecast covers the next 7 days; check it closer to {{ dateShort }}.</template>
@@ -131,14 +138,15 @@
         </h2>
         <template v-if="auth.isLoggedIn && booking.userId">
           <p class="text-body-m text-on-surface-variant">
-            See or cancel it in My Account up to 24 hours before the tee time. Within 24 hours, call
+            Change or cancel it in My Account up to 24 hours before the tee time. Within 24 hours, call
             <a :href="`tel:${phone.tel}`" class="text-primary underline">{{ phone.display }}</a>.
           </p>
           <AppButton variant="filled" to="/account" :icon="IconAccount" class="mt-4">My Account</AppButton>
         </template>
         <template v-else>
           <p class="text-body-m text-on-surface-variant">
-            To change or cancel, call the pro shop at
+            Your confirmation email has a link to change or cancel up to 24 hours before the tee time. Within 24 hours,
+            call the pro shop at
             <a :href="`tel:${phone.tel}`" class="text-primary underline">{{ phone.display }}</a>
             and give your reference <span class="text-on-surface tracking-wider">{{ reference }}</span>.
           </p>
@@ -187,6 +195,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBookingStore } from '@/stores/booking'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { useForecast } from '@/composables/useForecast'
 import IconAccount from '~icons/material-symbols/account-circle-rounded'
 import IconCalendarAdd from '~icons/material-symbols/calendar-add-on-rounded'
 import IconCall from '~icons/material-symbols/call-rounded'
@@ -234,6 +243,8 @@ const dateLong = computed(() => (ymd.value ? formatLocalDate(ymd.value, { weekda
 const dateShort = computed(() => (ymd.value ? formatLocalDate(ymd.value, { weekday: 'long', month: 'short', day: 'numeric' }) : ''))
 const timeLabel = computed(() => (startTime.value ? teeTime(startTime.value) : ''))
 const daysAhead = computed(() => (ymd.value ? daysBetween(localDate(), ymd.value) : 0))
+const { forecastFor } = useForecast()
+const teeWeather = computed(() => (ymd.value ? forecastFor(ymd.value) : null))
 const reference = computed(() => bookingReference(booking.value?.id))
 const holes = computed(() => (Number(booking.value?.roundHoles) === 9 ? 9 : 18))
 const riding = computed(() => !!booking.value?.cartIncluded)
