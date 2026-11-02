@@ -11,7 +11,7 @@
     </PageHeader>
 
     <Teleport to="#admin-page-actions" defer>
-      <IconButton :icon="IconRefresh" label="Refresh dashboard" tooltip @click="loadAll" />
+      <IconButton :icon="IconRefresh" label="Refresh dashboard" tooltip @click="loadAll()" />
     </Teleport>
 
     <!-- Quick actions -->
@@ -23,6 +23,8 @@
         Review time off<template v-if="pendingTimeOff"> ({{ pendingTimeOff }} pending)</template>
       </AppButton>
     </nav>
+
+    <NeedsAttention ref="attention" class="mb-6" />
 
     <ErrorBanner v-if="error" class="mb-6" :message="error" @retry="load" />
 
@@ -212,6 +214,7 @@ import PageHeader from '@/components/ui/PageHeader.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import StatusChip from '@/components/ui/StatusChip.vue'
+import NeedsAttention from '@/components/admin/dashboard/NeedsAttention.vue'
 import IconAdd from '~icons/material-symbols/add-rounded'
 import IconCalendarAdd from '~icons/material-symbols/calendar-add-on-rounded'
 import IconPointOfSale from '~icons/material-symbols/point-of-sale-rounded'
@@ -299,12 +302,16 @@ function categoryWidth(cents) {
   return Math.max(0, Math.round((cents / max) * 100))
 }
 
-function loadAll() {
+const attention = ref(null)
+
+// The Refresh button; NeedsAttention loads itself on mount, so it only refreshes after that
+function loadAll({ initial = false } = {}) {
+  if (!initial) attention.value?.load()
   load()
   loadOnClock()
   loadSales()
   refreshPendingTimeOff()
 }
 
-onMounted(loadAll)
+onMounted(() => loadAll({ initial: true }))
 </script>

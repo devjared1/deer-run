@@ -52,7 +52,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useHead } from '@unhead/vue'
-import { apiDownload, apiFetch } from '@/lib/api'
+import { apiDownload, apiFetch, isNetworkError } from '@/lib/api'
 import { formatLocalDate } from '@/lib/timeclock'
 import { useSnackbar } from '@/composables/useSnackbar'
 import AppButton from '@/components/ui/AppButton.vue'
@@ -108,7 +108,7 @@ async function downloadPdf() {
     )
   } catch (e) {
     snackbar.show({
-      message: e instanceof TypeError
+      message: isNetworkError(e)
         ? 'Check your connection and try again.'
         : e.message || 'The PDF couldn\'t be downloaded. Please try again, or print the statement instead.',
       tone: 'error',

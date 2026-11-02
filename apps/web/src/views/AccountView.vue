@@ -73,17 +73,26 @@
                     <StatusChip size="sm" kind="booking" :status="displayStatus(b)" class="mt-2" />
                   </div>
                 </div>
-                <AppButton
-                  v-if="canCancel(b)"
-                  variant="outlined"
-                  :icon="IconEventBusy"
-                  :loading="cancelling === b.id"
-                  :disabled="!!cancelling && cancelling !== b.id"
-                  class="ml-auto"
-                  @click="cancelBooking(b)"
-                >
-                  Cancel<span class="sr-only"> tee time on {{ longDate(b) }}</span>
-                </AppButton>
+                <div v-if="canCancel(b)" class="ml-auto flex flex-wrap gap-2">
+                  <AppButton
+                    v-if="canChange(b)"
+                    variant="tonal"
+                    :icon="IconEditCalendar"
+                    :disabled="!!cancelling"
+                    @click="changing = b"
+                  >
+                    Change<span class="sr-only"> tee time on {{ longDate(b) }}</span>
+                  </AppButton>
+                  <AppButton
+                    variant="outlined"
+                    :icon="IconEventBusy"
+                    :loading="cancelling === b.id"
+                    :disabled="!!cancelling && cancelling !== b.id"
+                    @click="cancelBooking(b)"
+                  >
+                    Cancel<span class="sr-only"> tee time on {{ longDate(b) }}</span>
+                  </AppButton>
+                </div>
                 <p v-else-if="['PENDING', 'CONFIRMED'].includes(b.status)" class="ml-auto text-body-s text-on-surface-variant max-w-[14rem]">
                   Within 24 hours of the tee time: call {{ phone.display }} to make changes.
                 </p>
@@ -93,6 +102,13 @@
           </li>
         </ul>
       </section>
+
+      <ChangeBookingDialog
+        v-if="changing"
+        :booking="changing"
+        @done="onChanged"
+        @close="changing = null"
+      />
 
       <!-- Past and cancelled bookings: quieter surface, full-contrast text -->
       <section v-if="!loading && !loadError && pastBookings.length" aria-labelledby="past-title">
@@ -119,7 +135,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/lib/api'
 import { formatCents } from '@/lib/money'
@@ -137,7 +153,9 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import { bookingStatus } from '@/components/ui/statusChips'
 import HouseAccountPanel from '@/components/accounts/HouseAccountPanel.vue'
+import ChangeBookingDialog from '@/components/accounts/ChangeBookingDialog.vue'
 import IconAdd from '~icons/material-symbols/add-rounded'
+import IconEditCalendar from '~icons/material-symbols/edit-calendar-rounded'
 import IconCheck from '~icons/material-symbols/check-circle-rounded'
 import IconEventAvailable from '~icons/material-symbols/event-available-rounded'
 import IconEventBusy from '~icons/material-symbols/event-busy-rounded'
@@ -145,6 +163,7 @@ import IconGolf from '~icons/material-symbols/golf-course-rounded'
 import IconLogout from '~icons/material-symbols/logout-rounded'
 import IconPerson from '~icons/material-symbols/person-rounded'
 
+const route     = useRoute()
 const router    = useRouter()
 const authStore = useAuthStore()
 const confirm   = useConfirm()
@@ -156,6 +175,7 @@ const retrying    = ref(false)
 const loadError   = ref(null)
 const cancelling  = ref(null)
 const cancelError = ref(null) // { id, message } when a cancel fails
+const changing    = ref(null) // the booking in the Change tee time dialog
 
 // "Premier member through Nov 30, 2027" (the role chip says Member / Guest / Admin)
 const membershipLine = computed(() => {
@@ -188,6 +208,40 @@ const pastBookings = computed(() => {
 function canCancel(b) {
   const teeTimeAt = localDateTimeToUtc(slotDate(b), b.teeTimeSlot.startTime)
   return ['PENDING', 'CONFIRMED'].includes(b.status) && teeTimeAt.getTime() - Date.now() > 24 * 60 * 60 * 1000
+}
+
+// Same rules as POST /api/bookings/:id/change (the server also refuses one already paid at the pro shop): a paid
+// online booking, not checked in, more than 24 hours out
+function canChange(b) {
+  return b.status === 'CONFIRMED' && (!b.source || b.source === 'ONLINE') && !b.checkedInAt && canCancel(b)
+}
+
+function onChanged({ booking, message, tone }) {
+  changing.value = null
+  if (booking) {
+    const i = bookings.value.findIndex(x => x.id === booking.id)
+    if (i >= 0) bookings.value[i] = booking
+  }
+  snackbar.show({ message, tone, icon: tone ? undefined : IconCheck })
+}
+
+// Back from a bank redirect while paying for a change (StripeElementModal's return URL): finish the change
+async function finishRedirectedChange() {
+  const { booking_change: changeId, booking: bookingId } = route.query
+  if (!changeId || !bookingId) return
+  router.replace({ query: {} })
+  try {
+    const res = await apiFetch(`/api/bookings/${encodeURIComponent(bookingId)}/change`, { method: 'POST', body: { action: 'confirm', changeId } })
+    if (res.booking) {
+      const i = bookings.value.findIndex(x => x.id === res.booking.id)
+      if (i >= 0) bookings.value[i] = res.booking
+    }
+    if (res.status === 'applied') snackbar.show({ message: res.warning || 'Tee time changed.', icon: res.warning ? undefined : IconCheck })
+    else if (res.status === 'processing') snackbar.show({ message: 'Your payment is still processing. We\'ll email you as soon as the change is made.' })
+    else snackbar.show({ message: res.error || 'The change couldn\'t be made.', tone: 'error' })
+  } catch (e) {
+    snackbar.show({ message: e.message, tone: 'error' })
+  }
 }
 
 function longDate(b) {
@@ -257,5 +311,8 @@ async function load(retry = false) {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  finishRedirectedChange()
+})
 </script>

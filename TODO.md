@@ -1,8 +1,9 @@
 # TODO
 
 Roadmap for two large features: **Employee Time Management** and a **Point of Sale (POS)** system, plus
-**On-course tracking** built on the tee sheet and a site-wide **UI / UX overhaul** (Feature 4, brief in
-`docs/ui-ux-review.md`).
+**On-course tracking** built on the tee sheet, a site-wide **UI / UX overhaul** (Feature 4, brief in
+`docs/ui-ux-review.md`), **Pay at course** (5), the **Time clock iPad** (6) and a second round of
+**UX enhancements** (7).
 Employee Time Management comes first. The POS depends on it, because every sale is rung up by an
 employee and the register lives in the staff portal.
 
@@ -399,24 +400,28 @@ manager can print a statement for any member **on demand**.
 - [x] Stripe webhook: `payment_intent.succeeded` and `payment_intent.payment_failed` enabled
 - [x] `CRON_SECRET` set in the Pages project and the cron Worker deployed
 - [x] `npx prisma migrate resolve --applied <name>` for each migration
-- [ ] Run `apps/api/prisma/sql/9_guest_default_discounts_tips_drawers.sql` together with the deploy that needs it (the
+- [x] Run `apps/api/prisma/sql/9_guest_default_discounts_tips_drawers.sql` together with the deploy that needs it (the
       drawer, drawer close, admin drawer list, sales report and time entry corrections fail until it runs), then
       `prisma migrate resolve --applied 9_guest_default_discounts_tips_drawers`
-- [ ] Run `apps/api/prisma/sql/10_on_course_tracking.sql` after 9, together with the deploy that needs it (the tee
+- [x] Run `apps/api/prisma/sql/10_on_course_tracking.sql` after 9, together with the deploy that needs it (the tee
       sheet and On Course pages fail until it runs), then `prisma migrate resolve --applied 10_on_course_tracking`
-- [ ] Run `apps/api/prisma/sql/11_rates.sql` after 10, together with the deploy that needs it (the tee sheet fails
+- [x] Run `apps/api/prisma/sql/11_rates.sql` after 10, together with the deploy that needs it (the tee sheet fails
       until it runs; Settings hides Rates until then), then `prisma migrate resolve --applied 11_rates`. It sets the
       starting rates and deactivates the old Twilight / 9 Holes products; check Admin → Products for other old
       greens fee products (Walking, Junior, Senior Rate) the course no longer sells
-- [ ] Run `apps/api/prisma/sql/12_pay_at_course.sql` after 11, together with the deploy that needs it (the tee sheet
+- [x] Run `apps/api/prisma/sql/12_pay_at_course.sql` after 11, together with the deploy that needs it (the tee sheet
       and On Course pages fail until it runs; online booking only offers pay at course once it has), then
       `prisma migrate resolve --applied 12_pay_at_course`. It turns pay at course on with a $10 hold fee: change or
       turn it off in Admin → Settings → Booking & Rates
-- [ ] Run `apps/api/prisma/sql/13_timeclock_kiosk.sql` after 12, then
+- [x] Run `apps/api/prisma/sql/13_timeclock_kiosk.sql` after 12, then
       `prisma migrate resolve --applied 13_timeclock_kiosk`. Until it runs the time clock iPad, time clock PINs and the
       Settings list of iPads don't work (everything else does). Then set up the iPad: `docs/timeclock-kiosk.md`
-- [ ] Redeploy the cron Worker (`cd apps/cron && npm run deploy`): it now also calls `/api/internal/bookings` and
+- [x] Redeploy the cron Worker (`cd apps/cron && npm run deploy`): it now also calls `/api/internal/bookings` and
       `/api/internal/pace`
+- [ ] Run `apps/api/prisma/sql/14_booking_changes.sql` after 13, together with the deploy that needs it (only the
+      golfer's **Change** on My Account needs it; it errors until then), then
+      `prisma migrate resolve --applied 14_booking_changes`. Then try on staging: a change that costs more (pay the
+      difference), one that costs less (refund shows in Stripe), and one on a pay-at-course booking
 - [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
       Membership comes from buying a membership product or an admin setting it in Admin → Users. Accounts created
       before this as MEMBER stay members: review them in Admin → Users
@@ -678,9 +683,7 @@ dialogs. Receipts and slips aren't redesigned.
 - [x] Tender: 64dp quick-cash buttons, Enter on an empty cash field = Exact, split asks for the cash part and
       computes the card remainder, errors above the buttons, Print/Email receipt as a segmented control, defaults to
       Card (or warns) while the drawer is closed
-- [ ] Reader status for the register: no staff endpoint reports it yet. The cart chip and TenderModal's `readerOnline`
-      read an optional `readerStatus: 'online' | 'offline'` on the catalog's registers; add it to
-      `/api/staff/register/catalog` (one Stripe Terminal reader lookup) to light them up
+- [ ] Reader status for the register: moved to Feature 7 Phase 1
 - [x] Card: reader online/offline chip in the cart header (Card disabled when offline), "Pay with cash instead" on a
       decline
 - [x] Manager approval with large name buttons + `NumericKeypad` (also house account PIN, drawer counts, Manager PIN
@@ -800,3 +803,69 @@ Access, Add to Home Screen): `docs/timeclock-kiosk.md`.
 - [ ] Try it on the real iPad after migration 13: set up, Add to Home Screen, Guided Access, a full shift with a break
 - [ ] Maybe later: record which kiosk a punch came from (`TimeEntry`), a photo on punch, and limiting the kiosk to
       the course network
+
+## Feature 7: UX enhancements (round 2)
+
+Ideas from a review after Features 4–6, to close gaps the overhaul didn't cover: golfer self-service, one place for
+managers to see what needs doing, and a register that holds up when the network or cashier changes. Phases are
+ordered by value; Phases 1–3 are the first picks.
+
+### Phase 1: Register reliability
+- [x] Connection lost banner on the register (`online`/`offline` events + a failed request): block Charge / tender with
+      the reason instead of a half-failed sale, keep the cart, recover on its own when the connection returns
+      (`components/pos/register/useRegisterConnection.js` + `ConnectionBanner.vue`; the reader poll below doubles as the
+      connection check, every 30 s, 5 s while lost, so it notices the internet dropping with Wi-Fi still up. `apiFetch`
+      now throws `network: true` with a readable message everywhere (`isNetworkError()`). A sale or refund whose request
+      never got an answer says to check Recent sales before trying again, since it may have saved)
+- [x] Reader status: `GET /api/staff/register/reader?registerId=` (one Stripe Terminal reader lookup) polled by the
+      register and re-checked when the payment screen opens, so the cart chip and TenderModal's `readerOnline` light up
+      (moved from Feature 4 Phase 6; its own endpoint rather than the catalog, so the catalog stays fast and the status
+      stays current). Gallery: `/dev/ui?section=register&connection=lost`
+- [ ] PIN lock / quick cashier switch on the register: tap your name + PIN instead of a full sign-out (reuse the
+      `_pin.js` checks and lockout from the time clock iPad)
+
+### Phase 2: Manager tools
+- [x] Dashboard **Needs attention** list: pending time off, forgot to clock out, drawers left open, overdue
+      statements, unpaid holds about to expire, low stock; each line links to where it's fixed
+      (`GET /api/admin/attention` → `components/admin/dashboard/NeedsAttention.vue`, most urgent first: card charged
+      but sale not saved (links to Stripe), missed clock-outs, drawers open from an earlier day (`/admin/sales?tab=drawers`),
+      days in the booking window with no tee times, time off to review, statements past due, products out of stock.
+      Unpaid holds left out: the cron releases them on its own. "Low" stock is 0 or below for now: there's no reorder
+      level per product yet. Each check runs on its own; a failed one is named under the list)
+- [ ] Customer page `/admin/users/:id`: bookings, purchases, house account, membership dates and renewal status in one
+      place; linked from Users, Sales, Bookings and House Accounts
+- [ ] Global search (Ctrl+K / a search button in the admin top bar): members, sale numbers, bookings, employees →
+      jump straight there
+
+### Phase 3: Golfer self-service
+- [x] Change a booking from My Account: move to another time and change players (reuse the tee sheet `move` rules;
+      price difference rules ❓: block changes that raise the price, or charge the difference)
+      Answer: charge more, refund less.
+      Done: **Change** next to Cancel on upcoming tee times → `ChangeBookingDialog` (players, day, times with room,
+      the server's preview of the new price) → `POST /api/bookings/:id/change` (`bookings/_change.js`). The difference is
+      new price − old price, both at today's rates, so a rate change since booking doesn't count. Paid in full: more is
+      paid online first (PaymentIntent `metadata.bookingChangeId`; the page or the webhook applies the change, whichever
+      is first, and refunds it if the time filled up meanwhile); less is refunded to the card (latest payments first).
+      Pay at course: the difference goes on the balance due, the hold fee stays. Same limits as cancelling (CONFIRMED,
+      online, not checked in, more than 24 h out), not if anything was rung up at the register for it, new time within
+      the golfer's booking window and members-only rules. Each change is a `BookingChange` row (migration
+      `sql/14_booking_changes.sql`); the golfer is emailed; a refund that fails emails the pro shop
+- [ ] Staff **move** on the tee sheet still keeps the price (its comment predates weekday/weekend rates): reprice it like
+      the golfer's change, or keep it as the pro shop's call
+- [ ] Guests manage their booking from a signed link in the confirmation email (no account needed)
+- [ ] **Book again** in My Account: same players / holes / cart, opens the Time step on the next same weekday
+- [ ] Reminder email the day before (cron job): tee time, balance due at the course, forecast, directions, manage link
+- [ ] Forecast in the booking flow: National Weather Service API (free, no key) icon + high per day on the date strip /
+      calendar for the next 7 days, rain note on the confirmation page
+- [ ] Waitlist for full days: "Tell me if a time opens up"; email the first in line when an expired hold or a
+      cancellation frees spots
+
+### Phase 4: Course and staff
+- [ ] On Course alerts: a sticky alert + vibration when a group falls 10+ minutes behind (threshold in Settings)
+- [ ] Missed clock-in nudge: scheduled 10 minutes ago and not clocked in → flag on Admin → Time Clock (and the Needs
+      attention list); the time clock iPad shows "You're scheduled 7:00–3:00" after a clock-in
+- [ ] Shift swaps and open shifts: offer a shift or pick up an open one on My Schedule, a manager approves (like time off)
+
+### Phase 5: Planning insights
+- [ ] Bookings next to the schedule: booked players and planned labor cost per day on `/admin/schedule`
+- [ ] Tee time usage heatmap (weekday × hour, booked share) on the dashboard or sales reports

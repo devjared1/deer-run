@@ -4,11 +4,14 @@
       <SegmentedButton v-model="role" label="Cashier" :options="roleOptions" />
       <SegmentedButton :model-value="drawerState" label="Drawer" :options="drawerOptions" @update:model-value="v => { drawerState = v; version++ }" />
       <SegmentedButton v-model="reader" label="Card reader" :options="readerOptions" />
+      <SegmentedButton v-model="connection" label="Connection" :options="connectionOptions" />
     </div>
     <p class="text-body-m text-on-surface-variant">
       RegisterView in the staff shell (register mode) with fake /api/staff/* answers. The box is one viewport tall, so
       the cart column fits as it does on the register PC. Type a code (e.g. <code>PV1-12</code>, <code>0001</code>) and
-      press Enter anywhere outside a field to try the scanner buffer. URL: <code>&amp;drawer=closed&amp;reader=offline&amp;role=manager</code>
+      press Enter anywhere outside a field to try the scanner buffer. "Lost" makes every /api/staff/* request fail like a
+      dropped connection (switch back to see it recover within 5 s). URL:
+      <code>&amp;drawer=closed&amp;reader=offline&amp;role=manager&amp;connection=lost</code>
       (<code>&amp;full=1</code> fills the window).
     </p>
 
@@ -66,7 +69,9 @@ const readerOptions = [
   { value: 'online', label: 'Online' }, { value: 'offline', label: 'Offline' },
   { value: 'unknown', label: 'Unknown' }, { value: 'none', label: 'No reader' },
 ]
+const connectionOptions = [{ value: 'online', label: 'Online' }, { value: 'lost', label: 'Lost' }]
 const full = params.get('full') === '1'
+const connection = ref(pick('connection', connectionOptions, 'online'))
 const role = ref(pick('role', roleOptions, 'cashier'))
 const drawerState = ref(pick('drawer', drawerOptions, 'open'))
 const version = ref(0) // bumped to remount the preview when the drawer toggle changes
@@ -150,10 +155,13 @@ function route(method, path, url, body) {
     return {
       salesTaxBps: 900, categories, products, cardTestMode: true, isRegisterManager: role.value === 'manager',
       registers: [
-        { id: 'preview-r1', name: 'Pro Shop', hasCardReader: reader.value !== 'none', ...(['online', 'offline'].includes(reader.value) ? { readerStatus: reader.value } : {}) },
+        { id: 'preview-r1', name: 'Pro Shop', hasCardReader: reader.value !== 'none' },
         { id: 'preview-r2', name: 'Grill', hasCardReader: false },
       ],
     }
+  }
+  if (path === '/api/staff/register/reader') {
+    return { readerStatus: ['online', 'offline'].includes(reader.value) ? reader.value : null }
   }
   if (path === '/api/staff/register/drawer') {
     if (method === 'GET') return drawerResponse()
@@ -207,9 +215,10 @@ onMounted(() => {
   window.fetch = async (input, init = {}) => {
     const url = new URL(typeof input === 'string' ? input : input.url, location.origin)
     if (!url.pathname.startsWith('/api/staff/')) return realFetch(input, init)
+    await new Promise(r => setTimeout(r, 200))
+    if (connection.value === 'lost') throw new TypeError('Failed to fetch')
     const method = (init.method || 'GET').toUpperCase()
     const result = route(method, url.pathname, url, init.body ? JSON.parse(init.body) : null)
-    await new Promise(r => setTimeout(r, 200))
     return new Response(JSON.stringify(result ?? { error: 'Not in the preview' }), { status: result ? 200 : 404, headers: { 'Content-Type': 'application/json' } })
   }
   setProfile()

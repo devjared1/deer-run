@@ -1,11 +1,13 @@
 <template>
   <div>
     <!-- Everything on screen is print-hidden: only the current slip (below) prints -->
-    <div class="print:hidden md:h-[calc(100dvh-4rem)]">
+    <div class="print:hidden md:h-[calc(100dvh-4rem)] md:flex md:flex-col">
+      <ConnectionBanner v-if="connectionLost" class="flex-none" :checking="checkingConnection" @retry="checkConnection" />
+
       <!-- Loading -->
       <div
         v-if="loading && !catalog"
-        class="h-full md:grid md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_24rem]"
+        class="md:flex-1 md:min-h-0 md:grid md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_24rem]"
       >
         <div class="p-4 space-y-4">
           <Skeleton variant="rect" height="56px" label="Loading the register" />
@@ -56,7 +58,7 @@
       <!-- The register: products | cart (side by side from md, each scrolling on its own; stacked on phones) -->
       <div
         v-else-if="catalog"
-        class="md:h-full md:grid md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_24rem]"
+        class="md:flex-1 md:min-h-0 md:grid md:grid-cols-[minmax(0,1fr)_20rem] lg:grid-cols-[minmax(0,1fr)_24rem]"
       >
         <RegisterProducts
           ref="productsRef"
@@ -89,6 +91,7 @@
           :highlight-key="highlightLineKey"
           :needs-customer="needsCustomerForMembership"
           :error="registerError"
+          :offline="connectionLost"
           @recent-sales="openRecentSales()"
           @no-sale="noSale"
           @account-payment="showAccountPayment = true"
@@ -248,7 +251,7 @@
 // no field or other dialog has focus, including over "Sale complete" (which then starts the next sale).
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, isNetworkError } from '@/lib/api'
 import { formatCents } from '@/lib/money'
 import { unitPriceCents, memberDiscountBps, memberDiscountCents, priceLine, saleTotals, variantDescription } from '@/lib/pricing'
 import { printReceipt } from '@/lib/printReceipt'
@@ -266,6 +269,8 @@ import DrawerDialog from '@/components/pos/register/DrawerDialog.vue'
 import DiscountDialog from '@/components/pos/register/DiscountDialog.vue'
 import CustomItemDialog from '@/components/pos/register/CustomItemDialog.vue'
 import { useScanner } from '@/components/pos/register/useScanner'
+import { useRegisterConnection } from '@/components/pos/register/useRegisterConnection'
+import ConnectionBanner from '@/components/pos/register/ConnectionBanner.vue'
 import { beepAdded, beepError } from '@/components/pos/register/registerSounds'
 import SaleReceipt from '@/components/pos/SaleReceipt.vue'
 import ZReportSlip from '@/components/pos/ZReportSlip.vue'
@@ -345,11 +350,21 @@ const register = computed(() => catalog.value?.registers.find(r => r.id === regi
 // The customer search returns isMember (active, not expired); fall back to the role for older data
 const isMember = computed(() => customer.value?.isMember ?? customer.value?.role === 'MEMBER')
 
-// Reader status for the cart chip and the tender dialog: true online, false offline, null unknown. The staff catalog
-// doesn't report it yet (only GET /api/admin/registers/readers asks Stripe), so this reads an optional
-// `readerStatus: 'online' | 'offline'` on the register and is null until the API sends one.
+// Connection + card reader status, polled from /api/staff/register/reader. While the connection is lost, Charge is
+// off and the banner shows; when it comes back, products and the drawer refresh.
+const {
+  connectionLost, readerStatus, checking: checkingConnection, checkNow: checkConnection, reportNetworkError,
+} = useRegisterConnection(registerId, {
+  onRestored() {
+    loadCatalog()
+    loadDrawer()
+    snackbar.show({ message: 'Connection is back' })
+  },
+})
+
+// Reader status for the cart chip and the tender dialog: true online, false offline, null unknown
 const readerOnline = computed(() => {
-  const status = register.value?.hasCardReader ? register.value.readerStatus : null
+  const status = register.value?.hasCardReader ? readerStatus.value : null
   return status === 'online' ? true : status === 'offline' ? false : null
 })
 
@@ -625,6 +640,8 @@ function clearSale() {
 // ─── Checkout ───────────────────────────────────────────────────────────────
 
 function openTender({ method = null } = {}) {
+  if (connectionLost.value) return
+  checkConnection() // fresh reader status while the cashier picks a tender
   submitError.value  = null
   tenderMethod.value = method
   tendering.value    = true
@@ -667,6 +684,13 @@ async function completeSale(tender, { retried = false } = {}) {
         return completeSale(tender, { retried: true })
       }
       submitError.value = 'Discounts need a manager\'s approval. Remove them or approve again.'
+      return
+    }
+    if (isNetworkError(e)) {
+      // The request may have reached the server before the connection dropped, so the sale could be saved
+      reportNetworkError(e)
+      submitError.value = 'The connection dropped while saving the sale. When it\'s back, check Recent sales before ' +
+        'charging again: it may have gone through.'
       return
     }
     submitError.value = e.message
@@ -920,7 +944,10 @@ async function submitRefund({ items, restock, reason, totalCents, method }) {
     loadCatalog() // stock may have changed
     loadDrawer()
   } catch (e) {
-    refundError.value = e.message
+    reportNetworkError(e)
+    refundError.value = isNetworkError(e)
+      ? 'The connection dropped while saving the refund. When it\'s back, check the sale before trying again: it may have gone through.'
+      : e.message
     if (e.code === 'DRAWER_CLOSED') {
       refunding.value = null
       showRecentSales.value = false
@@ -939,7 +966,9 @@ async function loadDrawer() {
   try {
     drawer.value = await apiFetch(`/api/staff/register/drawer?registerId=${encodeURIComponent(registerId.value)}`)
   } catch (e) {
-    registerError.value = e.message
+    // The connection banner already says the server can't be reached
+    if (isNetworkError(e)) reportNetworkError(e)
+    else registerError.value = e.message
   }
 }
 
@@ -1057,8 +1086,9 @@ async function loadCatalog() {
     }
   } catch (e) {
     loadError.value = e.message
-    // A refresh after a sale that fails keeps the register usable; say so in the cart
-    if (catalog.value) registerError.value = `Couldn't refresh products: ${e.message}`
+    reportNetworkError(e)
+    // A refresh after a sale that fails keeps the register usable; say so in the cart (the banner covers no connection)
+    if (catalog.value && !isNetworkError(e)) registerError.value = `Couldn't refresh products: ${e.message}`
   } finally {
     loading.value = false
   }

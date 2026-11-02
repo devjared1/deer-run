@@ -79,6 +79,41 @@ model Booking {
   positionAt      DateTime? // latest of positionReports, kept here for the tee sheet
   finishedAt      DateTime?
   positionReports PositionReport[]
+  changes         BookingChange[]
+}
+
+enum BookingChangeStatus {
+  PENDING_PAYMENT // the golfer is paying the difference online; the booking hasn't changed yet
+  APPLYING // being applied right now (claimed so the page and the webhook can't both apply it)
+  APPLIED
+  FAILED // couldn't be applied (the time filled up or the booking changed); a difference already paid is refunded
+  CANCELLED // the golfer closed the payment without paying (its PaymentIntent is cancelled)
+}
+
+// A golfer moving their own online booking to another time and/or changing the number of players (My Account).
+// The price difference at today's rates is charged online (PaymentIntent, metadata.bookingChangeId) or refunded to
+// the card; on a pay-at-course booking it goes on the balance due at the register instead. src: bookings/_change.js
+model BookingChange {
+  id                    String              @id @default(cuid())
+  booking               Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  bookingId             String
+  userId                String? // User.id of the golfer who made the change
+  fromSlotId            String
+  toSlotId              String
+  fromPlayers           Int
+  toPlayers             Int
+  fromTotalCents        Int
+  toTotalCents          Int
+  chargeCents           Int                 @default(0) // paid online for the difference (stripePaymentIntentId)
+  refundCents           Int                 @default(0) // refunded to the golfer's card
+  balanceChangeCents    Int                 @default(0) // pay at course: added to (negative: taken off) the balance due
+  stripePaymentIntentId String?             @unique
+  status                BookingChangeStatus @default(PENDING_PAYMENT)
+  failureReason         String?
+  createdAt             DateTime            @default(now())
+  appliedAt             DateTime?
+
+  @@index([bookingId])
 }
 
 // Every position a starter or marshal reported. The daily pace job learns per-hole times from these

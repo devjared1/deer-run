@@ -4,6 +4,7 @@ import { Resend } from 'resend'
 import { completeCardCheckout } from '../staff/_cardCheckout.js'
 import { recordPayment } from '../admin/_houseAccounts.js'
 import { settlePaidBooking } from '../bookings/_holds.js'
+import { applyChange } from '../bookings/_change.js'
 import { formatCents } from '../../../src/lib/money.js'
 
 function json(data, status = 200) {
@@ -37,9 +38,29 @@ export async function onRequestPost({ request, env }) {
     return json({ received: true })
   }
 
+  const meta = event.data.object.metadata ?? {}
+
+  // A golfer paid the difference for changing their booking: apply the change if the page hasn't (applyChange claims
+  // it, so only one of them does). If it was cancelled first and paid anyway, the payment is refunded.
+  if (meta.bookingChangeId) {
+    if (event.type !== 'payment_intent.succeeded') return json({ received: true })
+    const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+    try {
+      const outcome = await applyChange(supabase, env, meta.bookingChangeId)
+      if (outcome.busy && outcome.change?.status === 'CANCELLED') {
+        const stripe = new Stripe(env.STRIPE_SECRET_KEY, { apiVersion: '2023-10-16' })
+        await stripe.refunds.create({ payment_intent: event.data.object.id }, { idempotencyKey: `booking-change-cancelled-${meta.bookingChangeId}` })
+          .catch(e => { if (e?.code !== 'charge_already_refunded') throw e })
+      }
+    } catch (e) {
+      // 500 makes Stripe retry the webhook later
+      return json({ error: e.message }, 500)
+    }
+    return json({ received: true })
+  }
+
   // House accounts: online payments from My Account, and autopay charges on statements. Recording is idempotent
   // per PaymentIntent, so it's fine that the page (and the statements job) may have recorded it already.
-  const meta = event.data.object.metadata ?? {}
   if (meta.houseAccountId && (meta.kind === 'account_payment' || meta.kind === 'autopay')) {
     const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
     const intent = event.data.object

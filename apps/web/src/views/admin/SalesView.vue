@@ -292,6 +292,7 @@
 
 <script setup>
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import { useRoute } from 'vue-router'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue'
 import { apiDownload, apiFetch } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -352,7 +353,9 @@ const PAYMENT_LABELS = { CASH: 'Cash', CARD_TERMINAL: 'Card', HOUSE_ACCOUNT: 'Ho
 const authStore = useAuthStore()
 const snackbar  = useSnackbar()
 
-const tab        = ref('sales')
+// ?tab=report|drawers opens that tab (the dashboard's "drawer left open" links here)
+const route      = useRoute()
+const tab        = ref(TABS.some(t => t.key === route.query.tab) ? route.query.tab : 'sales')
 const today      = localDate()
 const range      = ref({ from: today, to: today })
 const registerId = ref(null)

@@ -232,18 +232,20 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates, payAtCourseFeeCents }` (cents, from the rate products) |
 | POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, payAtCourse?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent (the total, or only the hold fee with `payAtCourse`) → `{ bookingId, clientSecret, totalCents, chargeCents, holdFeeCents, balanceDueCents }` |
 | GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
+| POST | `/api/bookings/:id/change` | Owner | Golfer changes time/players (`_change.js`): `{ teeTimeSlotId, players, preview? }` → quote, or applied / `payment_required` `{ clientSecret }` (difference charged first) / failed; then `{ action: 'confirm' \| 'cancel', changeId }`. Lower price refunded to the card; pay at course adjusts the balance |
 | GET | `/api/bookings/my` | Required | Signed-in user's bookings |
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
 | GET | `/api/events/:id` | Public | One event (404 if missing) |
 | POST | `/api/inquiries/membership`, `/api/inquiries/contact` | Public | Save inquiry/message + email `CONTACT_EMAIL_TO` |
-| POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email (`metadata.bookingId`), saves a register card sale (`metadata.cardCheckoutId`), or records a house account payment (`metadata.houseAccountId`); `payment_intent.payment_failed` → autopay failed |
+| POST | `/api/webhooks/stripe` | Stripe signature | `payment_intent.succeeded` → booking CONFIRMED + confirmation email (`metadata.bookingId`), saves a register card sale (`metadata.cardCheckoutId`), applies a golfer's paid booking change (`metadata.bookingChangeId`), or records a house account payment (`metadata.houseAccountId`); `payment_intent.payment_failed` → autopay failed |
 
 **Admin panel** (all `requireAdmin`, i.e. `User.role = ADMIN`)
 
 | Path | Methods | Description |
 |------|---------|-------------|
 | `/api/admin/dashboard` | GET | Dashboard stats (course-local today, same day last week, 7-day `series`) |
+| `/api/admin/attention` | GET | Dashboard "Needs attention": `{ items: [{ key, count, … }], errors }` (card charged but not saved, missed clock-outs, drawers open from an earlier day, tee time gaps, pending time off, statements past due, out of stock) |
 | `/api/admin/teetimes[/:id]` | GET, POST / PUT, DELETE | Tee time slots; POST `{ action: 'generate' \| 'close' \| 'members', from, to, … , dryRun? }` for bulk generate / delete open slots / members-only (returns counts) |
 | `/api/admin/bookings[/:id]` | GET / PUT | Bookings list (`from`, `to`, `search`, `status` comma list, paged), status changes |
 | `/api/admin/events[/:id]` | GET, POST / PUT, DELETE | Tournaments |
@@ -288,6 +290,7 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/pin` | GET, PUT | Register manager's own PIN |
 | `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch, paid-ins/outs, safe drops |
 | `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
+| `/api/staff/register/reader?registerId=` | GET | `{ readerStatus: 'online' \| 'offline' \| null }` from Stripe Terminal; the register polls it (30 s) as its connection check too |
 | `/api/staff/register/report?registerId=&date=` | GET | Z report for one register and day (register managers only) |
 | `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session + its paid-ins/outs (expected only for managers); `open` with a float / `close` with a count / `movement` (`PAID_IN\|PAID_OUT\|SAFE_DROP`, manager approval) |
 | `/api/staff/teesheet?date=` | GET | Tee sheet: slots, bookings, check-in, receipts |
@@ -376,6 +379,7 @@ the same PostgreSQL database — **Prisma is not used at runtime**.
 | Site | `User` | `id`, `email`, `name`, `role` (GUEST/MEMBER/ADMIN), `supabaseId`, `memberUntil?` (last day; null = no expiry), `membershipTier?`, `renewalReminderKey?` |
 | | `TeeTimeSlot` | `date` (Date), `startTime` ("HH:MM"), `maxPlayers`, `memberOnly` |
 | | `Booking` | `teeTimeSlotId`, `userId?`, `players`, `totalCents`, `status`, `source` (ONLINE/POS/PHONE), `checkedInAt?`, `stripePaymentId?` (PaymentIntent id), `stripeSessionId?` (legacy), `roundHoles`, `cartIncluded` (online booking paid the cart fee); pay at course: `holdFeeCents?` (null = paid in full online), `balanceDueCents` (collected at the register, then 0); on-course: `cartNumbers`, `ownCart`, `startHole`, `roundHoles`, `teedOffAt?`, `positionHole?`/`positionStage?` (`HoleStage`)/`positionAt?` (latest report), `finishedAt?` |
+| | `BookingChange` | A golfer's own change (My Account): from/to slot, players and total, `chargeCents` / `refundCents` / `balanceChangeCents`, `stripePaymentIntentId`, `status` (PENDING_PAYMENT → APPLYING → APPLIED / FAILED / CANCELLED) |
 | | `PositionReport` | Every on-course report: `bookingId`, `hole`, `stage`, `reportedAt`, `employeeId?` (history the hole times are learned from) |
 | | `CourseSettings` | Singleton (`id = "singleton"`): booking window, `holidayDates` (weekend rates), `payAtCourseFeeCents` (hold fee per online booking, 0 = off), tee time range (`pricePerPlayerCents` is unused since migration 11), pay period (`payPeriodDays`, `payPeriodAnchor`), POS (`salesTaxBps`, `registerPositions`, `managerPositions`, `tippingEnabled`/`tipPercentages`/`tipPreTax`), house accounts (`lateFeeCents`, 0 = off), on-course (`roundMinutes`, `coursePositions`, learned `holeSeconds`/`holeTimesUpdatedAt`/`holeTimesRounds`) |
 | | `TournamentEvent`, `Inquiry`, `ContactMessage` | Events and form submissions |
@@ -526,7 +530,7 @@ path, e.g. `../../../src/lib/timeclock.js`), so they must not use `@/` imports o
 | `registerHandoff.js` | Frontend only: passes a tee time from the Tee Sheet page to the register (sessionStorage) |
 | `pricing.js` | Register line/tax/total math incl. the member Pro Shop discount (`memberDiscountBps`; imports `../data/membershipTiers.js`), shared so the server recomputes exactly what the register showed |
 | `money.js` | Cents ↔ dollars helpers |
-| `api.js` | `apiFetch()` (see above), `apiDownload(url, fallbackName)` (authenticated file downloads: CSV, PDF) |
+| `api.js` | `apiFetch()` (see above), `apiDownload(url, fallbackName)` (authenticated file downloads: CSV, PDF); both throw `network: true` with a readable message when the server can't be reached (`isNetworkError(e)`) |
 | `printReceipt.js`, `print.js` | `printReceipt()` (80 mm `@page`) and `printLandscape()`; each adds its `@page` rule only while printing |
 | `supabase.js` | Anon client singleton (frontend only) |
 

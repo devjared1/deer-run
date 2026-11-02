@@ -15,6 +15,7 @@ wrapped in a transaction and says how to record it with `prisma migrate resolve`
 | `10_on_course_tracking.sql` | On-course tracking: `Booking` cart numbers, start hole, 9/18 holes, tee-off, last position (`HoleStage`) and finish; `PositionReport` (every report); `CourseSettings.roundMinutes`, `coursePositions`, learned `holeSeconds` |
 | `12_pay_at_course.sql` | Pay at course: `CourseSettings.payAtCourseFeeCents` (hold fee per online booking, default $10), `Booking.holdFeeCents` and `balanceDueCents` |
 | `13_timeclock_kiosk.sql` | Time clock kiosk: `Employee.clockPinHash` / `clockPinFailedAttempts` / `clockPinLockedUntil`, `ClockKiosk` (device tokens, hashed) |
+| `14_booking_changes.sql` | Golfers change their own bookings: `BookingChange` (+ `BookingChangeStatus`): price difference charged, refunded or put on the balance due |
 
 When changing `create_sale()` or `refund_sale()`, start from the latest copy in this folder (currently `8_…`) and
 `CREATE OR REPLACE` the whole function.

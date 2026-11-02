@@ -137,10 +137,20 @@
           :disabled="!lines.length"
           @click="emit('clear')"
         />
-        <AppButton variant="gold" size="xl" class="flex-1 min-w-0" :disabled="!lines.length || needsCustomer" @click="emit('charge')">
+        <AppButton
+          variant="gold"
+          size="xl"
+          class="flex-1 min-w-0"
+          :disabled="!lines.length || needsCustomer || offline"
+          :aria-describedby="offline ? 'register-offline-note' : undefined"
+          @click="emit('charge')"
+        >
           Charge {{ formatCents(totals.totalCents) }}
         </AppButton>
       </div>
+      <p v-if="offline" id="register-offline-note" class="mt-2 text-body-s text-on-surface-variant">
+        Charge is off until the connection is back.
+      </p>
     </div>
   </aside>
 </template>
@@ -151,7 +161,8 @@
 // qty ± / discount / remove), totals and Charge. The parent owns the sale; this only shows it and emits.
 // Props: registerName, lines (priced lines from the parent), totals (saleTotals()), memberDiscountTotal, salesTaxBps,
 // customer, isMember, drawer ({ session, last } | null), hasCardReader, readerOnline (true | false | null = unknown),
-// isManager (End of day), highlightKey (line to flash and scroll to), needsCustomer, error.
+// isManager (End of day), highlightKey (line to flash and scroll to), needsCustomer, error, offline (connection lost:
+// Charge is disabled).
 // Emits: recent-sales, no-sale, account-payment, end-of-day, change-register, open-drawer, close-drawer,
 // cash-movement(type), attach-customer, remove-customer, change-qty(line, delta), discount(line), remove-line(line),
 // clear, charge, dismiss-error.
@@ -206,6 +217,7 @@ const props = defineProps({
   highlightKey:        { type: Number, default: null },
   needsCustomer:       { type: Boolean, default: false },
   error:               { type: String, default: null },
+  offline:             { type: Boolean, default: false },
 })
 const emit = defineEmits([
   'recent-sales', 'no-sale', 'account-payment', 'end-of-day', 'change-register', 'open-drawer', 'close-drawer',

@@ -12,13 +12,31 @@ async function failure(res) {
   return Object.assign(new Error(message), { status: res.status, code: data.code })
 }
 
+export const NETWORK_ERROR_MESSAGE = 'Can\'t reach the server. Check the internet connection and try again.'
+
+// fetch() itself rejects (TypeError) when the request never got an answer: offline, DNS, a dropped connection.
+// Rethrown as an Error with `network: true` and a readable message instead of "Failed to fetch".
+async function send(url, init) {
+  try {
+    return await fetch(url, init)
+  } catch (e) {
+    throw Object.assign(new Error(NETWORK_ERROR_MESSAGE), { network: true, cause: e })
+  }
+}
+
+/** True for an error from apiFetch / apiDownload where the server never answered. */
+export function isNetworkError(e) {
+  return !!e?.network
+}
+
 /**
  * fetch() for our own /api endpoints: sends the bearer token and JSON body, and throws an
  * Error with the API's `error` message on a non-2xx response (plus `status` and the API's
- * optional `code`, e.g. APPROVAL_REQUIRED).
+ * optional `code`, e.g. APPROVAL_REQUIRED). When the server can't be reached the Error has
+ * `network: true` (see isNetworkError) and no `status`.
  */
 export async function apiFetch(url, { method = 'GET', body } = {}) {
-  const res = await fetch(url, {
+  const res = await send(url, {
     method,
     headers: authHeaders(),
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -33,7 +51,7 @@ export async function apiFetch(url, { method = 'GET', body } = {}) {
  * response.
  */
 export async function apiDownload(url, fallbackName = 'download') {
-  const res = await fetch(url, { headers: authHeaders(false) })
+  const res = await send(url, { headers: authHeaders(false) })
   if (!res.ok) throw await failure(res)
   const disposition = res.headers.get('Content-Disposition') || ''
   const name = decodeURIComponent(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition)?.[1] || fallbackName)
