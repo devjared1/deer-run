@@ -69,10 +69,10 @@
             </StatusChip>
           </RouterLink>
           <template v-if="authStore.canUseRegister">
-            <AppButton variant="text" :icon="IconSwitchAccount" class="hidden sm:inline-flex" @click="signOut">
+            <AppButton variant="text" :icon="IconSwitchAccount" class="hidden sm:inline-flex" @click="lockRegister">
               Switch cashier
             </AppButton>
-            <IconButton :icon="IconSwitchAccount" label="Switch cashier" class="sm:hidden" @click="signOut" />
+            <IconButton :icon="IconSwitchAccount" label="Switch cashier" class="sm:hidden" @click="lockRegister" />
           </template>
         </template>
       </TopAppBar>
@@ -123,12 +123,23 @@
         <DrawerAccount />
       </template>
     </NavDrawer>
+
+    <!-- The register PC's lock screen (Switch cashier, or idle): the next cashier taps their name + PIN -->
+    <Teleport to="body" :disabled="contained">
+      <RegisterLockScreen
+        v-if="showLock"
+        :contained="contained"
+        @unlocked="onUnlocked"
+        @password="signOut"
+      />
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 // The staff portal shell: bottom navigation bar on phones (3–5 destinations by role + More), navigation rail on
-// tablets, standard drawer on desktop; a top app bar with the page title, a clock-status chip and Switch cashier.
+// tablets, standard drawer on desktop; a top app bar with the page title, a clock-status chip and Switch cashier
+// (locks the register PC: RegisterLockScreen; Sign out in the menus signs out fully).
 //
 // Route meta: `title` (top bar title; falls back to `titles` below), `registerMode` (full-bleed content, no padding,
 // the rail instead of the drawer at lg+, the bottom bar kept on phones).
@@ -144,6 +155,9 @@ import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } 
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { apiFetch } from '@/lib/api'
+import { useSnackbar } from '@/composables/useSnackbar'
+import { REGISTER_IDLE_LOCK_MINUTES, useRegisterLock } from '@/composables/useRegisterLock'
+import RegisterLockScreen from '@/components/pos/register/RegisterLockScreen.vue'
 import { workedMinutes, toUtcIso } from '@/lib/timeclock'
 import { positionLabel } from '@/data/employeePositions'
 import { groupItems, isActiveRoute } from '@/components/ui/navItems.js'
@@ -183,6 +197,7 @@ const emit = defineEmits(['update:previewPath'])
 const route     = useRoute()
 const router    = useRouter()
 const authStore = useAuthStore()
+const snackbar  = useSnackbar()
 const menuOpen  = ref(false)
 
 // ── Current page (the route, or the gallery's preview path) ──
@@ -197,9 +212,35 @@ const registerMode = computed(() => props.registerMode ?? current.value.meta?.re
 async function signOut() {
   if (previewAt.value) return
   const back = route.fullPath
+  unlock()
   await authStore.logout()
   router.push({ path: '/login', query: { redirect: back } })
 }
+
+// ── Register lock (Switch cashier): the next cashier taps their name and enters their time clock PIN ──
+const { locked, lock, unlock } = useRegisterLock()
+const showLock = computed(() => locked.value && authStore.canUseRegister)
+
+function lockRegister() {
+  menuOpen.value = false
+  lock()
+}
+
+function onUnlocked(name) {
+  unlock()
+  loadClock()
+  snackbar.show({ message: `${name} is signed in at the register` })
+}
+
+// The register page locks itself after REGISTER_IDLE_LOCK_MINUTES without a tap or key press
+let idleTimer = null
+function resetIdle() {
+  clearTimeout(idleTimer)
+  if (!registerMode.value || !authStore.canUseRegister || locked.value || previewAt.value) return
+  idleTimer = setTimeout(lock, REGISTER_IDLE_LOCK_MINUTES * 60_000)
+}
+const IDLE_EVENTS = ['pointerdown', 'keydown']
+watch([registerMode, locked], resetIdle)
 
 // ── Destinations ──
 // label: drawer / More menu; short: rail and bottom bar (labels sit under the icon there)
@@ -248,7 +289,7 @@ const drawerSections = computed(() => [
 ])
 
 const footerItems = computed(() => [
-  { label: authStore.canUseRegister ? 'Switch cashier / Sign out' : 'Sign out', icon: IconLogout, action: 'sign-out' },
+  { label: 'Sign out', icon: IconLogout, action: 'sign-out' },
 ])
 
 // Rail: every page but Manager PIN (≤ 7); the menu button has the rest
@@ -370,10 +411,14 @@ onMounted(() => {
   loadClock()
   ticker = setInterval(() => { now.value = Date.now() }, 30_000)
   document.addEventListener('visibilitychange', onVisibility)
+  IDLE_EVENTS.forEach(e => document.addEventListener(e, resetIdle, { passive: true }))
+  resetIdle()
 })
 
 onBeforeUnmount(() => {
   clearInterval(ticker)
+  clearTimeout(idleTimer)
   document.removeEventListener('visibilitychange', onVisibility)
+  IDLE_EVENTS.forEach(e => document.removeEventListener(e, resetIdle))
 })
 </script>

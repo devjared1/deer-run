@@ -270,6 +270,7 @@ import DiscountDialog from '@/components/pos/register/DiscountDialog.vue'
 import CustomItemDialog from '@/components/pos/register/CustomItemDialog.vue'
 import { useScanner } from '@/components/pos/register/useScanner'
 import { useRegisterConnection } from '@/components/pos/register/useRegisterConnection'
+import { useRegisterLock } from '@/composables/useRegisterLock'
 import ConnectionBanner from '@/components/pos/register/ConnectionBanner.vue'
 import { beepAdded, beepError } from '@/components/pos/register/registerSounds'
 import SaleReceipt from '@/components/pos/SaleReceipt.vue'
@@ -533,7 +534,9 @@ const dialogOpen = computed(() => !!(pickingProduct.value || showCustomerPicker.
   tendering.value || cardPayment.value || showRecentSales.value || refunding.value || drawerForm.value || cashMovement.value ||
   approvalRequest.value || showAccountPayment.value || (result.value && result.value.kind !== 'sale')))
 
-useScanner(onScan, { canScan: () => !!register.value && !dialogOpen.value })
+// No scanning into the cart while the register is locked (the lock screen is up)
+const { locked: registerLocked } = useRegisterLock()
+useScanner(onScan, { canScan: () => !!register.value && !dialogOpen.value && !registerLocked.value })
 
 function changeQty(line, delta) {
   const target = cart.value.find(l => l.key === line.key)

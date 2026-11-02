@@ -290,6 +290,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/staff/pin` | GET, PUT | Register manager's own PIN |
 | `/api/staff/approvals` | POST | Manager approval for discounts, No Sale, voids, refunds, register switch, paid-ins/outs, safe drops |
 | `/api/staff/register/catalog`, `/customers?search=`, `/managers` | GET | Register screen data |
+| `/api/staff/register/cashiers` | GET | Lock screen: who can take over this register (status, `hasPin`, `pinLocked`, `needsPassword` for admins) |
+| `/api/staff/register/switch` | POST | `{ employeeId, pin }` (time clock PIN): `{ same: true }` (unlock) or `{ tokenHash }` that signs that cashier in on this PC (`authStore.signInWithTokenHash`) |
 | `/api/staff/register/reader?registerId=` | GET | `{ readerStatus: 'online' \| 'offline' \| null }` from Stripe Terminal; the register polls it (30 s) as its connection check too |
 | `/api/staff/register/report?registerId=&date=` | GET | Z report for one register and day (register managers only) |
 | `/api/staff/register/drawer?registerId=` | GET, POST | Drawer session + its paid-ins/outs (expected only for managers); `open` with a float / `close` with a count / `movement` (`PAID_IN\|PAID_OUT\|SAFE_DROP`, manager approval) |
@@ -476,7 +478,8 @@ below md that sets `--bottom-bar-height` / `--snackbar-offset`) and `AppFooter`;
 map links, social) live in `src/data/site.js`. The admin shell is a top app bar + modal drawer (phones) / rail (md) /
 drawer (lg); pages put their primary action in the bar with `<Teleport to="#admin-page-actions" defer>`. The staff
 shell is a bottom nav bar by role (phones) / rail (md) / drawer (lg) with a clock-status chip and **Switch cashier**
-(signs out to `/login?redirect=<page>`). Both portals have gallery previews at `/dev/ui`.
+(locks the register PC: `RegisterLockScreen`, name + time clock PIN; also after 10 idle minutes on the register; Sign
+out in the menus signs out to `/login?redirect=<page>`). Both portals have gallery previews at `/dev/ui`.
 
 ---
 

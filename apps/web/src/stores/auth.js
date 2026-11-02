@@ -144,6 +144,16 @@ export const useAuthStore = defineStore('auth', () => {
     await fetchProfile()
   }
 
+  // Sign in with a one-time token from the server (the register's lock screen: POST /api/staff/register/switch checks
+  // the cashier's PIN and returns it). Replaces whoever was signed in on this device.
+  async function signInWithTokenHash(tokenHash) {
+    const supabase = await client()
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'magiclink' })
+    if (error) throw error
+    session.value = data.session
+    await fetchProfile()
+  }
+
   async function logout() {
     const supabase = await client()
     await supabase.auth.signOut()
@@ -157,6 +167,6 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     session, profile, isLoggedIn, isMember, isAdmin, employee, isStaff, canUseRegister, isRegisterManager, canTrackCourse, maxBookDays,
-    init, fetchProfile, login, signUp, requestPasswordReset, updatePassword, logout, getToken,
+    init, fetchProfile, login, signUp, requestPasswordReset, updatePassword, signInWithTokenHash, logout, getToken,
   }
 })

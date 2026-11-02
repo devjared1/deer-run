@@ -821,8 +821,15 @@ ordered by value; Phases 1–3 are the first picks.
       register and re-checked when the payment screen opens, so the cart chip and TenderModal's `readerOnline` light up
       (moved from Feature 4 Phase 6; its own endpoint rather than the catalog, so the catalog stays fast and the status
       stays current). Gallery: `/dev/ui?section=register&connection=lost`
-- [ ] PIN lock / quick cashier switch on the register: tap your name + PIN instead of a full sign-out (reuse the
+- [x] PIN lock / quick cashier switch on the register: tap your name + PIN instead of a full sign-out (reuse the
       `_pin.js` checks and lockout from the time clock iPad)
+      (**Switch cashier** now locks the register PC, and the register page locks itself after 10 minutes untouched
+      (`REGISTER_IDLE_LOCK_MINUTES`); the lock survives a reload (`composables/useRegisterLock.js`). The lock screen
+      (`RegisterLockScreen.vue`, reusing the kiosk's name tiles and PIN step) takes the **time clock PIN**: the same
+      cashier just unlocks; someone else is signed in on that PC with a one-time token
+      (`POST /api/staff/register/switch` → Supabase `generateLink` → `verifyOtp` in the browser). Admin logins can't be
+      opened with a PIN and use "Sign in with a password" (the menus' Sign out still signs out fully). The cart stays
+      through a switch. No scanning while locked. Gallery: `/dev/ui?section=register&locked=1`)
 
 ### Phase 2: Manager tools
 - [x] Dashboard **Needs attention** list: pending time off, forgot to clock out, drawers left open, overdue

@@ -10,8 +10,9 @@
       RegisterView in the staff shell (register mode) with fake /api/staff/* answers. The box is one viewport tall, so
       the cart column fits as it does on the register PC. Type a code (e.g. <code>PV1-12</code>, <code>0001</code>) and
       press Enter anywhere outside a field to try the scanner buffer. "Lost" makes every /api/staff/* request fail like a
-      dropped connection (switch back to see it recover within 5 s). URL:
-      <code>&amp;drawer=closed&amp;reader=offline&amp;role=manager&amp;connection=lost</code>
+      dropped connection (switch back to see it recover within 5 s). <strong>Switch cashier</strong> in the top bar shows
+      the lock screen (any PIN unlocks). URL:
+      <code>&amp;drawer=closed&amp;reader=offline&amp;role=manager&amp;connection=lost&amp;locked=1</code>
       (<code>&amp;full=1</code> fills the window).
     </p>
 
@@ -54,6 +55,7 @@ export default {
 <script setup>
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
+import { useRegisterLock } from '@/composables/useRegisterLock'
 import StaffLayout from '@/views/staff/StaffLayout.vue'
 import RegisterView from '@/views/staff/RegisterView.vue'
 import RegisterResultDialog from '@/components/pos/register/RegisterResultDialog.vue'
@@ -175,6 +177,20 @@ function route(method, path, url, body) {
     const q = (url.searchParams.get('search') || '').toLowerCase()
     return customers.filter(c => `${c.name} ${c.email}`.toLowerCase().includes(q))
   }
+  if (path === '/api/staff/register/cashiers') {
+    const e = (id, firstName, lastName, position, extra = {}) => ({ id, firstName, lastName, position, status: 'off', hasPin: true, pinLocked: false, needsPassword: false, ...extra })
+    return {
+      currentEmployeeId: 'preview-employee',
+      employees: [
+        e('preview-employee', 'Shelby', 'Tate', 'PRO_SHOP_ATTENDANT', { status: 'on' }),
+        e('e1', 'Gina', 'Manager', 'GENERAL_MANAGER', { status: 'on', needsPassword: true }),
+        e('e2', 'Marcus', 'Lee', 'ASSISTANT_GOLF_PROFESSIONAL', { status: 'break' }),
+        e('e3', 'Ava', 'Brooks', 'PRO_SHOP_ATTENDANT', { hasPin: false }),
+      ],
+    }
+  }
+  // Any PIN works for Shelby (unlock); the others would sign in on a real register, so the preview just unlocks too
+  if (path === '/api/staff/register/switch') return { same: true }
   if (path === '/api/staff/register/managers') return [{ id: 'e1', firstName: 'Gina', lastName: 'Manager' }]
   if (path === '/api/staff/approvals') return { approvalId: 'ap1', approverName: 'Gina Manager' }
   if (path === '/api/staff/sales' && method === 'GET') {
@@ -195,6 +211,7 @@ const shownResult = ref(null)
 
 // Dev-only: a fake signed-in register employee, the preview register and the stubbed API; all restored on unmount
 const auth = useAuthStore()
+const registerLock = useRegisterLock()
 const savedProfile = auth.profile
 const REGISTER_KEY = 'deerrun.registerId'
 let savedRegister = null
@@ -222,12 +239,14 @@ onMounted(() => {
     return new Response(JSON.stringify(result ?? { error: 'Not in the preview' }), { status: result ? 200 : 404, headers: { 'Content-Type': 'application/json' } })
   }
   setProfile()
+  if (params.get('locked') === '1') registerLock.lock()
   ready.value = true
 })
 
 watch(role, setProfile)
 
 onBeforeUnmount(() => {
+  registerLock.unlock() // the lock is saved in localStorage: don't leave the real portal locked
   window.fetch = realFetch
   auth.profile = savedProfile
   try {
