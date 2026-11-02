@@ -9,19 +9,40 @@
 
   <header class="sticky top-0 z-app-bar bg-primary text-on-primary shadow-elevation-1 print:hidden">
     <div class="max-w-7xl mx-auto h-16 md:h-[72px] pl-4 pr-2 md:px-5 flex items-center gap-2">
-      <RouterLink to="/" class="flex-shrink-0 inline-flex items-center rounded-shape-sm" aria-label="Deer Run Golf Course, home">
-        <BrandLogo :size="40" eager alt="" class="md:hidden" />
-        <BrandLogo :size="48" alt="" class="hidden md:inline-block" />
+      <RouterLink
+        to="/"
+        class="flex-shrink-0 inline-flex items-center rounded-shape-sm"
+        aria-label="Deer Run Golf Course, home"
+      >
+        <BrandLogo
+          :size="40"
+          variant="mark"
+          eager
+          alt=""
+          class="md:hidden"
+        />
+        <BrandLogo
+          :size="48"
+          variant="mark"
+          alt=""
+          class="hidden md:inline-block"
+        />
       </RouterLink>
 
       <!-- Desktop links (lg+) -->
-      <nav aria-label="Main" class="hidden lg:block ml-4 xl:ml-8">
+      <nav
+        aria-label="Main"
+        class="hidden lg:block ml-4 xl:ml-8"
+      >
         <ul class="flex items-center gap-1">
-          <li v-for="p in pages" :key="p.to">
+          <li
+            v-for="p in pages"
+            :key="p.to"
+          >
             <RouterLink
               :to="p.to"
               :aria-current="isActive(p) ? 'page' : undefined"
-              class="group relative inline-flex items-center h-12 px-3 xl:px-4 rounded-full text-label-l text-on-primary no-underline state-layer"
+              class="group relative inline-flex items-center h-12 px-3 xl:px-4 rounded-full text-on-primary no-underline state-layer"
             >
               {{ p.label }}
               <!-- MD3 active indicator: a rounded bar under the label -->
@@ -41,23 +62,47 @@
 
       <!-- Account links: icons at lg, labeled from xl; below lg they're in the drawer -->
       <div class="hidden lg:flex items-center gap-1">
-        <template v-for="a in accountLinks" :key="a.to">
-          <IconButton :to="a.to" :icon="a.icon" :label="a.label" variant="inherit" tooltip class="xl:hidden" />
+        <template
+          v-for="a in accountLinks"
+          :key="a.to"
+        >
+          <IconButton
+            :to="a.to"
+            :icon="a.icon"
+            :label="a.label"
+            variant="inherit"
+            tooltip
+            class="xl:hidden"
+          />
           <RouterLink
             :to="a.to"
             :aria-current="route.path === a.to ? 'page' : undefined"
             class="hidden xl:inline-flex items-center gap-2 h-10 px-3 rounded-full text-label-l text-on-primary no-underline state-layer"
           >
-            <component :is="a.icon" class="w-5 h-5" aria-hidden="true" />
+            <component
+              :is="a.icon"
+              class="w-5 h-5"
+              aria-hidden="true"
+            />
             {{ a.label }}
           </RouterLink>
         </template>
       </div>
 
-      <AppButton variant="gold" to="/book" :icon="IconEventAvailable" class="hidden md:inline-flex ml-2">
+      <AppButton
+        variant="gold"
+        to="/book"
+        :icon="IconEventAvailable"
+        class="hidden md:inline-flex ml-2"
+      >
         Book a tee time
       </AppButton>
-      <AppButton variant="gold" to="/book" class="md:hidden !px-4" aria-label="Book a tee time">
+      <AppButton
+        variant="gold"
+        to="/book"
+        class="md:hidden !px-4"
+        aria-label="Book a tee time"
+      >
         Book
       </AppButton>
 
@@ -87,10 +132,21 @@
     class="!w-full !max-w-none !rounded-none"
   >
     <template #header>
-      <BrandLogo :size="48" alt="Deer Run Golf Course" />
+      <BrandLogo
+        :size="48"
+        alt="Deer Run Golf Course"
+      />
     </template>
     <template #footer="{ close }">
-      <AppButton variant="gold" size="lg" block to="/book" :icon="IconEventAvailable" class="mb-2" @click="close">
+      <AppButton
+        variant="gold"
+        size="lg"
+        block
+        to="/book"
+        :icon="IconEventAvailable"
+        class="mb-2"
+        @click="close"
+      >
         Book a tee time
       </AppButton>
     </template>
@@ -104,7 +160,13 @@
     aria-label="Quick booking"
     class="md:hidden fixed inset-x-0 bottom-0 z-app-bar bg-surface-container-low shadow-elevation-2 px-4 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))] print:hidden"
   >
-    <AppButton variant="gold" size="lg" block to="/book" :icon="IconEventAvailable">
+    <AppButton
+      variant="gold"
+      size="lg"
+      block
+      to="/book"
+      :icon="IconEventAvailable"
+    >
       Book a tee time
     </AppButton>
   </nav>
@@ -127,10 +189,10 @@ import IconEventAvailable from '~icons/material-symbols/event-available-rounded'
 import IconGolf from '~icons/material-symbols/golf-course-rounded'
 import IconHome from '~icons/material-symbols/home-rounded'
 import IconLogin from '~icons/material-symbols/login-rounded'
-import IconMembership from '~icons/material-symbols/workspace-premium-rounded'
 import IconMenu from '~icons/material-symbols/menu-rounded'
 import IconPayments from '~icons/material-symbols/payments-rounded'
 import IconTrophy from '~icons/material-symbols/trophy-rounded'
+import IconMembership from '~icons/material-symbols/workspace-premium-rounded'
 
 const route = useRoute()
 const auth  = useAuthStore()

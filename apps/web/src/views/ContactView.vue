@@ -186,8 +186,8 @@
             </li>
           </ul>
 
-          <!-- Map: only with a Maps Embed API key; otherwise the directions buttons above do the job -->
-          <div v-if="mapEmbedUrl" class="rounded-shape-md overflow-hidden border border-outline-variant aspect-[4/3]">
+          <!-- Map: Maps Embed API with a key, Google's keyless embed without one (src/lib/maps.js) -->
+          <div class="rounded-shape-md overflow-hidden border border-outline-variant aspect-[4/3]">
             <iframe
               :title="`Map: ${site.courseName}`"
               class="w-full h-full border-0"
@@ -217,6 +217,7 @@ import SelectField from '@/components/ui/SelectField.vue'
 import TextArea    from '@/components/ui/TextArea.vue'
 import TextField   from '@/components/ui/TextField.vue'
 import * as site   from '@/data/site.js'
+import { mapEmbedUrl } from '@/lib/maps'
 import IconCall from '~icons/material-symbols/call-rounded'
 import IconCheckCircle from '~icons/material-symbols/check-circle-rounded'
 import IconDirections from '~icons/material-symbols/directions-rounded'
@@ -272,12 +273,6 @@ const errors = computed(() => ({
 
 function touch(field) { touched[field] = true }
 function shown(field) { return (touched[field] || submitted.value) ? errors.value[field] : '' }
-
-// Only embed the map with a real key (the .env.example placeholder starts with "your")
-const mapsKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY
-const mapEmbedUrl = mapsKey && !/^your/i.test(mapsKey)
-  ? `https://www.google.com/maps/embed/v1/place?key=${encodeURIComponent(mapsKey)}&q=${encodeURIComponent(site.mapsQuery)}`
-  : ''
 
 async function submit() {
   submitted.value = true

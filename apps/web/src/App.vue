@@ -11,6 +11,7 @@
       <RouterView />
     </main>
     <AppFooter v-if="!isPortal && routeReady" />
+    <BackToTop v-if="!isPortal" />
     <!-- One host each for useConfirm() and useSnackbar(), shared by every layout -->
     <ConfirmDialog />
     <AppSnackbar />
@@ -20,6 +21,7 @@
 <script setup>
 import AppFooter from '@/components/layout/AppFooter.vue'
 import AppNav from '@/components/layout/AppNav.vue'
+import BackToTop from '@/components/layout/BackToTop.vue'
 import AppSnackbar from '@/components/ui/AppSnackbar.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import { headTags, pageSeo } from '@/lib/seo'

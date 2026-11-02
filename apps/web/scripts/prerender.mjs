@@ -30,8 +30,9 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 // The hero photo each page renders first (its LCP element: PageHero `photo`, HomeHero on the home page), preloaded
 // from the HTML so the browser fetches it while the app's JavaScript loads instead of after the page renders.
 // Keep in step with the views. The AVIF source is the one every current browser picks. HERO_SIZES must match the
-// <picture>'s sizes (PageHero.vue, HomeHero.vue), or the browser downloads a second file.
+// <picture>'s sizes (PageHero.vue, HomeHero.vue, CourseHero.vue), or the browser downloads a second file.
 const HERO_SIZES = { home: '100vw', page: '(max-width: 767px) 50vw, 100vw' }
+const FULL_BLEED_HEROES = new Set(['/', '/scorecard']) // HomeHero, CourseHero: sizes="100vw"
 const HERO_PHOTOS = {
   '/': 'course-hero',
   '/scorecard': 'course-hero',
@@ -42,11 +43,12 @@ const HERO_PHOTOS = {
   '/book': 'course-5-wide',
 }
 
-// The Playfair Display faces the page's first screen uses (vite.config.js preloads Lato 400/700 on every page),
-// preloaded so the headline doesn't wait for them (font-display: swap still hides text for up to 100 ms) or reflow
-// when they arrive after the first paint
+// The Playfair Display (and on the home page Great Vibes) faces the page's first screen uses (vite.config.js preloads
+// Lato 400/700 on every page), preloaded so the headline doesn't wait for them (font-display: swap still hides text
+// for up to 100 ms) or reflow when they arrive after the first paint
 function pageFonts(path) {
-  if (path === '/') return ['playfair-display-latin-400-normal', 'playfair-display-latin-400-italic'] // HomeHero <h1>
+  // HomeHero: the "Deer Run" script wordmark and the <h1>
+  if (path === '/') return ['great-vibes-latin-400-normal', 'playfair-display-latin-400-normal', 'playfair-display-latin-400-italic']
   if (HERO_PHOTOS[path]) return ['playfair-display-latin-700-normal', 'playfair-display-latin-700-italic'] // PageHero <h1>: bold, <em>
   return ['playfair-display-latin-400-normal'] // headline-size titles
 }
@@ -145,7 +147,7 @@ function preloadHtml(page, views, assets) {
   const hero = photos[HERO_PHOTOS[page.path]]
   if (hero) {
     const srcset = hero.widths.map(w => `/images/photos/${HERO_PHOTOS[page.path]}-${w}.avif ${w}w`).join(', ')
-    const imagesizes = page.path === '/' ? HERO_SIZES.home : HERO_SIZES.page
+    const imagesizes = FULL_BLEED_HEROES.has(page.path) ? HERO_SIZES.home : HERO_SIZES.page
     lines.push(`<link${attrs({ rel: 'preload', as: 'image', type: 'image/avif', imagesrcset: srcset, imagesizes, fetchpriority: 'high' })}>`)
   }
   for (const face of pageFonts(page.path)) {

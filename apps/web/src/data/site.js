@@ -33,7 +33,7 @@ export const hours = [
   'Closed Christmas Eve & Christmas Day',
 ]
 
-// Search text for map links and the optional embedded map
+// Search text for map links and the embedded map (src/lib/maps.js)
 export const mapsQuery = `${courseName}, ${addressLines.join(', ')}`
 const addressQuery = encodeURIComponent(mapsQuery)
 export const mapsDirectionsUrl = `https://www.google.com/maps/dir/?api=1&destination=${addressQuery}`

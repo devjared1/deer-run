@@ -54,6 +54,8 @@ export default {
       fontFamily: {
         display: ['"Playfair Display"', 'Georgia', 'serif'],
         body:    ['Lato', 'system-ui', 'sans-serif'],
+        // Script accent for the home hero's "Deer Run" wordmark (one weight: 400)
+        cursive: ['"Great Vibes"', '"Brush Script MT"', 'cursive'],
       },
       fontSize: {
         'display-l':  type(57, 64, -0.25),

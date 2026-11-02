@@ -1,6 +1,6 @@
 <template>
   <form
-    class="rounded-shape-lg bg-surface-container-lowest text-on-surface shadow-elevation-3 p-4 sm:p-6"
+    class="rounded-shape-lg bg-parch text-on-surface shadow-elevation-3 p-4 sm:p-6"
     aria-labelledby="tee-search-title"
     @submit.prevent="search"
   >

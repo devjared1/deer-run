@@ -27,6 +27,9 @@ for file in sorted(os.listdir(SRC)):
     name, ext = os.path.splitext(file)
     if ext.lower() not in ('.jpg', '.jpeg', '.png'):
         continue
+    # The course layout map (transparent) isn't a photo: public/images/course is rendered from HoleLayout.svg
+    if name == 'HoleLayout':
+        continue
     img = ImageOps.exif_transpose(Image.open(os.path.join(SRC, file))).convert('RGB')
     widths = sorted({w for w in WIDTHS if w < img.width} | {min(img.width, WIDTHS[-1])})
     for w in widths:

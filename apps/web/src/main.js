@@ -3,7 +3,8 @@ import { createPinia } from 'pinia'
 import { createHead } from '@unhead/vue/client'
 import App from './App.vue'
 import router from './router'
-// Self-hosted fonts (latin subset, font-display: swap): Playfair Display for display/headlines, Lato for the rest
+// Self-hosted fonts (latin subset, font-display: swap): Playfair Display for display/headlines, Lato for the rest,
+// Great Vibes for the home hero's script wordmark (font-cursive)
 import '@fontsource/playfair-display/latin-400.css'
 import '@fontsource/playfair-display/latin-700.css'
 import '@fontsource/playfair-display/latin-900.css'
@@ -12,6 +13,7 @@ import '@fontsource/playfair-display/latin-700-italic.css'
 import '@fontsource/lato/latin-400.css'
 import '@fontsource/lato/latin-700.css'
 import '@fontsource/lato/latin-900.css'
+import '@fontsource/great-vibes/latin-400.css'
 import './assets/tokens.css'
 import './assets/main.css'
 import VueDOMPurifyHTML from 'vue-dompurify-html';
