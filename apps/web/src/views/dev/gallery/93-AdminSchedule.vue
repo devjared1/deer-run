@@ -98,12 +98,12 @@ function show(p) {
 // ─── Fake data ──────────────────────────────────────────────────────────────
 const today = localDate()
 const EMPLOYEES = [
-  { id: 'e1', firstName: 'Dana', lastName: 'Whitfield', position: 'GENERAL_MANAGER', active: true },
-  { id: 'e2', firstName: 'Marcus', lastName: 'Bell', position: 'HEAD_GOLF_PROFESSIONAL', active: true },
-  { id: 'e3', firstName: 'Kayla', lastName: 'Ortiz', position: 'PRO_SHOP_ATTENDANT', active: true },
-  { id: 'e4', firstName: 'Tom', lastName: 'Rigsby', position: 'GROUNDS_CREW', active: true },
-  { id: 'e5', firstName: 'Lena', lastName: 'Hart', position: 'SERVER', active: true },
-  { id: 'e6', firstName: 'Ray', lastName: 'Cobb', position: 'STARTER', active: false },
+  { id: 'e1', firstName: 'Dana', lastName: 'Whitfield', position: 'GENERAL_MANAGER', active: true, hourlyRateCents: 3200 },
+  { id: 'e2', firstName: 'Marcus', lastName: 'Bell', position: 'HEAD_GOLF_PROFESSIONAL', active: true, hourlyRateCents: 2800 },
+  { id: 'e3', firstName: 'Kayla', lastName: 'Ortiz', position: 'PRO_SHOP_ATTENDANT', active: true, hourlyRateCents: 1350 },
+  { id: 'e4', firstName: 'Tom', lastName: 'Rigsby', position: 'GROUNDS_CREW', active: true, hourlyRateCents: 1500 },
+  { id: 'e5', firstName: 'Lena', lastName: 'Hart', position: 'SERVER', active: true, hourlyRateCents: null },
+  { id: 'e6', firstName: 'Ray', lastName: 'Cobb', position: 'STARTER', active: false, hourlyRateCents: null },
 ]
 const TIME_OFF = [
   { id: 't1', employeeId: 'e5', startDate: addDays(today, 1), endDate: addDays(today, 2), status: 'APPROVED', type: 'VACATION' },
@@ -164,7 +164,12 @@ window.fetch = async (input, opts = {}) => {
     const view = SCHEDULE_VIEWS[u.searchParams.get('view')] ? u.searchParams.get('view') : 'week'
     const period = schedulePeriod(view, u.searchParams.get('date') || today)
     const shifts = store.shifts.filter(s => s.date >= period.gridStart && s.date <= period.gridEnd)
-    return json({ period, employees: EMPLOYEES, shifts, timeOff: TIME_OFF })
+    // Golfers booked per day for the planning rows (busier at the weekend)
+    const booked = Object.fromEntries(datesBetween(period.gridStart, period.gridEnd).map((d, i) => {
+      const players = [96, 54, 48, 61, 70, 112, 128][i % 7]
+      return [d, { players, groups: Math.round(players / 3.2) }]
+    }))
+    return json({ period, employees: EMPLOYEES, shifts, timeOff: TIME_OFF, booked })
   }
   if (p === '/api/admin/shifts' && method === 'POST') {
     const s = { id: `s${nextId++}`, ...body }

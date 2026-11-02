@@ -181,6 +181,7 @@
         :time-off="data.timeOff"
         :warnings="warnings"
         :caption="`Schedule, ${periodLabel}`"
+        :planning="data.booked ? { booked: data.booked } : null"
         editable
         @add="openCreate"
         @edit="openEdit"
@@ -189,6 +190,9 @@
       <ScheduleLegend />
       <p class="text-body-s text-on-surface-variant print:hidden">
         Select an empty spot to add a shift, or a shift to edit it. An end time earlier than the start runs past midnight.
+        <template v-if="data.booked && view !== 'month'">
+          Under the grid: golfers booked each day, and what the shifts shown cost at each employee's pay rate.
+        </template>
       </p>
     </template>
 

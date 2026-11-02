@@ -261,7 +261,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/timeclock` | GET | Who's on the clock / on break / forgot to clock out |
 | `/api/admin/timesheets?date=` | GET | All employees' hours for a pay period |
 | `/api/admin/time-entries[/:id]` | POST / PUT, DELETE | Manager corrections to punches |
-| `/api/admin/shifts?view=week\|biweek\|month&date=` (or `?from=&to=`) | GET, POST | Schedule: shifts, employees, time off |
+| `/api/admin/shifts?view=week\|biweek\|month&date=` (or `?from=&to=`) | GET, POST | Schedule: shifts, employees (+ `hourlyRateCents`), time off, `booked` golfers per day (planning rows) |
+| `/api/admin/reports/teetime-usage?weeks=` | GET | Dashboard heatmap: paid players / capacity by weekday × hour over the last 1–26 weeks |
 | `/api/admin/shifts/:id` | PUT, DELETE | Edit / delete a shift |
 | `/api/admin/shifts/copy` | POST | Copy the previous 7/14 days of shifts forward (skips duplicates, inactive) |
 | `/api/admin/shifts/email` | POST | `{ from, to }`: email each active employee their own shifts for the period (sent/skipped/failed; 503 `EMAIL_NOT_CONFIGURED`) |

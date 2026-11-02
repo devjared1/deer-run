@@ -913,5 +913,12 @@ ordered by value; Phases 1–3 are the first picks.
       dialog (`/api/admin/shift-offers`); pending ones on Needs attention. Migration `sql/16_course_alerts_shift_swaps.sql`)
 
 ### Phase 5: Planning insights
-- [ ] Bookings next to the schedule: booked players and planned labor cost per day on `/admin/schedule`
-- [ ] Tee time usage heatmap (weekday × hour, booked share) on the dashboard or sales reports
+- [x] Bookings next to the schedule: booked players and planned labor cost per day on `/admin/schedule`
+      (`GET /api/admin/shifts` adds `booked: { [date]: { players, groups } }` and the employees' `hourlyRateCents`;
+      `ScheduleGrid`'s `planning` prop adds footer rows "Golfers booked" and "Labor cost", worked out from the shifts
+      shown, so the department filter applies; shifts without a pay rate are counted under the row. Week / 2-week grid
+      only, not the month view)
+- [x] Tee time usage heatmap (weekday × hour, booked share) on the dashboard or sales reports
+      (`GET /api/admin/reports/teetime-usage?weeks=` → `components/admin/dashboard/TeeTimeUsage.vue` on the dashboard:
+      paid players over capacity for the last 4 / 8 / 12 weeks, a percentage in every cell, busiest and quietest hour.
+      Gallery: `?section=admindashboard`, a new preview of the whole dashboard)

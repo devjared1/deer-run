@@ -119,6 +119,9 @@
         </div>
       </Card>
 
+      <!-- Tee time usage: booked share by weekday and hour -->
+      <TeeTimeUsage ref="usage" class="lg:col-span-2" />
+
       <!-- On the clock -->
       <Card variant="outlined" tag="section" aria-labelledby="dash-clock">
         <template #header>
@@ -215,6 +218,7 @@ import Skeleton from '@/components/ui/Skeleton.vue'
 import StatCard from '@/components/ui/StatCard.vue'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import NeedsAttention from '@/components/admin/dashboard/NeedsAttention.vue'
+import TeeTimeUsage from '@/components/admin/dashboard/TeeTimeUsage.vue'
 import IconAdd from '~icons/material-symbols/add-rounded'
 import IconCalendarAdd from '~icons/material-symbols/calendar-add-on-rounded'
 import IconPointOfSale from '~icons/material-symbols/point-of-sale-rounded'
@@ -303,10 +307,14 @@ function categoryWidth(cents) {
 }
 
 const attention = ref(null)
+const usage = ref(null)
 
-// The Refresh button; NeedsAttention loads itself on mount, so it only refreshes after that
+// The Refresh button; NeedsAttention and TeeTimeUsage load themselves on mount, so they only refresh after that
 function loadAll({ initial = false } = {}) {
-  if (!initial) attention.value?.load()
+  if (!initial) {
+    attention.value?.load()
+    usage.value?.load()
+  }
   load()
   loadOnClock()
   loadSales()
