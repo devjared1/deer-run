@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { stopPendingPayment } from './_holds.js'
+import { golferBooking, linkTokenFrom } from './_golfer.js'
+import { notifyWaitlistInBackground } from './_waitlist.js'
+import { siteOrigin } from '../_links.js'
 import { localDateTimeToUtc } from '../../../src/lib/timeclock.js'
 
 function json(data, status = 200) {
@@ -22,35 +25,13 @@ export async function onRequestGet({ env, params }) {
   return json(booking)
 }
 
-export async function onRequestDelete({ request, env, params }) {
-  const authHeader = request.headers.get('Authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
-    return json({ error: 'Missing bearer token' }, 401)
-  }
-
-  const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false },
-  })
-
-  const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.slice(7))
-  if (authError || !user) return json({ error: 'Invalid token' }, 401)
-
-  const { data: dbUser } = await supabase
-    .from('User')
-    .select('id')
-    .eq('supabaseId', user.id)
-    .maybeSingle()
-
-  if (!dbUser) return json({ error: 'User not found' }, 404)
-
-  const { data: booking, error: fetchError } = await supabase
-    .from('Booking')
-    .select('*, teeTimeSlot:TeeTimeSlot(date, startTime)')
-    .eq('id', params.id)
-    .eq('userId', dbUser.id)
-    .maybeSingle()
-
-  if (fetchError || !booking) return json({ error: 'Booking not found' }, 404)
+// DELETE /api/bookings/:id[?t=<link token>] — the golfer cancels: signed in as its owner, or with the signed link from
+// the booking emails (guests). At least 24 hours before the tee time. Frees the spots for the waitlist.
+export async function onRequestDelete(context) {
+  const { request, env, params } = context
+  const access = await golferBooking(request, env, params.id, '*, teeTimeSlot:TeeTimeSlot(date, startTime)', linkTokenFrom(request))
+  if (access instanceof Response) return access
+  const { supabase, booking } = access
 
   if (!['PENDING', 'CONFIRMED'].includes(booking.status)) {
     return json({ error: 'Booking cannot be cancelled' }, 400)
@@ -79,5 +60,7 @@ export async function onRequestDelete({ request, env, params }) {
   if (updateError) return json({ error: updateError.message }, 500)
   if (!updated?.length) return json({ error: 'This booking just changed. Refresh and try again.' }, 409)
 
+  // The spots are free: tell the waitlist for that day
+  notifyWaitlistInBackground(context, supabase, [booking.teeTimeSlot.date], siteOrigin(env, request))
   return json({ success: true })
 }

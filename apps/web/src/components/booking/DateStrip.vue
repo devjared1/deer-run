@@ -30,6 +30,11 @@
           :class="['text-label-s mt-0.5', d.ymd === modelValue ? 'text-on-primary' : d.disabled ? '' : 'text-on-surface-variant']"
           aria-hidden="true"
         >{{ d.hint }}</span>
+        <span
+          v-if="d.weather"
+          :class="['inline-flex items-center gap-0.5 text-label-s tabular-nums', d.ymd === modelValue ? 'text-on-primary' : 'text-on-surface-variant']"
+          aria-hidden="true"
+        ><component :is="d.weather.icon" class="w-4 h-4" />{{ d.weather.short }}</span>
       </button>
     </li>
   </ul>
@@ -37,7 +42,8 @@
 
 <script setup>
 // Horizontal day strip for the booking Date step on phones: one 72×96dp tile per bookable day (weekday, day,
-// month, availability hint). One tab stop; arrows / Home / End move focus, Enter or Space picks the day.
+// month, availability hint, forecast icon + high when dayInfo has `weather`). One tab stop; arrows / Home / End move
+// focus, Enter or Space picks the day.
 import { addDays, formatLocalDate, localDate } from '@/lib/timeclock'
 import { computed, nextTick, onMounted, ref } from 'vue'
 
@@ -62,6 +68,7 @@ const days = computed(() => {
       day: Number(d.slice(8)),
       month: formatLocalDate(d, { month: 'short' }),
       hint: info.hint,
+      weather: info.weather ?? null,
       disabled: !!info.disabled,
       aria: [d === today ? `Today, ${long}` : d === addDays(today, 1) ? `Tomorrow, ${long}` : long, info.aria].filter(Boolean).join(', '),
     })

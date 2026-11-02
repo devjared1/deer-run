@@ -1,5 +1,6 @@
-import { authenticate, json } from '../../admin/_auth.js'
+import { json } from '../../admin/_auth.js'
 import { makeStripe, stripeMessage } from '../../staff/_stripe.js'
+import { golferBooking, linkTokenFrom } from '../_golfer.js'
 import { cancelBookingPayment } from '../_holds.js'
 import { slotWhen } from '../_email.js'
 import { formatCents } from '../../../../src/lib/money.js'
@@ -7,7 +8,8 @@ import {
   applyChange, CHANGE_BOOKING_SELECT, quoteChange, recordChange, serializeChange,
 } from '../_change.js'
 
-// POST /api/bookings/:id/change — the signed-in golfer changes their own online booking (see _change.js).
+// POST /api/bookings/:id/change[?t=<link token>] — the golfer changes their own online booking (see _change.js):
+// signed in as its owner, or with the signed link from the booking emails (guests).
 //   { teeTimeSlotId, players, preview: true }  → { quote }  (nothing changes)
 //   { teeTimeSlotId, players }                 → the change, one of:
 //       { status: 'applied', change, booking, warning? }   (same or lower price, or pay at course: done now)
@@ -19,10 +21,6 @@ import {
 //       (if it had just been paid, the change is applied instead)
 // 409 NOT_CHANGEABLE (paid at the pro shop, within 24 hours, checked in…), NO_ROOM; 404 for someone else's booking.
 export async function onRequestPost({ request, env, params }) {
-  const result = await authenticate(request, env)
-  if (result instanceof Response) return result
-  const { supabase, dbUser } = result
-
   let body
   try {
     body = await request.json()
@@ -30,10 +28,10 @@ export async function onRequestPost({ request, env, params }) {
     return json({ error: 'Invalid JSON body' }, 400)
   }
 
-  const { data: booking, error } = await supabase.from('Booking').select(CHANGE_BOOKING_SELECT)
-    .eq('id', params.id).eq('userId', dbUser.id).maybeSingle()
-  if (error) return json({ error: error.message }, 500)
-  if (!booking) return json({ error: 'Booking not found' }, 404)
+  const access = await golferBooking(request, env, params.id, CHANGE_BOOKING_SELECT, linkTokenFrom(request, body))
+  if (access instanceof Response) return access
+  const { supabase, booking, userId } = access
+  const golferEmail = booking.user?.email ?? booking.guestEmail ?? undefined
 
   if (body?.action === 'confirm' || body?.action === 'cancel') return finishPayment(supabase, env, booking, body)
 
@@ -44,7 +42,7 @@ export async function onRequestPost({ request, env, params }) {
   try {
     // Same or lower price, or pay at course: make the change now
     if (!quote.chargeCents) {
-      const change = await recordChange(supabase, booking, quote, { userId: dbUser.id, status: 'PENDING_PAYMENT' })
+      const change = await recordChange(supabase, booking, quote, { userId, status: 'PENDING_PAYMENT' })
       return respond(supabase, booking.id, await applyChange(supabase, env, change.id))
     }
 
@@ -53,13 +51,13 @@ export async function onRequestPost({ request, env, params }) {
     if (!stripe) return json({ error: 'Online payments aren\'t set up. Call the pro shop to change this booking.' }, 503)
     await dropUnpaidChanges(supabase, stripe, booking.id)
 
-    const change = await recordChange(supabase, booking, quote, { userId: dbUser.id, status: 'PENDING_PAYMENT' })
+    const change = await recordChange(supabase, booking, quote, { userId, status: 'PENDING_PAYMENT' })
     let intent
     try {
       intent = await stripe.paymentIntents.create({
         amount: quote.chargeCents,
         currency: 'usd',
-        receipt_email: dbUser.email ?? undefined,
+        receipt_email: golferEmail,
         description: `Deer Run Golf — Tee time change to ${slotWhen(quote.slot)}, ${quote.players} player${quote.players === 1 ? '' : 's'} ` +
           `(difference ${formatCents(quote.chargeCents)})`,
         metadata: { bookingChangeId: change.id },

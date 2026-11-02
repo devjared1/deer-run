@@ -7,6 +7,8 @@ const JOBS = [
   //                             then overdue reminders and late fees
   '/api/internal/bookings', // release unpaid online bookings past their 30-minute hold that nobody viewed
   '/api/internal/pace', // learn per-hole times from the last 60 days of position reports
+  '/api/internal/reminders', // day-before reminder emails for tomorrow's tee times (forecast, balance, manage link)
+  '/api/internal/waitlist', // backstop: email waitlists for upcoming days that now have room
 ]
 
 async function runJobs(env) {

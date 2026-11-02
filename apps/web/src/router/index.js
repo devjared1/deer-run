@@ -70,6 +70,18 @@ const routes = [
     meta: { title: 'Booking Confirmation', description: 'Your Deer Run Golf Course tee time booking.', noindex: true },
   },
   {
+    // The "change or cancel" link in booking emails (?t= signed token; guests too)
+    path: '/booking/:id',
+    component: () => import('@/views/ManageBookingView.vue'),
+    meta: { title: 'Manage Your Booking', description: 'Change or cancel your Deer Run Golf Course tee time.', noindex: true },
+  },
+  {
+    // "Not interested any more?" in the waitlist email
+    path: '/waitlist/:id',
+    component: () => import('@/views/WaitlistLeaveView.vue'),
+    meta: { title: 'Waitlist', description: 'Deer Run Golf Course tee time waitlist.', noindex: true },
+  },
+  {
     path: '/login',
     component: () => import('@/views/LoginView.vue'),
     meta: { title: 'Sign In', description: 'Sign in to your Deer Run Golf Course account.', sitemap: false },

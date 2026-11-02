@@ -3,6 +3,7 @@ import { isExpiredHold, bookedPlayers, UNPAID_HOLD_MINUTES, HOLD_COLUMNS } from 
 import { localDateTimeToUtc } from '../../../src/lib/timeclock.js'
 import { formatCents } from '../../../src/lib/money.js'
 import { sendBookingEmail, slotWhen } from './_email.js'
+import { notifyWaitlist } from './_waitlist.js'
 
 // Unpaid online bookings. POST /api/bookings creates a PENDING booking with a PaymentIntent, and the webhook
 // confirms it when the payment succeeds. If the golfer never finishes paying, the booking stops holding its
@@ -82,7 +83,7 @@ export async function releaseExpiredHolds(supabase, env, { slotIds = null, limit
 
   const cutoff = new Date(Date.now() - UNPAID_HOLD_MINUTES * 60_000).toISOString()
   // select('*') so this works whether or not Booking.source exists yet (migration 6)
-  let query = supabase.from('Booking').select('*')
+  let query = supabase.from('Booking').select('*, slot:TeeTimeSlot(date)')
     .eq('status', 'PENDING')
     .not('stripePaymentId', 'is', null)
     .lt('createdAt', cutoff)
@@ -98,6 +99,7 @@ export async function releaseExpiredHolds(supabase, env, { slotIds = null, limit
     return summary
   }
 
+  const releasedDates = new Set()
   for (const booking of (data || []).filter(b => isExpiredHold(b))) {
     summary.checked++
     try {
@@ -112,9 +114,20 @@ export async function releaseExpiredHolds(supabase, env, { slotIds = null, limit
           .eq('id', booking.id).eq('status', 'PENDING')
         if (updateError) throw updateError
         summary.released++
+        if (booking.slot?.date) releasedDates.add(String(booking.slot.date).slice(0, 10))
       }
     } catch (e) {
       summary.errors.push(`${booking.id}: ${e.message}`)
+    }
+  }
+
+  // The released spots are free again: tell those days' waitlists
+  for (const date of releasedDates) {
+    try {
+      const notified = await notifyWaitlist(supabase, env, date)
+      summary.errors.push(...notified.errors)
+    } catch (e) {
+      summary.errors.push(`waitlist ${date}: ${e.message}`)
     }
   }
   return summary

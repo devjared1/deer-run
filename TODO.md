@@ -422,6 +422,10 @@ manager can print a statement for any member **on demand**.
       golfer's **Change** on My Account needs it; it errors until then), then
       `prisma migrate resolve --applied 14_booking_changes`. Then try on staging: a change that costs more (pay the
       difference), one that costs less (refund shows in Stripe), and one on a pay-at-course booking
+- [ ] Run `apps/api/prisma/sql/15_reminders_waitlist.sql` after 14 (the waitlist and reminders do nothing until it runs),
+      then `prisma migrate resolve --applied 15_reminders_waitlist`, and redeploy the cron Worker (new jobs
+      `/api/internal/reminders` and `/api/internal/waitlist`). Optional: set `BOOKING_LINK_SECRET` (else the service role
+      key signs the manage links; changing it later breaks links already sent) and `SITE_URL` on the Pages project
 - [x] New sign-ups are `GUEST` (`/api/auth/me` and the Prisma default; migration 9 changes the column default).
       Membership comes from buying a membership product or an admin setting it in Admin → Users. Accounts created
       before this as MEMBER stay members: review them in Admin → Users
@@ -865,13 +869,28 @@ ordered by value; Phases 1–3 are the first picks.
       `sql/14_booking_changes.sql`); the golfer is emailed; a refund that fails emails the pro shop
 - [ ] Staff **move** on the tee sheet still keeps the price (its comment predates weekday/weekend rates): reprice it like
       the golfer's change, or keep it as the pro shop's call
-- [ ] Guests manage their booking from a signed link in the confirmation email (no account needed)
-- [ ] **Book again** in My Account: same players / holes / cart, opens the Time step on the next same weekday
-- [ ] Reminder email the day before (cron job): tee time, balance due at the course, forecast, directions, manage link
-- [ ] Forecast in the booking flow: National Weather Service API (free, no key) icon + high per day on the date strip /
+- [x] Guests manage their booking from a signed link in the confirmation email (no account needed)
+      (`/booking/:id?t=` → `ManageBookingView` ← `GET /api/bookings/:id/manage`; Change uses `ChangeBookingDialog` with
+      the token, Cancel `DELETE /api/bookings/:id?t=`. The token is an HMAC of the id (`functions/api/_links.js`, key
+      `BOOKING_LINK_SECRET`, else the service role key), so links can't be made up; the booking's own rules (24 hours…)
+      still apply. The link is in the confirmation, change and reminder emails. Optional `SITE_URL` sets the links'
+      origin for jobs that have no request)
+- [x] **Book again** in My Account: same players / holes / cart, opens the Time step on the next same weekday
+      (past paid bookings; `/book?date=&players=&time=&holes=&cart=`)
+- [x] Reminder email the day before (cron job): tee time, balance due at the course, forecast, directions, manage link
+      (`POST /api/internal/reminders`, in `apps/cron` JOBS; Resend batch sends, 100 per request, so a full tee sheet
+      fits the Workers subrequest limit; `Booking.reminderSentAt` keeps it to one each)
+- [x] Forecast in the booking flow: National Weather Service API (free, no key) icon + high per day on the date strip /
       calendar for the next 7 days, rain note on the confirmation page
-- [ ] Waitlist for full days: "Tell me if a time opens up"; email the first in line when an expired hold or a
+      (`GET /api/weather` ← `functions/api/_weather.js`, cached an hour at the edge; `composables/useForecast.js`. Also the
+      Time step header and the manage page; nothing shows when the NWS is down)
+- [x] Waitlist for full days: "Tell me if a time opens up"; email the first in line when an expired hold or a
       cancellation frees spots
+      (`WaitlistForm` on the Time step when nothing fits the group; full days on the Date step can now be picked for it.
+      `POST /api/waitlist`; `bookings/_waitlist.js` → `notifyWaitlist` runs after a golfer/staff/admin cancel, a staff
+      move, a golfer change and released holds, plus a daily backstop `POST /api/internal/waitlist`. Earliest entries
+      that fit are emailed once, as many as the open spots could seat; members-only times aren't offered. "Not
+      interested" link → `/waitlist/:id?t=`. Migration `sql/15_reminders_waitlist.sql`)
 
 ### Phase 4: Course and staff
 - [ ] On Course alerts: a sticky alert + vibration when a group falls 10+ minutes behind (threshold in Settings)

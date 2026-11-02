@@ -6,6 +6,8 @@ import { isActiveMember } from '../../../src/lib/membership.js'
 import { addDays, localDate, localDateTimeToUtc, toUtcIso } from '../../../src/lib/timeclock.js'
 import { formatCents } from '../../../src/lib/money.js'
 import { sendBookingEmail, slotWhen } from './_email.js'
+import { notifyWaitlist } from './_waitlist.js'
+import { manageBookingUrl, siteOrigin } from '../_links.js'
 
 // Golfers changing their own online booking (My Account): another tee time and/or a different number of players.
 // The difference is worked out at today's rates (new price − old price, both now) and added to what the booking cost,
@@ -212,7 +214,15 @@ export async function applyChange(supabase, env, changeId, { fromStatuses = ['PE
     `Was: ${slotWhen(booking.slot)}, ${change.fromPlayers} player${change.fromPlayers === 1 ? '' : 's'}`,
     ...(money.length ? ['', ...money] : []),
     ...(warning ? ['', warning] : []),
+    '',
+    `Change or cancel (up to 24 hours before): ${await manageBookingUrl(env, siteOrigin(env), booking.id)}`,
   ])
+
+  // Spots freed at the old time (moved away, or fewer players): tell that day's waitlist
+  if (change.fromSlotId !== change.toSlotId || change.toPlayers < change.fromPlayers) {
+    await notifyWaitlist(supabase, env, String(booking.slot.date).slice(0, 10))
+      .catch(e => console.error('Waitlist after a booking change:', e.message))
+  }
   return { change: done, applied: true, warning }
 }
 

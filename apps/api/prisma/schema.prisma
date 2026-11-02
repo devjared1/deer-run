@@ -80,6 +80,23 @@ model Booking {
   finishedAt      DateTime?
   positionReports PositionReport[]
   changes         BookingChange[]
+  reminderSentAt  DateTime? // the day-before reminder email went out (POST /api/internal/reminders)
+}
+
+// "Tell me if a time opens up" for a day with no room (booking Time step). When spots free up that day (a
+// cancellation, a released hold, a moved booking), the earliest entries that fit are emailed once (notifiedAt).
+model WaitlistEntry {
+  id          String    @id @default(cuid())
+  date        DateTime  @db.Date
+  players     Int
+  name        String
+  email       String
+  userId      String? // the signed-in golfer, if any
+  createdAt   DateTime  @default(now())
+  notifiedAt  DateTime? // emailed that a time opened up (once)
+  cancelledAt DateTime? // the golfer took themselves off (link in the email) or booked
+
+  @@index([date])
 }
 
 enum BookingChangeStatus {

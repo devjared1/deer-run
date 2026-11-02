@@ -44,7 +44,7 @@
               :aria-current="cell.ymd === today ? 'date' : undefined"
               :aria-label="cell.aria"
               :class="[
-                'state-layer w-full h-16 rounded-shape-sm flex flex-col items-center justify-center gap-0.5',
+                'state-layer w-full h-[4.5rem] rounded-shape-sm flex flex-col items-center justify-center gap-0.5',
                 'transition-colors duration-short-4 ease-standard',
                 cell.disabled ? 'text-on-surface/[.38] cursor-not-allowed'
                 : cell.ymd === modelValue ? 'bg-primary text-on-primary cursor-pointer'
@@ -62,6 +62,11 @@
                 ]"
                 aria-hidden="true"
               >{{ cell.hint }}</span>
+              <span
+                v-if="cell.inWindow && cell.weather"
+                :class="['inline-flex items-center gap-0.5 text-label-s tabular-nums', cell.ymd === modelValue ? 'text-on-primary' : 'text-on-surface-variant']"
+                aria-hidden="true"
+              ><component :is="cell.weather.icon" class="w-4 h-4" />{{ cell.weather.short }}</span>
             </button>
           </td>
         </tr>
@@ -73,7 +78,8 @@
 <script setup>
 // Month calendar for the booking Date step (md and up). An ARIA grid: one tab stop; arrows move a day / a week,
 // Home / End go to the start / end of the week, PageUp / PageDown a month; Enter or Space picks the day. Movement
-// stays inside [min, max] (the booking window). `dayInfo(ymd)` → { hint, disabled, aria } (availability).
+// stays inside [min, max] (the booking window). `dayInfo(ymd)` → { hint, disabled, aria, weather? } (availability;
+// weather: { icon, short } from useForecast, shown under the hint).
 import IconButton from '@/components/ui/IconButton.vue'
 import { addDays, dayOfWeek, formatLocalDate, localDate } from '@/lib/timeclock'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -122,6 +128,7 @@ const weeks = computed(() => {
       day: Number(d.slice(8)),
       inWindow,
       hint: info.hint,
+      weather: info.weather ?? null,
       disabled: !inWindow || !!info.disabled,
       aria: inWindow ? [label, info.aria].filter(Boolean).join(', ') : `${label}, not bookable online yet`,
     })

@@ -184,6 +184,8 @@ Accessed in Functions via `context.env.<NAME>`.
 | `RESEND_API_KEY`          | Resend API key                                    |
 | `CONTACT_EMAIL_TO`        | Recipient for inquiry notification emails         |
 | `CRON_SECRET`             | Shared secret for `/api/internal/*`; the `apps/cron` Worker has the same value |
+| `BOOKING_LINK_SECRET`     | Optional: signs the manage-booking / waitlist links in emails (default: the service role key) |
+| `SITE_URL`                | Optional: origin for links in emails sent by jobs (default `https://deerrun.golf`) |
 
 Emails (inquiries, booking confirmations, receipts, time off decisions) are skipped silently when
 `RESEND_API_KEY` isn't set, so local dev works without it.
@@ -232,7 +234,10 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | GET | `/api/rates` | Public | `{ rates: { WEEKDAY_9, WEEKDAY_18, WEEKEND_9, WEEKEND_18, CART }, holidayDates, payAtCourseFeeCents }` (cents, from the rate products) |
 | POST | `/api/bookings` | Optional | `{ teeTimeSlotId, players, roundHoles?, cart?, payAtCourse?, guestName?, guestEmail? }`: priced from the rates; create PENDING booking + Stripe PaymentIntent (the total, or only the hold fee with `payAtCourse`) → `{ bookingId, clientSecret, totalCents, chargeCents, holdFeeCents, balanceDueCents }` |
 | GET/DELETE | `/api/bookings/:id` | Public / owner | Booking details (confirmation page) / cancel |
-| POST | `/api/bookings/:id/change` | Owner | Golfer changes time/players (`_change.js`): `{ teeTimeSlotId, players, preview? }` → quote, or applied / `payment_required` `{ clientSecret }` (difference charged first) / failed; then `{ action: 'confirm' \| 'cancel', changeId }`. Lower price refunded to the card; pay at course adjusts the balance |
+| GET | `/api/bookings/:id/manage?t=` | Owner or link | Manage page: booking, `canChange`/`changeBlocker`, `canCancel`/`cancelBlocker` (`?t=` = signed link token, `_links.js`; DELETE and change take it too) |
+| GET | `/api/weather` | Public | Course forecast, next 7 days (National Weather Service, cached 1 h): `{ days: [{ date, high, low, forecast, precipChance, kind }] }` |
+| POST | `/api/waitlist` | Optional | `{ date, players, name?, email? }` join a full day's waitlist; GET/DELETE `/api/waitlist/:id?t=` (leave link) |
+| POST | `/api/bookings/:id/change` | Owner or link | Golfer changes time/players (`_change.js`): `{ teeTimeSlotId, players, preview? }` → quote, or applied / `payment_required` `{ clientSecret }` (difference charged first) / failed; then `{ action: 'confirm' \| 'cancel', changeId }`. Lower price refunded to the card; pay at course adjusts the balance |
 | GET | `/api/bookings/my` | Required | Signed-in user's bookings |
 | GET | `/api/bookings/by-session/:sessionId` | Public | Legacy lookup by `stripeSessionId` (Checkout era) |
 | GET | `/api/events[?past=true\|false]` | Public | Tournament events list |
@@ -313,6 +318,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/internal/statements` | POST | Daily: last month's house account statements (only creates missing ones) + autopay + emails with PDF, then overdue statements: one reminder + optional late fee each |
 | `/api/internal/bookings` | POST | Daily: release unpaid online bookings past their 30-minute hold (cancel PaymentIntent → CANCELLED) |
 | `/api/internal/pace` | POST | Daily: learn per-hole times from the last 60 days of position reports → `CourseSettings.holeSeconds` |
+| `/api/internal/reminders` | POST | Daily: tomorrow's paid bookings get a reminder email (forecast, balance, manage link; `Booking.reminderSentAt`) |
+| `/api/internal/waitlist` | POST | Daily backstop: email waitlists for upcoming days that have room (`bookings/_waitlist.js`) |
 
 **Time clock kiosk** (`requireKiosk`: header `X-Kiosk-Token`, the device token from `POST /api/admin/kiosks`; no user)
 
@@ -450,6 +457,8 @@ register, house accounts with statements, events and inquiries. It skips itself 
 | `/tournaments/:id` | `EventView.vue` (details, registration inquiry, .ics, `Event` JSON-LD) | — |
 | `/book`         | `BookView.vue`        | — |
 | `/confirmation` | `ConfirmationView.vue` (`?booking_id=`) | — |
+| `/booking/:id`  | `ManageBookingView.vue` (`?t=` signed link from the emails: change / cancel, guests too) | — |
+| `/waitlist/:id` | `WaitlistLeaveView.vue` (`?t=`: leave the waitlist) | — |
 | `/login`        | `LoginView.vue`       | — |
 | `/account`      | `AccountView.vue` (+ `HouseAccountPanel`) | `requiresAuth` |
 | `/account/statements/:id` | `StatementView.vue` (printable) | `requiresAuth` |

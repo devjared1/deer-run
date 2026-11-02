@@ -75,7 +75,8 @@
 // Pick players, a day (within the booking window) and a time with room; the server's preview shows the new price and
 // what happens to the difference (paid now, back to the card, or on the balance due at the course). A higher price
 // opens the Stripe payment form; closing it without paying cancels the change.
-// Props: booking (from /api/bookings/my, with teeTimeSlot { date, startTime } and teeTimeSlotId).
+// Props: booking (from /api/bookings/my or …/manage, with teeTimeSlot { date, startTime } and teeTimeSlotId), token
+// (the emailed manage link's, for guests).
 // Emits: done({ booking?, message, tone? }) once the change is made, fails or is given up; close after the dialog
 // has closed with nothing done.
 import { computed, ref, watch, onMounted } from 'vue'
@@ -96,7 +97,9 @@ import IconEditCalendar from '~icons/material-symbols/edit-calendar-rounded'
 
 const props = defineProps({
   booking: { type: Object, required: true },
+  token:   { type: String, default: '' }, // the emailed manage link's ?t= (guests); empty: the signed-in owner
 })
+const changeUrl = `/api/bookings/${props.booking.id}/change${props.token ? `?t=${encodeURIComponent(props.token)}` : ''}`
 const emit = defineEmits(['done', 'close'])
 
 const PLAYER_OPTIONS = [1, 2, 3, 4].map(n => ({ value: n, label: String(n) }))
@@ -162,10 +165,14 @@ const moneyLine = computed(() => {
 const canSubmit = computed(() => !!quote.value && !quoting.value && !unchanged.value && !submitting.value)
 const submitLabel = computed(() => (quote.value?.chargeCents ? `Pay ${formatCents(quote.value.chargeCents)} and change` : 'Change tee time'))
 
-// Where Stripe sends the golfer back if their bank needs a redirect: My Account finishes the change from the query
-const returnUrl = computed(() => (payment.value
-  ? `${location.origin}/account?booking_change=${encodeURIComponent(payment.value.changeId)}&booking=${encodeURIComponent(props.booking.id)}`
-  : `${location.origin}/account`))
+// Where Stripe sends the golfer back if their bank needs a redirect: My Account (or the manage page, for a guest)
+// finishes the change from the query
+const returnUrl = computed(() => {
+  const change = payment.value ? encodeURIComponent(payment.value.changeId) : ''
+  const id = encodeURIComponent(props.booking.id)
+  if (props.token) return `${location.origin}/booking/${id}?t=${encodeURIComponent(props.token)}${change ? `&booking_change=${change}` : ''}`
+  return change ? `${location.origin}/account?booking_change=${change}&booking=${id}` : `${location.origin}/account`
+})
 
 let slotSeq = 0
 async function loadSlots() {
@@ -194,7 +201,7 @@ async function loadQuote() {
   if (!slotId.value || unchanged.value) return
   quoting.value = true
   try {
-    const res = await apiFetch(`/api/bookings/${props.booking.id}/change`, {
+    const res = await apiFetch(changeUrl, {
       method: 'POST', body: { teeTimeSlotId: slotId.value, players: players.value, preview: true },
     })
     if (mine === quoteSeq) quote.value = res.quote
@@ -239,7 +246,7 @@ async function submit() {
   submitting.value = true
   submitError.value = null
   try {
-    const res = await apiFetch(`/api/bookings/${props.booking.id}/change`, {
+    const res = await apiFetch(changeUrl, {
       method: 'POST', body: { teeTimeSlotId: slotId.value, players: players.value },
     })
     if (res.status === 'payment_required') {
@@ -265,7 +272,7 @@ async function finishPayment(action) {
   const { changeId } = payment.value
   let result
   try {
-    result = outcome(await apiFetch(`/api/bookings/${props.booking.id}/change`, { method: 'POST', body: { action, changeId } }))
+    result = outcome(await apiFetch(changeUrl, { method: 'POST', body: { action, changeId } }))
   } catch (e) {
     result = action === 'confirm'
       ? { message: `${e.message} If you were charged, the change is finished automatically, or the payment is refunded.`, tone: 'error' }

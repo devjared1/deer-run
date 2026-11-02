@@ -5,6 +5,7 @@ import { completeCardCheckout } from '../staff/_cardCheckout.js'
 import { recordPayment } from '../admin/_houseAccounts.js'
 import { settlePaidBooking } from '../bookings/_holds.js'
 import { applyChange } from '../bookings/_change.js'
+import { manageBookingUrl, siteOrigin } from '../_links.js'
 import { formatCents } from '../../../src/lib/money.js'
 
 function json(data, status = 200) {
@@ -127,6 +128,8 @@ export async function onRequestPost({ request, env }) {
               ]
             : [`Total Paid: ${formatCents(booking.totalCents)}`]
 
+          // Guests have no account: the signed link lets them change or cancel it
+          const manageUrl = await manageBookingUrl(env, siteOrigin(env, request), booking.id)
           const resend = new Resend(env.RESEND_API_KEY)
           await resend.emails.send({
             from: 'noreply@deerrun.golf',
@@ -139,6 +142,8 @@ export async function onRequestPost({ request, env }) {
               `Tee Time: ${slotTime}`,
               `Players: ${booking.players}`,
               ...payment,
+              '',
+              `Change or cancel (up to 24 hours before): ${manageUrl}`,
               '',
               'We look forward to seeing you on the course.',
               'Pro Shop: (256) 974-7384',
