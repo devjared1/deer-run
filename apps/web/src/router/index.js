@@ -97,6 +97,11 @@ const routes = [
       { path: 'tournaments',component: () => import('@/views/admin/TournamentsView.vue'), meta: { title: 'Tournament Scheduling' } },
       { path: 'settings',   component: () => import('@/views/admin/SettingsView.vue'),    meta: { title: 'Course Settings' } },
       { path: 'users',      component: () => import('@/views/admin/UsersView.vue'),       meta: { title: 'User Management' } },
+      {
+        path: 'users/:id',
+        component: () => import('@/views/admin/CustomerView.vue'),
+        meta: { title: 'Customer', breadcrumbs: [{ label: 'Users', to: '/admin/users' }, { label: 'Customer' }] },
+      },
       { path: 'employees',  component: () => import('@/views/admin/EmployeesView.vue'),   meta: { title: 'Employee Management' } },
       { path: 'timesheets', component: () => import('@/views/admin/TimesheetsView.vue'),  meta: { title: 'Timesheets' } },
       { path: 'schedule',   component: () => import('@/views/admin/ScheduleView.vue'),    meta: { title: 'Schedule' } },

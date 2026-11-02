@@ -28,7 +28,7 @@
         manual-sort
         caption="Users"
         :row-label="u => `${u.name || u.email}, ${statusInfo('role', u.role).label}`"
-        @row-click="openEdit"
+        :row-to="u => `/admin/users/${u.id}`"
       >
         <template #cell-name="{ row }">
           <span class="block">{{ row.name || row.email }}</span>
@@ -51,7 +51,10 @@
         <template #actions="{ row }">
           <RowActionsMenu
             :label="`Actions for ${row.name || row.email}`"
-            :items="[{ label: 'Edit role and membership', icon: IconManage, onClick: () => openEdit(row) }]"
+            :items="[
+              { label: 'Open customer page', icon: IconPerson, onClick: () => router.push(`/admin/users/${row.id}`) },
+              { label: 'Edit role and membership', icon: IconManage, onClick: () => { editing = row } },
+            ]"
           />
         </template>
         <template #empty>
@@ -70,77 +73,36 @@
     </template>
 
     <!-- Edit role + membership -->
-    <AppDialog :open="!!editing" title="Edit user" persistent @update:open="v => { if (!v) editing = null }">
-      <template v-if="editing">
-        <p class="mb-4 text-body-m text-on-surface-variant break-words">
-          <template v-if="editing.name">{{ editing.name }} · </template>{{ editing.email }}
-        </p>
-        <form id="user-form" class="space-y-5" @submit.prevent="save">
-          <RadioGroup
-            v-model="newRole"
-            label="Role"
-            :options="ROLES.map(r => ({ value: r, label: statusInfo('role', r).label, description: ROLE_DESC[r] }))"
-          />
-          <div class="grid grid-cols-1 min-[400px]:grid-cols-2 gap-3">
-            <TextField v-model="membership.until" type="date" label="Member until" />
-            <SelectField
-              v-model="membership.tier"
-              label="Tier"
-              placeholder="None"
-              :options="membershipTiers.map(t => ({ value: t.name, label: t.name }))"
-            />
-          </div>
-          <p class="-mt-2 text-body-s text-on-surface-variant">
-            Last day of membership. Leave it empty for no end date. Memberships sold at the register set this
-            automatically; members drop to Guest after it passes.
-          </p>
-        </form>
-        <ErrorBanner v-if="formError" class="mt-4" :message="formError" />
-      </template>
-      <template #actions="{ close }">
-        <AppButton variant="text" @click="close">Cancel</AppButton>
-        <AppButton type="submit" form="user-form" :loading="saving" :disabled="!changed">Save</AppButton>
-      </template>
-    </AppDialog>
+    <UserEditDialog :user="editing" @close="editing = null" @saved="load" />
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { apiFetch } from '@/lib/api'
 import { formatLocalDate, localDate, toUtcIso } from '@/lib/timeclock'
-import { membershipTiers } from '@/data/membershipTiers'
-import { useConfirm } from '@/composables/useConfirm'
-import { useSnackbar } from '@/composables/useSnackbar'
 import { statusInfo } from '@/components/ui/statusChips.js'
-import AppButton from '@/components/ui/AppButton.vue'
-import AppDialog from '@/components/ui/AppDialog.vue'
 import AppPagination from '@/components/ui/AppPagination.vue'
 import Card from '@/components/ui/Card.vue'
 import ChipGroup from '@/components/ui/ChipGroup.vue'
 import DataTable from '@/components/ui/DataTable.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 import ErrorBanner from '@/components/ui/ErrorBanner.vue'
-import RadioGroup from '@/components/ui/RadioGroup.vue'
 import RowActionsMenu from '@/components/ui/RowActionsMenu.vue'
-import SelectField from '@/components/ui/SelectField.vue'
 import StatusChip from '@/components/ui/StatusChip.vue'
 import TextField from '@/components/ui/TextField.vue'
+import UserEditDialog from '@/components/admin/users/UserEditDialog.vue'
 import IconSearch from '~icons/material-symbols/search-rounded'
 import IconManage from '~icons/material-symbols/manage-accounts-rounded'
 import IconGroup from '~icons/material-symbols/group-rounded'
+import IconPerson from '~icons/material-symbols/person-rounded'
 
-const confirm  = useConfirm()
-const snackbar = useSnackbar()
+const router = useRouter()
 
 const LIMIT = 25
 const ROLES = ['GUEST', 'MEMBER', 'ADMIN']
 const ROLE_OPTIONS = [{ value: '', label: 'All roles' }, ...ROLES.map(r => ({ value: r, label: statusInfo('role', r).label }))]
-const ROLE_DESC = {
-  GUEST:  'Limited access, no member pricing',
-  MEMBER: 'Extended booking window + member-only slots',
-  ADMIN:  'Full admin panel access',
-}
 const columns = [
   { key: 'name', label: 'Name', primary: true },
   { key: 'email', label: 'Email', hideOnMobile: true },
@@ -201,69 +163,8 @@ function clearFilters() {
   role.value = ''
 }
 
-// ── Edit ──
-const editing    = ref(null)
-const newRole    = ref('')
-const membership = ref({ until: '', tier: null })
-const saving     = ref(false)
-const formError  = ref(null)
-
-const changed = computed(() => !!editing.value && (newRole.value !== editing.value.role ||
-  membership.value.until !== (editing.value.memberUntil ?? '') || (membership.value.tier ?? '') !== (editing.value.membershipTier ?? '')))
-
-function openEdit(user) {
-  editing.value = user
-  newRole.value = user.role
-  membership.value = { until: user.memberUntil ?? '', tier: user.membershipTier ?? null }
-  formError.value = null
-}
-
-async function putUser(id, body) {
-  return apiFetch(`/api/admin/users/${id}`, { method: 'PUT', body })
-}
-
-async function save() {
-  const user = editing.value
-  if (!user || !changed.value) return
-  const who = user.name || user.email
-  if (newRole.value === 'ADMIN' && user.role !== 'ADMIN' && !(await confirm({
-    title: `Make ${who} an admin?`,
-    message: "They'll get full access to the admin panel.",
-    confirmLabel: 'Make admin',
-  }))) return
-
-  saving.value = true
-  formError.value = null
-  try {
-    await putUser(user.id, {
-      ...(newRole.value !== user.role ? { role: newRole.value } : {}),
-      memberUntil: membership.value.until || null,
-      membershipTier: membership.value.tier || null,
-    })
-    editing.value = null
-    // Undo puts the old role and membership back through the same API
-    const before = { role: user.role, memberUntil: user.memberUntil ?? null, membershipTier: user.membershipTier ?? null }
-    const roleChanged = newRole.value !== user.role
-    snackbar.show({
-      message: `Saved ${who}`,
-      actionLabel: 'Undo',
-      onAction: async () => {
-        try {
-          await putUser(user.id, roleChanged ? before : { memberUntil: before.memberUntil, membershipTier: before.membershipTier })
-          snackbar.show(`Restored ${who}`)
-          await load()
-        } catch (e) {
-          snackbar.show({ message: `Couldn't undo: ${e.message}`, tone: 'error' })
-        }
-      },
-    })
-    await load()
-  } catch (e) {
-    formError.value = e.message
-  } finally {
-    saving.value = false
-  }
-}
+// ── Edit (UserEditDialog) ──
+const editing = ref(null)
 
 onMounted(load)
 </script>

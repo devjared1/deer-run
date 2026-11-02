@@ -84,6 +84,8 @@
           -->
           <div id="admin-page-actions" class="flex items-center gap-2" />
 
+          <IconButton :icon="IconSearch" label="Search (Ctrl+K)" tooltip aria-keyshortcuts="Control+K Meta+K /" @click="searchOpen = true" />
+
           <!-- Account menu -->
           <Menu as="div" class="relative inline-flex">
             <MenuButton :as="IconButton" :icon="IconAccount" label="Account menu" />
@@ -130,11 +132,13 @@
         <slot><RouterView /></slot>
       </main>
     </div>
+
+    <AdminSearch v-model:open="searchOpen" :pages="navItems" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Menu, MenuButton, MenuItem, MenuItems } from '@headlessui/vue'
 import { useAuthStore } from '@/stores/auth'
@@ -145,6 +149,8 @@ import NavDrawer from '@/components/ui/NavDrawer.vue'
 import NavRail from '@/components/ui/NavRail.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import { groupItems } from '@/components/ui/navItems.js'
+import AdminSearch from '@/components/admin/AdminSearch.vue'
+import IconSearch from '~icons/material-symbols/search-rounded'
 import IconDashboard from '~icons/material-symbols/dashboard-rounded'
 import IconSchedule from '~icons/material-symbols/schedule-rounded'
 import IconBookOnline from '~icons/material-symbols/book-online-rounded'
@@ -239,7 +245,7 @@ function onNavSelect(item) {
 const pageTitle = computed(() =>
   route.meta?.title
   || titles[route.path]
-  || (route.path.startsWith('/admin/house-accounts/') ? 'House Account' : 'Admin'))
+  || (route.path.startsWith('/admin/house-accounts/') ? 'House Account' : route.path.startsWith('/admin/users/') ? 'Customer' : 'Admin'))
 
 // route.meta.breadcrumbs: [{ label, to? }] or plain strings; the last one is the current page
 const breadcrumbs = computed(() => {
@@ -250,5 +256,24 @@ const breadcrumbs = computed(() => {
     .filter(c => c.label)
 })
 
-const MENU_ITEM = 'state-layer flex items-center gap-3 w-full min-h-12 px-3 text-body-l text-on-surface no-underline whitespace-nowrap cursor-pointer'
+// ── Search: the top bar button, Ctrl+K / ⌘K anywhere, or "/" outside a text field ──
+const searchOpen = ref(false)
+
+function onGlobalKeydown(e) {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    searchOpen.value = true
+    return
+  }
+  const t = e.target
+  const typing = t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+  if (e.key === '/' && !typing && !e.ctrlKey && !e.metaKey && !e.altKey && !document.querySelector('[role="dialog"]')) {
+    e.preventDefault()
+    searchOpen.value = true
+  }
+}
+onMounted(() => document.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => document.removeEventListener('keydown', onGlobalKeydown))
+
+const MENU_ITEM ='state-layer flex items-center gap-3 w-full min-h-12 px-3 text-body-l text-on-surface no-underline whitespace-nowrap cursor-pointer'
 </script>

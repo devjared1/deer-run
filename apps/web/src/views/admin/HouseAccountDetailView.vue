@@ -36,6 +36,7 @@
             </span>
           </template>
           <template #secondary>
+            <AppButton v-if="account.userId" variant="text" :icon="IconPerson" :to="`/admin/users/${account.userId}`">Customer</AppButton>
             <AppButton variant="outlined" :icon="IconEdit" @click="openEdit">Edit</AppButton>
             <AppButton
               v-if="account.hasPin || account.pinLocked"
@@ -240,6 +241,7 @@ import StatusChip from '@/components/ui/StatusChip.vue'
 import TextField from '@/components/ui/TextField.vue'
 import IconSwap from '~icons/material-symbols/swap-vert-rounded'
 import IconEdit from '~icons/material-symbols/edit-rounded'
+import IconPerson from '~icons/material-symbols/person-rounded'
 import IconLockReset from '~icons/material-symbols/lock-reset-rounded'
 import IconWallet from '~icons/material-symbols/account-balance-wallet-rounded'
 import IconCreditScore from '~icons/material-symbols/credit-score-rounded'

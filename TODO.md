@@ -839,10 +839,16 @@ ordered by value; Phases 1–3 are the first picks.
       days in the booking window with no tee times, time off to review, statements past due, products out of stock.
       Unpaid holds left out: the cron releases them on its own. "Low" stock is 0 or below for now: there's no reorder
       level per product yet. Each check runs on its own; a failed one is named under the list)
-- [ ] Customer page `/admin/users/:id`: bookings, purchases, house account, membership dates and renewal status in one
+- [x] Customer page `/admin/users/:id`: bookings, purchases, house account, membership dates and renewal status in one
       place; linked from Users, Sales, Bookings and House Accounts
-- [ ] Global search (Ctrl+K / a search button in the admin top bar): members, sale numbers, bookings, employees →
+      (`CustomerView.vue` ← `GET /api/admin/users/:id`: rounds played / upcoming, net register spend, paid online, house
+      account balance; tee times and the latest 50 purchases, each opening its receipt (`/admin/sales?sale=<id>`). Users
+      rows open it; the role/membership editor moved to `components/admin/users/UserEditDialog.vue`, used by both)
+- [x] Global search (Ctrl+K / a search button in the admin top bar): members, sale numbers, bookings, employees →
       jump straight there
+      (`AdminSearch.vue` ← `GET /api/admin/search?q=`: customers, receipt number, bookings by guest or booking reference,
+      employees, plus admin pages by name; also "/" outside a field. A combobox: arrows + Enter. Bookings search on
+      `/admin/bookings` now matches the reference too, and takes `?search=`. Gallery: `?section=adminpeople&page=customer&search=jane`)
 
 ### Phase 3: Golfer self-service
 - [x] Change a booking from My Account: move to another time and change players (reuse the tee sheet `move` rules;

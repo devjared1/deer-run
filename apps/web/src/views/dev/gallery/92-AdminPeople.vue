@@ -19,6 +19,7 @@
       <AdminLayout>
         <SettingsView v-if="page === 'settings'" key="settings" />
         <EmployeesView v-else-if="page === 'employees'" key="employees" />
+        <CustomerView v-else-if="page === 'customer'" key="customer" />
         <TimesheetsView v-else key="timesheets" />
       </AdminLayout>
     </div>
@@ -27,8 +28,8 @@
 
 <script>
 export default {
-  galleryTitle: 'Admin: Settings, Employees, Timesheets (preview)',
-  galleryNote: 'The three pages inside AdminLayout with mocked /api/admin responses (fetch is stubbed while this section is mounted). ?page=settings|employees|timesheets picks one.',
+  galleryTitle: 'Admin: Settings, Employees, Timesheets, Customer (preview)',
+  galleryNote: 'The pages inside AdminLayout with mocked /api/admin responses (fetch is stubbed while this section is mounted). ?page=settings|employees|timesheets|customer picks one; &search=1 opens the search, &search=jane also types (try "jane", "1042" or "settings").',
 }
 </script>
 
@@ -39,6 +40,7 @@ import AdminLayout from '@/views/admin/AdminLayout.vue'
 import SettingsView from '@/views/admin/SettingsView.vue'
 import EmployeesView from '@/views/admin/EmployeesView.vue'
 import TimesheetsView from '@/views/admin/TimesheetsView.vue'
+import CustomerView from '@/views/admin/CustomerView.vue'
 import { useAuthStore } from '@/stores/auth'
 import { addDays, localDate, payPeriodContaining, DEFAULT_PAY_PERIOD, localDateTimeToUtc } from '@/lib/timeclock'
 
@@ -46,15 +48,19 @@ const pages = [
   { key: 'settings', path: '/admin/settings', meta: { title: 'Settings' } },
   { key: 'employees', path: '/admin/employees', meta: { title: 'Employees' } },
   { key: 'timesheets', path: '/admin/timesheets', meta: { title: 'Timesheets' } },
+  {
+    key: 'customer', path: '/admin/users/u9', params: { id: 'u9' },
+    meta: { title: 'Customer', breadcrumbs: [{ label: 'Users', to: '/admin/users' }, { label: 'Customer' }] },
+  },
 ]
 const initial = pages.find(p => p.key === new URLSearchParams(location.search).get('page')) ?? pages[0]
 const page = ref(initial.key)
 
-const fakeRoute = reactive({ path: initial.path, fullPath: initial.path, meta: initial.meta, params: {}, query: {}, hash: '', matched: [] })
+const fakeRoute = reactive({ path: initial.path, fullPath: initial.path, meta: initial.meta, params: initial.params ?? {}, query: {}, hash: '', matched: [] })
 provide(routeLocationKey, fakeRoute)
 function show(p) {
   page.value = p.key
-  Object.assign(fakeRoute, { path: p.path, fullPath: p.path, meta: p.meta })
+  Object.assign(fakeRoute, { path: p.path, fullPath: p.path, meta: p.meta, params: p.params ?? {} })
 }
 
 // ─── Mock data ──────────────────────────────────────────────────────────────
@@ -130,7 +136,43 @@ function mock(url, init = {}) {
   if (u.pathname === '/api/admin/timesheets') return timesheet(u.searchParams.get('date'))
   if (u.pathname.startsWith('/api/admin/time-entries')) return { success: true }
   if (u.pathname === '/api/admin/time-off/count') return { pending: 2 }
+  if (u.pathname.startsWith('/api/admin/users/')) return customer()
+  if (u.pathname === '/api/admin/search') {
+    const q = (u.searchParams.get('q') || '').toLowerCase()
+    const c = customer()
+    return {
+      customers: 'jane member'.includes(q) || c.user.email.includes(q) ? [{ id: 'u9', name: c.user.name, email: c.user.email, role: 'MEMBER' }] : [],
+      sales: /^#?\d+$/.test(q) ? [{ id: 's1', number: Number(q.replace('#', '')), totalCents: 8150, createdAt: new Date().toISOString(), customerName: 'Jane Member' }] : [],
+      bookings: 'jane member'.includes(q) ? [{ id: 'b1', reference: 'A1B2C3D4', name: 'Jane Member', userId: 'u9', status: 'CONFIRMED', players: 3, slot: { date: addDays(localDate(), 2), startTime: '08:10' } }] : [],
+      employees: employees.filter(e => `${e.firstName} ${e.lastName}`.toLowerCase().includes(q)),
+    }
+  }
   return null
+}
+
+function customer() {
+  const today = localDate()
+  const booking = (id, date, startTime, extra = {}) => ({
+    id, status: 'CONFIRMED', players: 2, roundHoles: 18, totalCents: 8000, holdFeeCents: null, balanceDueCents: 0,
+    source: 'ONLINE', checkedInAt: null, createdAt: new Date().toISOString(), holdExpired: false, slot: { date, startTime }, ...extra,
+  })
+  const sale = (n, daysAgo, totalCents, extra = {}) => ({
+    id: `s${n}`, number: n, status: 'COMPLETED', createdAt: localDateTimeToUtc(addDays(today, -daysAgo), '10:15').toISOString(),
+    totalCents, refundedCents: 0, register: { name: 'Pro Shop' }, ...extra,
+  })
+  return {
+    user: { id: 'u9', email: 'member@example.com', name: 'Jane Member', role: 'MEMBER', memberUntil: addDays(today, 120), membershipTier: 'Full', createdAt: '2024-03-02T15:00:00Z' },
+    employee: null,
+    houseAccount: { id: 'ha1', status: 'ACTIVE', balanceCents: 48275, creditLimitCents: 100000 },
+    bookings: [
+      booking('b1', addDays(today, 2), '08:10', { players: 3, totalCents: 12000, holdFeeCents: 1000, balanceDueCents: 11000 }),
+      booking('b2', addDays(today, -3), '09:40', { checkedInAt: new Date().toISOString() }),
+      booking('b3', addDays(today, -10), '07:50', { status: 'CANCELLED' }),
+      booking('b4', addDays(today, -17), '13:20', { source: 'POS' }),
+    ],
+    sales: [sale(1042, 3, 8150), sale(1031, 10, 5499, { status: 'PARTIALLY_REFUNDED', refundedCents: 1200 }), sale(998, 17, 4000)],
+    stats: { roundsPlayed: 2, upcoming: 1, registerNetCents: 16449, onlinePaidCents: 9000, salesCount: 3 },
+  }
 }
 
 const realFetch = window.fetch
@@ -147,6 +189,19 @@ let savedProfile = null
 onMounted(() => {
   savedProfile = authStore.profile
   if (!savedProfile) authStore.profile = { email: 'gm@example.com', role: 'ADMIN', employee: { active: true } }
+  // &search=1 opens the admin search (Ctrl+K) for screenshots; &search=<text> also types that text
+  const searchParam = new URLSearchParams(location.search).get('search')
+  if (searchParam) {
+    setTimeout(() => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })), 500)
+    if (searchParam !== '1') {
+      setTimeout(() => {
+        const input = document.getElementById('admin-search-input')
+        if (!input) return
+        input.value = searchParam
+        input.dispatchEvent(new Event('input'))
+      }, 1000)
+    }
+  }
 })
 onBeforeUnmount(() => {
   window.fetch = realFetch

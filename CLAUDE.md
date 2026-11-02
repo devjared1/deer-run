@@ -273,7 +273,8 @@ Files starting with `_` (e.g. `_auth.js`, `_validate.js`, `_csv.js`) are shared 
 | `/api/admin/sales/report?date=` (or `?from=&to=`, `&registerId=`) | GET | Sales / end-of-day (Z) report (`_report.js` → `buildReport`), incl. drawer sessions |
 | `/api/admin/drawer-sessions?from=&to=&registerId=` | GET | Cash drawer sessions in a range (open ones with running totals) |
 | `/api/admin/drawer-sessions/:id` | POST | `{ action: 'close', countedCents, note }` — close a stuck drawer |
-| `/api/admin/users/:id` | PUT | `{ role?, memberUntil?, membershipTier? }` |
+| `/api/admin/users/:id` | GET, PUT | Customer page (user, employee, house account, bookings, latest sales, stats) / `{ role?, memberUntil?, membershipTier? }` |
+| `/api/admin/search?q=` | GET | Admin search (Ctrl+K): `{ customers, sales (receipt #), bookings (name / reference), employees }`, 5 each |
 | `/api/admin/pace` | POST | Recalculate the learned per-hole times now (`_pace.js` → `recalculateHoleTimes`) |
 | `/api/admin/house-accounts` | GET, POST | Accounts with balances; open one `{ userId, creditLimitCents }` |
 | `/api/admin/house-accounts/:id[?from=&to=]` | GET, PUT, POST | Account, entries, statements (+ on-demand statement); PUT `{ status, creditLimitCents, resetPin }`; POST `adjust` / `email_statement` |
@@ -452,7 +453,7 @@ register, house accounts with statements, events and inquiries. It skips itself 
 | `/login`        | `LoginView.vue`       | — |
 | `/account`      | `AccountView.vue` (+ `HouseAccountPanel`) | `requiresAuth` |
 | `/account/statements/:id` | `StatementView.vue` (printable) | `requiresAuth` |
-| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users`, `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `house-accounts` (+ `/:id`), `registers` | `requiresAdmin` |
+| `/admin/*`      | `admin/AdminLayout.vue` + children: Dashboard, `teetimes`, `bookings`, `tournaments`, `settings`, `users` (+ `/:id` customer page), `employees`, `timesheets`, `schedule`, `time-off`, `products`, `sales`, `house-accounts` (+ `/:id`), `registers` | `requiresAdmin` |
 | `/staff`        | `staff/StaffLayout.vue` + `TimeClockView` | `requiresStaff` |
 | `/staff/timesheet`, `/staff/schedule`, `/staff/time-off` | `MyTimesheetView`, `MyScheduleView`, `TimeOffView` | `requiresStaff` |
 | `/staff/register`, `/staff/teesheet` | `RegisterView.vue`, `TeeSheetView.vue` | `requiresStaff` + `requiresRegister` |
